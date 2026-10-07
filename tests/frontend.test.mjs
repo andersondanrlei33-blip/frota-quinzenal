@@ -48,13 +48,14 @@ test('payment details display CPF and CNPJ with punctuation',async()=>{
 });
 test('group requests a transfer receipt, carrier uploads it, and group records the transfer',async()=>{
   const app=await boot();await app.submit('access-form',{email:'group@example.test',password:'sixchars'});
+  assert.equal(await app.submit('receipt-profile-form',{groupName:'Grupo de Teste',carrierLegalName:'Transportadora Teste Ltda.',carrierDocument:'12345678000199',carrierAddress:'Rua Central, 100 - Cuiabá/MT',bankName:'Banco de Teste',bankAgency:'1234',bankAccount:'56789-0',recipientName:'Fazenda Teste Ltda.',recipientDocument:'05556110190',recipientRegistration:'IE 123',recipientAddress:'Rodovia MT, km 10',cityState:'Cuiabá - MT',logisticsSigner:'Responsável Logística',authorizationSigner:'Responsável Autorização'}),'' );
   const month=app.run('today()').slice(0,7),date=app.run('today()');app.run(`currentMonth='${month}';currentHalf=1;`);
   assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''}),'');
   app.get('#closing-farm').value='farm1';await app.action('confirm-close');app.run("location.hash='#requests';render()");
   assert.equal(await app.submit('funding-create-form',{selection:month+'-1|farm1',description:'Transporte da quinzena'}),'');
   const transfer=app.state().state.fundingTransfers[0],closing=app.state().state.closings[0];assert.equal(transfer.amount,closing.rows.filter(row=>row.farmId==='farm1').reduce((sum,row)=>sum+row.net,0));assert.match(app.get('#main').innerHTML,/Solicitar recibo/);
   await app.action('cloud-logout');app.account('carrier');await app.submit('access-form',{email:'carrier@example.test',password:'sixchars'});
-  assert.match(app.get('#main').innerHTML,/Gerar recibo padrão/);await app.action('funding-template',transfer.id);const template=app.get('#report-content').innerHTML;assert.match(template,/Recibo de prestação de serviços de transporte/);assert.match(template,/ABC1D23/);assert.match(template,/Empresa de teste/);assert.match(template,/Salvar PDF/);await app.action('close-report');
+  assert.match(app.get('#main').innerHTML,/Gerar recibo padrão/);await app.action('funding-template',transfer.id);const template=app.get('#report-content').innerHTML;assert.match(template,/RECIBO PRESTAÇÃO DE SERVIÇO/);assert.match(template,/ABC1D23/);assert.match(template,/Grupo de Teste/);assert.match(template,/Transportadora Teste Ltda\./);assert.match(template,/12\.345\.678\/0001-99/);assert.match(template,/Banco de Teste/);assert.match(template,/Responsável Logística/);assert.match(template,/Responsável Autorização/);assert.equal((template.match(/class="funding-receipt-signature"/g)||[]).length,3);assert.match(template,/Salvar PDF/);await app.action('close-report');
   const file=new File(['%PDF-1.4\nFixture'],'recibo-assinado.pdf',{type:'application/pdf'});
   assert.equal(await app.submit('funding-upload-form',{receipt:file},{id:transfer.id}),'');
   assert.equal(app.state().state.fundingTransfers[0].status,'receipt_submitted');

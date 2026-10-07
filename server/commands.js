@@ -2,7 +2,7 @@ import {initialState,validateState,validateTruck,validateDiscount,saveClosing,re
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
-const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove']);
+const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove','receipt.settings.save']);
 const allowedRoles=new Set(['admin','operator']);
 const text=(value,max=100)=>{if(typeof value!=='string'||value.trim().length>max)throw Error('Confira os campos de texto.');return value.trim();};
 function requireRecord(list,id,label,key='id'){const record=list.find(item=>item[key]===id);if(!record)throw Error(label+' não encontrado.');return record;}
@@ -39,6 +39,12 @@ export function executeCommand(input,command,actor,context={}){
     }
     case 'period.close':saveClosing(state,period(p.month,p.half),p.farmId||'');break;
     case 'period.reopen':reopenClosing(state,period(p.month,p.half),p.farmId||'',p.closingId||'');break;
+    case 'receipt.settings.save':{
+      const fields={groupName:120,carrierLegalName:160,carrierDocument:24,carrierAddress:240,bankName:100,bankAgency:40,bankAccount:60,recipientName:160,recipientDocument:24,recipientRegistration:40,recipientAddress:240,cityState:100,logisticsSigner:120,authorizationSigner:120};
+      const source=p.profile;if(!source||typeof source!=='object'||Array.isArray(source))throw Error('Confira os dados do recibo padrão.');
+      const profile={};for(const [key,max] of Object.entries(fields)){const value=source[key]??'';if(typeof value!=='string'||value.trim().length>max)throw Error('Confira o campo '+key+' do recibo.');profile[key]=value.trim();}
+      state.settings.receiptProfile=profile;break;
+    }
     case 'payment.request':requestPayments(state,p,actor);break;
     case 'payment.cancel':cancelRequest(state,p.requestId,text(p.note||'',300),actor);break;
     case 'payment.record':recordRequestedPayment(state,p,actor,context.receipt);break;
