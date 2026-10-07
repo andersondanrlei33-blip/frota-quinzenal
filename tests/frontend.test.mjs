@@ -8,9 +8,9 @@ import {createFleetApi} from '../server/api.js';
 
 const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
 const code=[raw('engine.js'),raw('reports.js'),raw('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key'};",raw('cloud-ui.js'),raw('app.js')].join('\n');
-function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
+function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,required:false,hidden:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},setCustomValidity(value){this.validationMessage=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
 async function boot(role='admin',activation=false){
-  const nodes=new Map(),handlers=new Map(),get=selector=>{if(!nodes.has(selector))nodes.set(selector,domNode());return nodes.get(selector);};
+  const nodes=new Map(),handlers=new Map(),get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
   const document={body:domNode(),visibilityState:'visible',querySelector:get,querySelectorAll:()=>[],addEventListener(type,fn){if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};get('#modal').querySelector=get;
   let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
   const repository={async load(){return structuredClone(stored);},async version(){return stored.revision;},async commit(company,revision,state){if(revision!==stored.revision)return null;stored={...stored,state:structuredClone(state),revision:revision+1};return structuredClone(stored);}};
@@ -36,6 +36,16 @@ test('the online interface requires login, saves truck and payment commands on t
   await app.action('cloud-refresh');assert.equal(app.run('state.closings[0].rows[0].paid.date'),today);
   await app.action('cloud-logout');assert.match(app.get('#main').innerHTML,/Entrar no sistema/);assert.equal(app.run('state.trucks.length'),0);
   assert.ok(app.calls.filter(call=>call.url.includes('/api/commands')).every(call=>call.options.cache==='no-store'));
+});
+test('selecting a monetary discount requires an explanation and the submitted amount reaches the closing',async()=>{
+ const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});const date=app.run('today()'),month=date.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
+ await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''});const truckId=app.state().state.trucks[0].id;
+ const form=app.get('#discount-form');form.id='discount-form';form.elements=Object.fromEntries(['kind','reason','start','end','date','amount','note'].map(name=>[name,domNode()]));form.elements.kind.value='amount';form.elements.reason.value='Falta';
+ app.run("updateDiscountKind(document.querySelector('#discount-form'))");assert.equal(form.elements.note.required,true);assert.equal(form.elements.date.required,true);assert.equal(form.elements.start.disabled,true);assert.equal(form.querySelector('#discount-day-fields').hidden,true);
+ const values={kind:'amount',truckId,date:month+'-07',amount:'500,25',note:''};assert.match(await app.submit('discount-form',values),/obrigatoriamente/);assert.equal(app.state().state.discounts.length,0);
+ assert.equal(await app.submit('discount-form',{...values,note:'Adiantamento combinado'}),'');assert.equal(app.state().state.discounts[0].amount,500.25);
+ app.get('#closing-farm').value='farm1';await app.action('confirm-close');const row=app.state().state.closings[0].rows[0];assert.equal(row.net,14499.75);assert.equal(row.payableDays,15);assert.equal(row.discountDays,0);
+ form.elements.kind.value='days';form.elements.start.value=month+'-07';form.elements.end.value=month+'-08';app.run("updateDiscountKind(document.querySelector('#discount-form'))");assert.equal(form.elements.amount.disabled,true);assert.equal(form.elements.note.required,false);
 });
 test('a failed online write never changes the authoritative record or displays a saved confirmation',async()=>{
   const app=await boot('viewer');await app.submit('access-form',{email:'viewer@example.test',password:'a-long-test-password'});

@@ -73,29 +73,33 @@ export function eligibleRange(truck,p,settings) {
   end = end < p.end ? end : p.end;
   return {start,end,count:days(start,end)};
 }
-export function calculate(truck,p,settings,discounts,farms=[]) {
+export const isAmountDiscount=d=>d?.kind==='amount';
+export const amountDiscountTotal=row=>round((row.events||[]).filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0));
+export function calculate(truck,p,settings,discounts,farms=[],allowOverLimit=false) {
   const r=eligibleRange(truck,p,settings);
   const dates=new Set(dateList(r.start,r.end));
   const events=discounts.filter(d=>d.truckId===truck.id && d.start<=r.end && d.end>=r.start);
   const deducted=new Set();
-  for (const e of events) for (const d of dateList(e.start,e.end)) if (dates.has(d)) deducted.add(d);
+  for (const e of events.filter(e=>!isAmountDiscount(e))) for (const d of dateList(e.start,e.end)) if (dates.has(d)) deducted.add(d);
   const periodDays=days(p.start,p.end);
   const mode=settings.fixedMonthlyVersion?'half':settings.mode;
   const rate=settings.fixedMonthlyVersion?fixedPeriodAmount(truck.monthly,p)/periodDays:truck.monthly/(mode==='half'?2*periodDays:mode==='calendar'?p.monthDays:30);
   const payableDays=Math.max(0,r.count-deducted.size);
-  const gross=round(rate*r.count), net=round(rate*payableDays), discount=round(gross-net);
-  return {truckId:truck.id,plate:truck.plate,driver:truck.driver,carrier:truck.carrier,bodyType:truck.bodyType||'',axles:truck.axles??null,farmId:truck.farmId,farmName:farms.find(f=>f.id===truck.farmId)?.name || 'Fazenda não encontrada',monthly:truck.monthly,contractStart:truck.start,contractEnd:truck.end || '',start:r.count?r.start:'',end:r.count?r.end:'',eligibleDays:r.count,discountDays:deducted.size,payableDays,rate,gross,discount,net,events:events.map(e=>({...e,count:dateList(e.start,e.end).filter(d=>dates.has(d)).length})).filter(e=>e.count),paid:null};
+  const amount=round(events.filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0)),gross=round(rate*r.count),beforeAmount=round(rate*payableDays);
+  if(amount>beforeAmount&&!allowOverLimit)throw Error('Os descontos por valor excedem o saldo desta placa na quinzena. Confira o valor e os descontos por dias.');
+  const net=round(Math.max(0,beforeAmount-amount)),discount=round(gross-net);
+  return {truckId:truck.id,plate:truck.plate,driver:truck.driver,carrier:truck.carrier,bodyType:truck.bodyType||'',axles:truck.axles??null,farmId:truck.farmId,farmName:farms.find(f=>f.id===truck.farmId)?.name || 'Fazenda não encontrada',monthly:truck.monthly,contractStart:truck.start,contractEnd:truck.end || '',start:r.count?r.start:'',end:r.count?r.end:'',eligibleDays:r.count,discountDays:deducted.size,payableDays,rate,gross,discount,net,events:events.map(e=>({...e,count:isAmountDiscount(e)?0:dateList(e.start,e.end).filter(d=>dates.has(d)).length})).filter(e=>isAmountDiscount(e)||e.count),paid:null};
 }
 export function draft(state,p) {
-  const rows=state.trucks.map(t=>calculate(t,p,state.settings,state.discounts,state.farms)).filter(r=>r.eligibleDays>0);
   const booked=new Map(periodClosings(state,p).flatMap(c=>c.rows.map(r=>[r.truckId,r]))),groups=new Map();
+  const rows=state.trucks.map(t=>calculate(t,p,state.settings,state.discounts,state.farms,booked.has(t.id))).filter(r=>r.eligibleDays>0);
   for(const row of rows){if(!groups.has(row.plate))groups.set(row.plate,[]);groups.get(row.plate).push(row);}
   for(const group of groups.values()){
     if(group.length<2)continue;
     const pending=group.filter(r=>!booked.has(r.truckId)).sort((a,b)=>a.start.localeCompare(b.start));
     if(!pending.length)continue;
     const gross=Math.round(round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.eligibleDays;},0))*100);
-    const net=Math.round(round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.payableDays;},0))*100);
+    const net=Math.round(round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.payableDays;},0))*100)-group.reduce((n,r)=>n+Math.round(amountDiscountTotal(booked.get(r.truckId)||r)*100),0);
     const currentNet=group.reduce((n,r)=>n+Math.round((booked.get(r.truckId)||r).net*100),0);
     const currentDiscount=group.reduce((n,r)=>n+Math.round((booked.get(r.truckId)||r).discount*100),0);
     const adjust=(key,delta,candidates)=>{
@@ -107,7 +111,7 @@ export function draft(state,p) {
       if(delta)throw Error('Não foi possível conciliar o arredondamento desta placa.');
     };
     adjust('net',net-currentNet,pending.filter(r=>r.payableDays>0));
-    adjust('discount',gross-net-currentDiscount,pending.filter(r=>r.discountDays>0));
+    adjust('discount',gross-net-currentDiscount,pending.filter(r=>r.discountDays>0||amountDiscountTotal(r)>0));
     pending.forEach(r=>r.gross=round(r.net+r.discount));
   }
   return rows.sort((a,b)=>a.farmName.localeCompare(b.farmName,'pt-BR') || a.plate.localeCompare(b.plate));
@@ -278,17 +282,32 @@ export function endActivities(state,id,date,note='',closingId=uid(),closedDate=t
   state.trucks=next.trucks;state.discounts=next.discounts;state.closings=next.closings;
   return c;
 }
-export function validateDiscount(d,state) {
+export function validateDiscount(d,state,checkBudget=true) {
   const t=state.trucks.find(t=>t.id===d.truckId);
   if (!t) throw Error('Selecione um caminhão cadastrado.');
   if (!validDate(d.start) || !validDate(d.end)) throw Error('Confira as datas do desconto.');
   if(d.end<d.start)throw Error('A data final não pode ser anterior à inicial.');
   if (days(d.start,d.end)>366) throw Error('Lance descontos com duração de até 366 dias.');
   if (d.start<t.start || (t.end && d.end>t.end)) throw Error('O desconto deve estar dentro do período contratado.');
-  if (!['Falta','Oficina','Outro'].includes(d.reason) || (d.reason==='Outro' && !d.note.trim())) throw Error('Informe o motivo do desconto.');
-  if (state.discounts.some(x=>x.id!==d.id && x.truckId===d.truckId && overlaps(x.start,x.end,d.start,d.end))) throw Error('Esta placa já tem desconto em uma dessas datas. Cada dia pode ser descontado apenas uma vez.');
+  if(d.kind!==undefined&&!['days','amount'].includes(d.kind))throw Error('Selecione um tipo de desconto válido.');
+  if(typeof d.note!=='string')throw Error('Informe o motivo do desconto.');
+  if(isAmountDiscount(d)){
+    if(d.start!==d.end)throw Error('Informe uma única data para o desconto por valor.');
+    if(!Number.isFinite(d.amount)||d.amount<=0||d.amount>10000000||round(d.amount)!==d.amount)throw Error('Informe um valor de desconto maior que zero, com até duas casas decimais.');
+    if(d.reason!=='Valor'||!d.note.trim())throw Error('Informe obrigatoriamente o motivo do desconto por valor.');
+    const p=period(d.start.slice(0,7),Number(d.start.slice(8))<=15?1:2),range=eligibleRange(t,p,state.settings);if(d.start<range.start||d.start>range.end)throw Error('A data do desconto por valor deve ser um dia considerado no pagamento.');
+  }else{
+    if(d.amount!==undefined)throw Error('Escolha desconto por valor para informar um valor em reais.');
+    if(!['Falta','Oficina','Outro'].includes(d.reason)||(d.reason==='Outro'&&!d.note.trim()))throw Error('Informe o motivo do desconto.');
+    if(state.discounts.some(x=>x.id!==d.id&&x.truckId===d.truckId&&!isAmountDiscount(x)&&overlaps(x.start,x.end,d.start,d.end)))throw Error('Esta placa já tem desconto em uma dessas datas. Cada dia pode ser descontado apenas uma vez.');
+  }
   const prior=state.discounts.find(x=>x.id===d.id);
   if (discountLocked(d,state)||(prior&&discountLocked(prior,state))) throw Error('Há uma quinzena fechada desta fazenda nessas datas. Reabra o fechamento antes de alterar o desconto.');
+  if(checkBudget){
+    const proposed=[...state.discounts.filter(event=>event.id!==d.id),d],affected=new Map();
+    for(const event of proposed.filter(event=>event.truckId===t.id&&isAmountDiscount(event))){const p=period(event.start.slice(0,7),Number(event.start.slice(8))<=15?1:2);if(!discountLocked(event,state))affected.set(p.key,p);}
+    for(const p of affected.values())calculate(t,p,state.settings,proposed,state.farms);
+  }
 }
 export function csv(rows) {
   const cell=x=>{let s=String(x??'');if(/^[=+@-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
@@ -307,7 +326,7 @@ export function applyFixedMonthlyRule(state) {
       const used=r.calculationSettings||c.settings;
       if(r.paid||(used.mode==='half'&&used.fixedMonthlyVersion===1))continue;
       const rate=fixedPeriodAmount(r.monthly,c.period)/days(c.period.start,c.period.end);
-      r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(rate*r.payableDays);r.discount=round(r.gross-r.net);
+      r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(rate*r.payableDays-amountDiscountTotal(r));if(r.net<0)throw Error('Os descontos por valor excedem o saldo do fechamento.');r.discount=round(r.gross-r.net);
       r.calculationSettings={...used,mode:'half',fixedMonthlyVersion:1};delete r.roundingAdjusted;changed.add(c.id);
     }
   }
@@ -316,7 +335,7 @@ export function applyFixedMonthlyRule(state) {
   for(const items of groups.values()){
     if(!items.some(x=>changed.has(x.closing.id)))continue;
     const pending=items.filter(x=>!x.row.paid).sort((a,b)=>a.row.start.localeCompare(b.row.start));if(!pending.length)continue;
-    const gross=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0))*100),net=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.payableDays,0))*100);
+    const gross=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0))*100),net=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.payableDays,0))*100)-items.reduce((n,x)=>n+Math.round(amountDiscountTotal(x.row)*100),0);
     const currentNet=items.reduce((n,x)=>n+Math.round(x.row.net*100),0),currentDiscount=items.reduce((n,x)=>n+Math.round(x.row.discount*100),0);
     const adjust=(field,delta,candidates)=>{
       for(const x of [...candidates].reverse()){
@@ -325,7 +344,7 @@ export function applyFixedMonthlyRule(state) {
       }
       if(delta)throw Error('Confira os pagamentos antigos antes de ajustar a regra mensal desta placa.');
     };
-    adjust('net',net-currentNet,pending.filter(x=>x.row.payableDays>0));adjust('discount',gross-net-currentDiscount,pending.filter(x=>x.row.discountDays>0));
+    adjust('net',net-currentNet,pending.filter(x=>x.row.payableDays>0));adjust('discount',gross-net-currentDiscount,pending.filter(x=>x.row.discountDays>0||amountDiscountTotal(x.row)>0));
     pending.forEach(x=>x.row.gross=round(x.row.net+x.row.discount));
   }
   for(const c of state.closings){
@@ -352,12 +371,14 @@ export function validateState(input) {
   for(const list of [s.farms,s.trucks,s.discounts,s.closings]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
   for(const t of s.trucks) { if(typeof t.driver!=='string'||typeof t.carrier!=='string'||typeof t.plate!=='string')throw Error('Cadastro inválido no backup.'); validateTruck(t,s); }
-  for(const d of s.discounts) { if(typeof d.note!=='string') throw Error('Desconto inválido no backup.'); validateDiscount(d,{...s,closings:[]}); }
+  for(const d of s.discounts) { if(typeof d.note!=='string') throw Error('Desconto inválido no backup.'); validateDiscount(d,{...s,closings:[]},false); }
+  const amountPeriods=new Set();for(const d of s.discounts.filter(isAmountDiscount)){const p=period(d.start.slice(0,7),Number(d.start.slice(8))<=15?1:2),key=d.truckId+'|'+p.key;if(!discountLocked(d,s)&&!amountPeriods.has(key)){calculate(s.trucks.find(t=>t.id===d.truckId),p,s.settings,s.discounts,s.farms);amountPeriods.add(key);}}
   for(const c of s.closings) {
     const expected=period(c.period?.month,c.period?.half);
     if(!Array.isArray(c.rows) || !Array.isArray(c.farmIds)||!c.farmIds.length||new Set(c.farmIds).size!==c.farmIds.length||c.farmIds.some(id=>!s.farms.some(f=>f.id===id)) || !c.settings || !MODES[c.settings.mode] || c.period?.key!==expected.key || c.period.start!==expected.start || c.period.end!==expected.end || !validDate(c.closedDate))throw Error('Fechamento inválido no backup.');
     if(new Set(c.rows.map(r=>r.truckId)).size!==c.rows.length)throw Error('Fechamento com caminhões duplicados.');
     for(const r of c.rows) if(!c.farmIds.includes(r.farmId)||!s.trucks.some(t=>t.id===r.truckId) || typeof r.plate!=='string' || typeof r.carrier!=='string' || typeof r.farmName!=='string' || !Number.isFinite(r.net)||r.net<0 || !Number.isFinite(r.gross)||!Number.isFinite(r.discount) || !Number.isFinite(r.rate)||!Number.isInteger(r.payableDays)||!Array.isArray(r.events) || (r.paid && !validDate(r.paid.date))) throw Error('Valores inválidos em um fechamento.');
+    for(const r of c.rows)for(const event of r.events.filter(isAmountDiscount))if(!Number.isFinite(event.amount)||event.amount<=0||round(event.amount)!==event.amount||event.reason!=='Valor'||typeof event.note!=='string'||!event.note.trim()||!validDate(event.start)||event.start!==event.end||event.start<r.start||event.end>r.end||event.count!==0)throw Error('Desconto por valor inválido no histórico do fechamento.');
   }
   const vehicles=s.closings.flatMap(c=>c.rows.map(r=>c.period.key+'|'+r.truckId));
   if(new Set(vehicles).size!==vehicles.length)throw Error('O backup contém placas duplicadas em fechamentos da mesma quinzena.');

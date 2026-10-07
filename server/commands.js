@@ -17,7 +17,7 @@ export function executeCommand(input,command,actor){
       validateTruck(truck,state,true);const index=state.trucks.findIndex(item=>item.id===id);if(index<0)state.trucks.push(truck);else state.trucks[index]=truck;break;
     }
     case 'discount.save':{
-      const discount={id:p.id||uid(),truckId:text(p.truckId),start:p.start,end:p.end,reason:p.reason,note:text(p.note||'',300)};
+      const discount={id:p.id||uid(),truckId:text(p.truckId),start:p.start,end:p.end,reason:p.reason,note:text(p.note||'',300),...(p.kind===undefined?{}:{kind:p.kind}),...(p.amount===undefined?{}:{amount:p.amount})};
       validateDiscount(discount,state);const index=state.discounts.findIndex(item=>item.id===discount.id);if(index<0)state.discounts.push(discount);else state.discounts[index]=discount;break;
     }
     case 'discount.remove':{

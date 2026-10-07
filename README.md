@@ -22,6 +22,8 @@ As quinzenas são fixas: dias 1–15 e 16–último dia do mês. Uma quinzena co
 
 Entrada, encerramento, falta e oficina são proporcionais aos dias efetivos de cada quinzena. Dias de entrada e de encerramento são incluídos. Transferências com data dividem os valores por fazenda. Os cálculos e validações são feitos no servidor.
 
+Em **Lançar desconto**, escolha **Desconto por dias** ou **Desconto por valor (R$)**. Para valor, informe uma data, o valor em reais e o motivo obrigatório. O desconto entra uma única vez na quinzena dessa data, somado aos descontos por dias, sem reduzir os dias trabalhados. O total não pode exceder o saldo da placa na quinzena. Valor e motivo ficam preservados no fechamento e no relatório.
+
 O fechamento preserva os valores e descontos considerados. Registrar pagamento altera o controle; não realiza transferência bancária. Caminhões cadastrados depois podem receber fechamento complementar. Relatórios permitem selecionar mês, quinzena, fazenda, placa e somente pagos, com paginação por fazenda para 40 caminhões.
 
 Quando duas pessoas editam ao mesmo tempo, o servidor rejeita a gravação desatualizada e solicita atualizar os dados. Nenhuma falha de conexão é tratada como salvamento concluído. A interface consulta atualizações a cada minuto; o botão **Atualizar dados** também recarrega o banco.
