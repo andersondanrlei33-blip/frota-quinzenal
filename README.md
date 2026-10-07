@@ -38,6 +38,8 @@ Os comprovantes ficam em armazenamento privado do Supabase, com validação de t
 
 O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão de acesso fica no armazenamento temporário da aba e é revalidada no servidor ao recarregar a página. O botão **Sair** apaga essa sessão; caminhões, descontos e pagamentos continuam somente no servidor.
 
+Quem já estava conectado antes desta atualização precisa entrar novamente uma vez para iniciar a sessão temporária da aba.
+
 ## Cálculo e operação
 
 As quinzenas são fixas: dias 1–15 e 16–último dia do mês. Uma quinzena completa paga metade do valor mensal; a segunda recebe o centavo de ajuste, quando necessário. O mês completo soma exatamente o valor mensal combinado, mesmo em fevereiro ou em meses de 31 dias.
