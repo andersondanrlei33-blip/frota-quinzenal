@@ -54,7 +54,7 @@ test('group requests a transfer receipt, carrier uploads it, and group records t
   assert.equal(await app.submit('funding-create-form',{selection:month+'-1|farm1',description:'Transporte da quinzena'}),'');
   const transfer=app.state().state.fundingTransfers[0],closing=app.state().state.closings[0];assert.equal(transfer.amount,closing.rows.filter(row=>row.farmId==='farm1').reduce((sum,row)=>sum+row.net,0));assert.match(app.get('#main').innerHTML,/Solicitar recibo/);
   await app.action('cloud-logout');app.account('carrier');await app.submit('access-form',{email:'carrier@example.test',password:'sixchars'});
-  assert.match(app.get('#main').innerHTML,/Anexar recibo/);
+  assert.match(app.get('#main').innerHTML,/Gerar recibo padrão/);await app.action('funding-template',transfer.id);const template=app.get('#report-content').innerHTML;assert.match(template,/Recibo de prestação de serviços de transporte/);assert.match(template,/ABC1D23/);assert.match(template,/Empresa de teste/);assert.match(template,/Salvar PDF/);await app.action('close-report');
   const file=new File(['%PDF-1.4\nFixture'],'recibo-assinado.pdf',{type:'application/pdf'});
   assert.equal(await app.submit('funding-upload-form',{receipt:file},{id:transfer.id}),'');
   assert.equal(app.state().state.fundingTransfers[0].status,'receipt_submitted');

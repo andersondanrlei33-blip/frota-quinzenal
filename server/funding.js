@@ -12,13 +12,15 @@ export function createFunding(state,payload,actor){
  requireGroup(actor);
  const p=period(payload.month,payload.half),farm=state.farms.find(item=>item.id===payload.farmId);
  if(!farm)throw Error('Selecione uma fazenda válida.');
- const closings=periodClosings(state,p),rows=closings.flatMap(closing=>closing.rows).filter(row=>row.farmId===farm.id&&!row.paid);
+ const closings=periodClosings(state,p),rows=closings.flatMap(closing=>closing.rows).filter(row=>row.farmId===farm.id&&!row.paid&&row.net>0);
  if(!rows.length)throw Error('Não há placas pendentes de pagamento nesta quinzena para solicitar o recibo.');
  if(state.fundingTransfers.some(item=>item.period?.key===p.key&&item.farmId===farm.id&&item.status!=='cancelled'))throw Error('Já existe um recibo solicitado para esta fazenda e quinzena.');
  const amount=round(rows.reduce((total,row)=>total+Math.round(row.net*100),0)/100),description=String(payload.description||'').trim();
  if(!Number.isFinite(amount)||amount<=0)throw Error('O total líquido fechado desta quinzena precisa ser maior que zero.');
  if(!description||description.length>200)throw Error('Descreva o serviço em até 200 caracteres.');
- state.fundingTransfers.push({id:uid(),period:p,farmId:farm.id,farmName:farm.name,amount,description,status:'awaiting_receipt',requestedAt:new Date().toISOString(),requestedBy:actor.userId,requestedEmail:actor.email||'',receipt:null,transfer:null});
+ const carrierNames=[...new Set(rows.map(row=>String(row.carrier||'').trim()).filter(Boolean))];
+ const snapshotRows=rows.map(row=>({truckId:row.truckId,plate:row.plate,driver:row.driver,carrier:row.carrier||'',net:row.net}));
+ state.fundingTransfers.push({id:uid(),period:p,farmId:farm.id,farmName:farm.name,carrierName:carrierNames.length===1?carrierNames[0]:carrierNames.join(' / '),rows:snapshotRows,amount,description,status:'awaiting_receipt',requestedAt:new Date().toISOString(),requestedBy:actor.userId,requestedEmail:actor.email||'',receipt:null,transfer:null});
 }
 export function attachFundingReceipt(state,payload,actor,document){
  requireCarrier(actor);

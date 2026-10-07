@@ -20,7 +20,7 @@ const proof=t=>({id:'d219975c-15e8-4d98-8ff2-a9b489b0f043',transferId:t.id,compa
 
 test('the receipt amount is the farm fortnight net total and stays separate from driver payments',()=>{
  const state=create(closed());const t=state.fundingTransfers[0];
- assert.equal(t.status,'awaiting_receipt');assert.equal(t.amount,state.closings[0].rows.filter(row=>row.farmId==='farm1').reduce((n,row)=>n+row.net,0));assert.equal(state.closings[0].rows[0].paid,null);
+ assert.equal(t.status,'awaiting_receipt');assert.equal(t.amount,state.closings[0].rows.filter(row=>row.farmId==='farm1').reduce((n,row)=>n+row.net,0));assert.deepEqual(t.rows.map(row=>({plate:row.plate,driver:row.driver,net:row.net})),state.closings[0].rows.filter(row=>row.farmId==='farm1'&&!row.paid).map(row=>({plate:row.plate,driver:row.driver,net:row.net})));assert.equal(state.closings[0].rows[0].paid,null);
  assert.throws(()=>executeCommand(state,command('funding.record',{id:t.id,date:today()}),group),/recibo assinado/);
  assert.throws(()=>executeCommand(state,command('funding.receipt',{id:t.id}),group,{fundingReceipt:proof(t)}),/transportadora/);
  for(const wrong of [null,{...proof(t),companyId:'other'},{...proof(t),transferId:'other'},{...proof(t),uploadedBy:'other'}])assert.throws(()=>executeCommand(state,command('funding.receipt',{id:t.id}),carrier,{fundingReceipt:wrong}),/recibo assinado válido/);
