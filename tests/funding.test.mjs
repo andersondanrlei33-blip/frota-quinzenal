@@ -18,6 +18,12 @@ function closed(){
 const create=state=>executeCommand(state,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',amount:1,description:'Transporte da quinzena'}),group).state;
 const proof=t=>({id:'d219975c-15e8-4d98-8ff2-a9b489b0f043',transferId:t.id,companyId:group.companyId,uploadedBy:carrier.userId,name:'recibo-assinado.pdf',mime:'application/pdf',size:400});
 
+test('carrier gets configured receipt details for an older outstanding request without a saved profile snapshot',()=>{
+ const state=create(closed()),transfer=state.fundingTransfers[0];delete transfer.receiptProfile;state.settings.receiptProfile={carrierLegalName:'Transportadora Teste',carrierDocument:'12345678000199',bankName:'Banco Teste'};
+ const carrierView=presentState({state,revision:4,company:{id:group.companyId}},carrier);
+ assert.equal(carrierView.state,null);assert.deepEqual(carrierView.fundingTransfers[0].receiptProfile,state.settings.receiptProfile);
+});
+
 test('the receipt amount is the farm fortnight net total and stays separate from driver payments',()=>{
  const state=create(closed());const t=state.fundingTransfers[0];
  assert.equal(t.status,'awaiting_receipt');assert.equal(t.amount,state.closings[0].rows.filter(row=>row.farmId==='farm1').reduce((n,row)=>n+row.net,0));assert.deepEqual(t.rows.map(row=>({plate:row.plate,driver:row.driver,net:row.net})),state.closings[0].rows.filter(row=>row.farmId==='farm1'&&!row.paid).map(row=>({plate:row.plate,driver:row.driver,net:row.net})));assert.equal(state.closings[0].rows[0].paid,null);

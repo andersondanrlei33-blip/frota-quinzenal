@@ -59,6 +59,6 @@ export function protectPortalBackup(current,restored){
 }
 export function presentState(current,actor){
  const user={id:actor.userId,email:actor.email||'',role:actor.role,party:partyOf(actor)};
- if(partyOf(actor)==='carrier')return {revision:current.revision,company:current.company,user,state:null,requests:structuredClone(current.state.paymentRequests||[]),fundingTransfers:structuredClone(current.state.fundingTransfers||[])};
+ if(partyOf(actor)==='carrier')return {revision:current.revision,company:current.company,user,state:null,requests:structuredClone(current.state.paymentRequests||[]),fundingTransfers:structuredClone(current.state.fundingTransfers||[]).map(transfer=>transfer.status==='awaiting_receipt'&&!Object.keys(transfer.receiptProfile||{}).length?{...transfer,receiptProfile:structuredClone(current.state.settings?.receiptProfile||{})}:transfer)};
  return {...current,user};
 }
