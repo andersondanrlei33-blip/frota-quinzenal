@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=29';
-import {createReport,reportMarkup} from './reports.js?v=29';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=29';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=30';
+import {createReport,reportMarkup} from './reports.js?v=30';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=30';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -16,6 +16,24 @@ function formatPaymentDocument(value){
   if(digits.length===11)return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4');
   if(digits.length===14)return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5');
   return String(value||'');
+}
+function formatPaymentDocumentInput(value){
+  const digits=String(value||'').replace(/\D/g,'').slice(0,14);
+  if(digits.length<=11)return digits.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/,'$1.$2.$3-$4');
+  return digits.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/,'$1.$2.$3').replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/,'$1.$2.$3/$4').replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/,'$1.$2.$3/$4-$5');
+}
+function documentCaret(value,digitCount){
+  let position=0,seen=0;
+  while(position<value.length&&seen<digitCount){if(/\d/.test(value[position]))seen++;position++;}
+  return position;
+}
+function maskPaymentDocumentInput(input){
+  const digitCount=String(input.value).slice(0,input.selectionStart??input.value.length).replace(/\D/g,'').length;
+  const formatted=formatPaymentDocumentInput(input.value);
+  if(input.value===formatted)return;
+  input.value=formatted;
+  const position=documentCaret(formatted,Math.min(digitCount,14));
+  input.setSelectionRange?.(position,position);
 }
 // Números-código do Banco Central: https://www.bcb.gov.br/content/estabilidadefinanceira/str1/ParticipantesSTR.pdf
 const BANKS=[
@@ -216,7 +234,7 @@ function truckForm(id) {
     <div class="form-note"><strong>Dados para pagamento</strong><br>Você pode cadastrar a placa sem preencher esta parte. Antes de solicitar o pagamento, será preciso completá-la.</div>
     <div class="field"><label for="truck-payment-method">Forma de pagamento</label><select id="truck-payment-method" name="paymentMethod">${opt('','Preencher depois',paymentMethod)}${opt('pix','Pix',paymentMethod)}${opt('bank','Transferência bancária',paymentMethod)}</select></div>
     <div id="truck-payment-fields" ${paymentMethod?'':'hidden'}>
-      <div class="fields-two"><div class="field"><label for="truck-payment-holder">Nome do titular</label><input id="truck-payment-holder" name="paymentHolder" value="${e(payment.holder||'')}" maxlength="100" autocomplete="off"></div><div class="field"><label for="truck-payment-document">CPF ou CNPJ do titular</label><input id="truck-payment-document" name="paymentDocument" value="${e(formatPaymentDocument(payment.document||''))}" maxlength="25" inputmode="numeric" autocomplete="off"></div></div>
+      <div class="fields-two"><div class="field"><label for="truck-payment-holder">Nome do titular</label><input id="truck-payment-holder" name="paymentHolder" value="${e(payment.holder||'')}" maxlength="100" autocomplete="off"></div><div class="field"><label for="truck-payment-document">CPF ou CNPJ do titular</label><input id="truck-payment-document" name="paymentDocument" value="${e(formatPaymentDocumentInput(payment.document||''))}" maxlength="18" inputmode="numeric" autocomplete="off"></div></div>
       <div id="truck-pix-fields" ${paymentMethod==='pix'?'':'hidden'}><div class="field"><label for="truck-payment-pix">Chave Pix</label><input id="truck-payment-pix" name="paymentPixKey" value="${e(payment.pixKey||'')}" maxlength="120" autocomplete="off"></div></div>
       <div id="truck-bank-fields" ${paymentMethod==='bank'?'':'hidden'}><div class="field"><label for="truck-payment-bank">Banco</label><select id="truck-payment-bank" name="paymentBankSelection">${opt('','Selecione o banco',bankSelection)}${BANKS.map(([code,name])=>opt(name,`${code} - ${name}`,bankSelection)).join('')}${opt('other','Outro banco',bankSelection)}</select></div><div class="field" id="truck-other-bank-field" ${bankSelection==='other'?'':'hidden'}><label for="truck-other-bank">Nome do outro banco</label><input id="truck-other-bank" name="paymentOtherBankName" value="${bankSelection==='other'?e(savedBank):''}" maxlength="100" autocomplete="off"></div><div class="fields-two"><div class="field"><label for="truck-payment-agency">Agência</label><input id="truck-payment-agency" name="paymentAgency" value="${e(payment.agency||'')}" maxlength="20" autocomplete="off"></div><div class="field"><label for="truck-payment-account">Conta com dígito</label><input id="truck-payment-account" name="paymentAccount" value="${e(payment.account||'')}" maxlength="30" autocomplete="off"></div></div><div class="field"><label for="truck-payment-account-type">Tipo de conta</label><select id="truck-payment-account-type" name="paymentAccountType">${opt('','Selecione',payment.accountType||'')}${opt('corrente','Conta corrente',payment.accountType||'')}${opt('poupanca','Poupança',payment.accountType||'')}${opt('pagamento','Conta de pagamento',payment.accountType||'')}</select></div></div>
     </div>
@@ -572,13 +590,29 @@ function updateDateRange(form) {
   }
 }
 document.addEventListener('input',ev=>{
+  if(ev.target.id==='truck-payment-document')maskPaymentDocumentInput(ev.target);
   if(['discount-start','discount-end','truck-start','truck-end'].includes(ev.target.id))updateDateRange(ev.target.form);
   if(['truck-monthly','discount-amount'].includes(ev.target.id))ev.target.setCustomValidity('');
   if(ev.target.id==='transfer-date')updateTransferPreview();
   if(ev.target.id==='activity-end-date')updateActivityEndPreview();
 });
+document.addEventListener('keydown',ev=>{
+  const input=ev.target;
+  if(input.id!=='truck-payment-document'||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
+  const position=input.selectionStart,backward=ev.key==='Backspace',separator=input.value[position-(backward?1:0)];
+  if(!separator||/\d/.test(separator))return;
+  ev.preventDefault();
+  const digitCount=input.value.slice(0,position).replace(/\D/g,'').length;
+  const digits=input.value.replace(/\D/g,'');
+  const removedIndex=backward?digitCount-1:digitCount;
+  if(removedIndex<0||removedIndex>=digits.length)return;
+  const formatted=formatPaymentDocumentInput(digits.slice(0,removedIndex)+digits.slice(removedIndex+1));
+  input.value=formatted;
+  const nextPosition=documentCaret(formatted,backward?removedIndex:digitCount);
+  input.setSelectionRange?.(nextPosition,nextPosition);
+});
 document.addEventListener('focusout',ev=>{
-  if(ev.target.id==='truck-payment-document'){ev.target.value=formatPaymentDocument(ev.target.value);return;}
+  if(ev.target.id==='truck-payment-document'){ev.target.value=formatPaymentDocumentInput(ev.target.value);return;}
   if(!['truck-monthly','discount-amount'].includes(ev.target.id))return;
   const n=parseAmount(ev.target.value);
   if(Number.isFinite(n)&&n>0){ev.target.value=amountLabel(n);ev.target.setCustomValidity('');}

@@ -25,7 +25,7 @@ async function boot(role='admin',activation=false,storage=null,party='group'){
   const emit=async(type,event)=>{for(const handler of handlers.get(type)||[])await handler(event);};
   const submit=async(id,data,dataset={})=>{const error=domNode(),button=domNode(),form={id,dataset,data:new Map(Object.entries(data)),querySelector:selector=>selector==='[type="submit"]'?button:error};await emit('submit',{target:form,preventDefault(){}});return error.textContent;};
   const action=async(name,id='',extra={})=>emit('click',{target:{closest:()=>({disabled:false,dataset:{action:name,id,...extra}})}});
-  return {get,submit,action,calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};},poll:async()=>{for(const fn of intervals)await fn();},mutateState:fn=>{const state=structuredClone(stored.state);fn(state);stored={...stored,state,revision:stored.revision+1};}};
+  return {get,submit,action,input:target=>emit('input',{target}),keydown:(target,key)=>emit('keydown',{target,key,preventDefault(){}}),calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};},poll:async()=>{for(const fn of intervals)await fn();},mutateState:fn=>{const state=structuredClone(stored.state);fn(state);stored={...stored,state,revision:stored.revision+1};}};
 }
 test('carrier receives new requests automatically without closing an open payment dialog',async()=>{
   const app=await boot('operator',false,null,'carrier');
@@ -44,6 +44,19 @@ test('payment details display CPF and CNPJ with punctuation',async()=>{
   assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
   assert.equal(app.run("formatPaymentDocument('12345678000199')"),'12.345.678/0001-99');
   assert.match(app.run("paymentDetailsMarkup({method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'})"),/CPF\/CNPJ: <strong>055\.561\.101-90<\/strong>/);
+});
+test('CPF and CNPJ are masked as entered or pasted, with editable separators',async()=>{
+  const app=await boot();
+  const field={id:'truck-payment-document',value:'0555',selectionStart:4,selectionEnd:4,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+  await app.input(field);assert.equal(field.value,'055.5');assert.equal(field.selectionStart,5);
+  field.value='05556110190';field.selectionStart=11;field.selectionEnd=11;
+  await app.input(field);assert.equal(field.value,'055.561.101-90');assert.equal(field.selectionStart,14);
+  field.selectionStart=4;field.selectionEnd=4;
+  await app.keydown(field,'Backspace');assert.equal(field.value,'055.611.019-0');assert.equal(field.selectionStart,2);
+  field.value='12345678000199';field.selectionStart=14;field.selectionEnd=14;
+  await app.input(field);assert.equal(field.value,'12.345.678/0001-99');assert.equal(field.selectionStart,18);
+  field.value='123456780001991234';field.selectionStart=18;field.selectionEnd=18;
+  await app.input(field);assert.equal(field.value,'12.345.678/0001-99');
 });
 test('the carrier portal returns after a page refresh and logout ends that tab session',async()=>{
   const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
