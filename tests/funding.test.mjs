@@ -34,6 +34,24 @@ test('the receipt amount is the farm fortnight net total and stays separate from
  assert.throws(()=>reopenClosing(paid,p,'farm1'),/Transferências já efetuadas/);
 });
 
+test('already paid plates are left out of the receipt amount, and fully paid farms are rejected',()=>{
+ const details=(holder,pixKey)=>({method:'pix',holder,document:'12345678901',pixKey});
+ let state=initialState();state.trucks=[
+  {id:'truck-one',plate:'ABC1D23',driver:'Pago',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details('Pago','pago@example.test')},
+  {id:'truck-two',plate:'DEF4G56',driver:'Pendente',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details('Pendente','pendente@example.test')}
+ ];saveClosing(state,p,'farm1','closing-one','2026-10-06');
+ state=executeCommand(state,command('payment.request',{month:p.month,half:p.half,farmId:'farm1'}),group).state;
+ let request=state.paymentRequests[0];
+ const paymentProof={id:'acfdc2e3-1189-4117-9a77-2fb39015b0c1',requestId:request.id,companyId:group.companyId,uploadedBy:carrier.userId,name:'pagamento.pdf',mime:'application/pdf',size:400};
+ state=executeCommand(state,command('payment.record',{requestId:request.id,date:today()}),carrier,{receipt:paymentProof}).state;
+ const unpaid=state.closings.flatMap(c=>c.rows).filter(row=>row.farmId==='farm1'&&!row.paid);
+ const withOnePaid=create(state);assert.equal(withOnePaid.fundingTransfers[0].amount,unpaid.reduce((sum,row)=>sum+row.net,0));
+ request=state.paymentRequests.find(item=>item.status==='pending');
+ const secondProof={...paymentProof,id:'c343dd21-3504-4e6c-a4ea-61e0a76c1423',requestId:request.id};
+ state=executeCommand(state,command('payment.record',{requestId:request.id,date:today()}),carrier,{receipt:secondProof}).state;
+ assert.throws(()=>create(state),/Não há placas pendentes/);
+});
+
 test('only one active fortnight receipt is allowed, cancellation preserves its signed receipt, and carrier sees no truck register',()=>{
  const first=create(closed());
  assert.throws(()=>create(first),/Já existe um recibo solicitado/);

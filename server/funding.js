@@ -12,8 +12,8 @@ export function createFunding(state,payload,actor){
  requireGroup(actor);
  const p=period(payload.month,payload.half),farm=state.farms.find(item=>item.id===payload.farmId);
  if(!farm)throw Error('Selecione uma fazenda válida.');
- const closings=periodClosings(state,p),rows=closings.flatMap(closing=>closing.rows).filter(row=>row.farmId===farm.id);
- if(!rows.length)throw Error('Feche a quinzena desta fazenda antes de solicitar o recibo.');
+ const closings=periodClosings(state,p),rows=closings.flatMap(closing=>closing.rows).filter(row=>row.farmId===farm.id&&!row.paid);
+ if(!rows.length)throw Error('Não há placas pendentes de pagamento nesta quinzena para solicitar o recibo.');
  if(state.fundingTransfers.some(item=>item.period?.key===p.key&&item.farmId===farm.id&&item.status!=='cancelled'))throw Error('Já existe um recibo solicitado para esta fazenda e quinzena.');
  const amount=round(rows.reduce((total,row)=>total+Math.round(row.net*100),0)/100),description=String(payload.description||'').trim();
  if(!Number.isFinite(amount)||amount<=0)throw Error('O total líquido fechado desta quinzena precisa ser maior que zero.');
