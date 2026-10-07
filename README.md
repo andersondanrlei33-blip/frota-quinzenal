@@ -36,7 +36,7 @@ Se os dados bancários de uma placa mudarem depois do envio, a solicitação já
 
 Os comprovantes ficam em armazenamento privado do Supabase, com validação de tamanho e assinatura do formato no servidor. Para consultar um arquivo, a API confere a empresa e o vínculo com o histórico do pagamento e fornece um link com validade de um minuto. A transportadora não recebe cadastros e prévias do grupo, nem pode acessar diretamente esses registros pela Data API.
 
-O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão fica somente na memória da página: ao recarregar ou fechar, o usuário entra novamente. Caminhões, descontos e pagamentos continuam no servidor.
+O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão de acesso fica no armazenamento temporário da aba e é revalidada no servidor ao recarregar a página. O botão **Sair** apaga essa sessão; caminhões, descontos e pagamentos continuam somente no servidor.
 
 ## Cálculo e operação
 
@@ -71,7 +71,7 @@ npm test
 npm run build
 ```
 
-- `frontend/`: interface e cliente autenticado; não grava registros nem credenciais no armazenamento persistente do navegador.
+- `frontend/`: interface e cliente autenticado; não grava registros no navegador e guarda somente os tokens da sessão no armazenamento temporário da aba.
 - `server/`: comandos e validações financeiras, API, autenticação e funções Supabase.
 - `supabase/migrations/`: estrutura, permissões e transações do banco.
 - `docs/`: arquivos estáticos publicados pelo GitHub Pages, gerados pelo build.

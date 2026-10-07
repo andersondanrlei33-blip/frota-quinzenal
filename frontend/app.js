@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=27';
-import {createReport,reportMarkup} from './reports.js?v=27';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=27';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=28';
+import {createReport,reportMarkup} from './reports.js?v=28';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=28';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -420,6 +420,8 @@ document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-action]');if(!b||b.disabled)return;const a=b.dataset.action,id=b.dataset.id;
   try {
     if(a==='cloud-refresh')await refreshServerData();
+    else if(a==='restore-session')await restoreSession();
+    else if(a==='forget-session'){cloud.forgetSession();render();}
     else if(a==='auth-switch'){inviteSignin=!inviteSignin;renderAccess();}
     else if(a==='cloud-logout'){try{await cloud.logout();}finally{currentUser=null;currentCompany=null;state=initialState();portalRequests=[];modal.close();reportDialog.close();modalContent.innerHTML='';document.querySelector('#report-content').innerHTML='';render();}}
     else if(a==='member-status'){await cloud.updateMember(id,b.dataset.role,b.dataset.active==='true',b.dataset.party||null);await loadTeam();}
@@ -571,9 +573,19 @@ document.addEventListener('focusout',ev=>{
 
 document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;});
 window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
-render();
+async function restoreSession(){
+  if(!cloud.hasSession()){render();return;}
+  document.body.classList.add('logged-out');
+  main.innerHTML='<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>Restaurando acesso</h1><p>Conferindo sua sessão com o servidor…</p></section></div>';
+  try{adoptServerData(await cloud.load());render();}
+  catch(error){
+    if(error.status===400||error.status===401||error.status===403){cloud.forgetSession();render();return;}
+    main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>Não foi possível conectar</h1><p>${e(authErrorMessage(error))}</p><div class="actions" style="margin-top:20px"><button class="btn primary" data-action="restore-session">Tentar novamente</button><button class="btn" data-action="forget-session">Entrar novamente</button></div></section></div>`;
+  }
+}
+if(inviteTicket)render();else restoreSession();
 if(inviteTicket){cloud.inspectInvite(inviteTicket).then(info=>{inviteInfo=info;renderAccess();}).catch(error=>{const message=document.querySelector('#invite-message');if(message)message.textContent=authErrorMessage(error);});}
-setInterval(async()=>{if(!currentUser||saving||document.visibilityState==='hidden')return;try{const next=await cloud.version();if(next.revision!==serverRevision||next.role&&next.role!==currentUser.role||next.party&&next.party!==currentUser.party){if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}else{await refreshServerData();}}}catch(error){if(error.status===401||error.status===403){currentUser=null;state=initialState();modal.close();reportDialog.close();render();}else{stale=true;updateCloudStatus();}}},60000);
+setInterval(async()=>{if(!currentUser||saving||document.visibilityState==='hidden')return;try{const next=await cloud.version();if(next.revision!==serverRevision||next.role&&next.role!==currentUser.role||next.party&&next.party!==currentUser.party){if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}else{await refreshServerData();}}}catch(error){if(error.status===401||error.status===403){cloud.forgetSession();currentUser=null;state=initialState();modal.close();reportDialog.close();render();}else{stale=true;updateCloudStatus();}}},60000);
 
 function requestPaymentsButton(){const list=filteredRows().filter(r=>r.closed&&!r.paid&&!r.requestId&&r.net>0);return `<button class="btn primary" data-action="request-payments" ${!list.length||!canOperate()?'disabled':''}>Solicitar pagamentos</button>`;}
 function portalClosingNotice(list){const count=list.filter(r=>r.requestId&&!r.paid).length;return `<div class="notice neutral"><span>${count?count+' placa(s) já solicitada(s) à transportadora.':'Depois do fechamento, solicite os pagamentos à transportadora. O grupo acompanha os comprovantes pelo portal.'}</span><a href="#requests">Acompanhar solicitações →</a></div>`;}
