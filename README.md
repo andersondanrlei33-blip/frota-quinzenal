@@ -6,16 +6,18 @@ Sistema online para uma empresa controlar caminhões contratados, fazendas, falt
 
 ## Primeiro acesso e equipe
 
+O envio de convites usa o Resend. Para ativá-lo no Supabase, verifique um domínio no Resend e cadastre os segredos RESEND_API_KEY e FLEET_EMAIL_FROM na função fleet-api. O remetente deve usar o domínio verificado, por exemplo Frota <nao-responda@seudominio.com.br>.
+
 O proprietário recebe um link privado de ativação, válido por 72 horas e de uso único. Nesse link define nome da empresa, e-mail e senha com pelo menos 6 caracteres. Não há senha padrão nem cadastro público de empresas.
 
-Em **Configurações → Equipe e acesso**, o administrador gera um link individual para o e-mail de cada funcionário e o entrega diretamente a ele. O funcionário define sua própria senha; quem já tem uma conta pode entrar com a senha existente. O sistema não envia esses links por e-mail.
+Em **Configurações → Equipe e acesso**, o administrador envia um convite para o e-mail do funcionário. A pessoa abre o link recebido, define sua própria senha e conclui o cadastro. Os convites valem por 72 horas. Se o remetente ainda não estiver configurado, a tela informa que o e-mail não foi enviado e deixa o link disponível para compartilhamento manual.
 
 - **Administrador do grupo:** todas as fazendas, equipe, configurações, cadastros, fechamentos e solicitações.
 - **Grupo — operador:** caminhões, descontos, transferências, fechamentos e solicitações de pagamento de todas as fazendas do grupo.
 - **Transportadora — operador:** recebe as solicitações aprovadas e registra os pagamentos com comprovante obrigatório.
 - **Somente consulta:** acompanha as informações disponíveis para seu lado do portal, grupo ou transportadora, sem alterações.
 
-O administrador escolhe o perfil em **Configurações → Equipe e acesso** ao gerar o link. Também pode mudar o perfil de um funcionário existente. O último administrador ativo do grupo permanece protegido contra inativação ou troca de perfil. O grupo tem acesso consolidado às suas quatro fazendas e pode filtrar uma fazenda. Há uma transportadora responsável por todos os pagamentos deste grupo.
+O administrador escolhe o perfil em **Configurações → Equipe e acesso** ao enviar o convite. Também pode mudar o perfil de um funcionário existente. O último administrador ativo do grupo permanece protegido contra inativação ou troca de perfil. O grupo tem acesso consolidado às suas quatro fazendas e pode filtrar uma fazenda. Há uma transportadora responsável por todos os pagamentos deste grupo.
 
 ## Solicitações e comprovantes
 
