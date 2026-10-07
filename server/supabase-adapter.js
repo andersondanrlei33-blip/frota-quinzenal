@@ -32,7 +32,7 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
 export async function sha256(value){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
 export function randomTicket(){return [...crypto.getRandomValues(new Uint8Array(32))].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
 export function emailAddress(value){const email=String(value||'').trim().toLowerCase();if(email.length>254||!/^\S+@\S+\.\S+$/.test(email))throw Error('Informe um e-mail válido.');return email;}
-export function passwordValue(value){if(typeof value!=='string'||value.length<12||new TextEncoder().encode(value).length>72)throw Error('Use uma senha com pelo menos 12 caracteres, sem exceder o limite permitido.');return value;}
+export function passwordValue(value){if(typeof value!=='string'||value.length<6||new TextEncoder().encode(value).length>72)throw Error('Use uma senha com pelo menos 6 caracteres, sem exceder o limite permitido.');return value;}
 export function corsResponse(response,request){
   const origin=request.headers.get('Origin'),allowed=new Set(['https://andersondanrlei33-blip.github.io','https://frota-quinzenal.andersondanrlei33.chatgpt.site']);
   const headers=new Headers(response.headers);if(origin&&allowed.has(origin))headers.set('Access-Control-Allow-Origin',origin);

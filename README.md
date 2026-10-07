@@ -6,7 +6,7 @@ Sistema online para uma empresa controlar caminhões contratados, fazendas, falt
 
 ## Primeiro acesso e equipe
 
-O proprietário recebe um link privado de ativação, válido por 72 horas e de uso único. Nesse link define nome da empresa, e-mail e senha com pelo menos 12 caracteres. Não há senha padrão nem cadastro público de empresas.
+O proprietário recebe um link privado de ativação, válido por 72 horas e de uso único. Nesse link define nome da empresa, e-mail e senha com pelo menos 6 caracteres. Não há senha padrão nem cadastro público de empresas.
 
 Em **Configurações → Equipe e acesso**, o administrador gera um link individual para o e-mail de cada funcionário e o entrega diretamente a ele. O funcionário define sua própria senha; quem já tem uma conta pode entrar com a senha existente. O sistema não envia esses links por e-mail.
 

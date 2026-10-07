@@ -8,5 +8,5 @@ test('the deployed assets use the authoritative engine, include cloud modules an
   for(const name of ['app.js','engine.js','reports.js','styles.css','cloud-client.js','cloud-ui.js','config.js','index.html'])assert.equal(read('docs/'+name),read('frontend/'+name));
   assert.equal(read('frontend/engine.js'),read('server/engine.js'));
   assert.doesNotMatch(read('docs/app.js')+read('docs/cloud-client.js'),/localStorage|sessionStorage|indexedDB/);
-  assert.match(read('docs/index.html'),/app.js\?v=19/);assert.match(read('docs/cloud-ui.js'),/config.js\?v=19/);
+  assert.match(read('docs/index.html'),/app.js\?v=20/);assert.match(read('docs/cloud-ui.js'),/config.js\?v=20/);
 });

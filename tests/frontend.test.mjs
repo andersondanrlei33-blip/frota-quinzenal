@@ -43,8 +43,8 @@ test('a failed online write never changes the authoritative record or displays a
   assert.match(error,/consulta/);assert.equal(app.state().state.trucks.length,0);assert.doesNotMatch(app.get('#toast').textContent,/Cadastro salvo/);
 });
 test('first access collects company credentials and an administrator can generate a staff link',async()=>{
-  const app=await boot('admin',true);assert.match(app.get('#main').innerHTML,/Configurar seu acesso/);assert.match(app.get('#main').innerHTML,/Nome da empresa/);
-  assert.equal(await app.submit('access-form',{companyName:'Minha empresa',email:'user@example.test',password:'a-long-test-password'}),'');
+  const app=await boot('admin',true);assert.match(app.get('#main').innerHTML,/Configurar seu acesso/);assert.match(app.get('#main').innerHTML,/Nome da empresa/);assert.match(app.get('#main').innerHTML,/minlength="6"/);assert.match(app.get('#main').innerHTML,/pelo menos 6 caracteres/);
+  assert.equal(await app.submit('access-form',{companyName:'Minha empresa',email:'user@example.test',password:'aB3!xY'}),'');
   const registration=app.calls.find(call=>call.url.endsWith('/fleet-access')&&JSON.parse(call.options.body).action==='register');assert.ok(registration);assert.equal(JSON.parse(registration.options.body).companyName,'Minha empresa');assert.equal(app.run('inviteTicket'),null);
   app.run("location.hash='#settings';render();");assert.match(app.get('#main').innerHTML,/Equipe e acesso/);
   assert.equal(await app.submit('invite-form',{email:'staff@example.test',role:'viewer'}),'');assert.match(app.get('#invite-result').innerHTML,/staff@example.test/);assert.match(app.get('#invite-result').innerHTML,/#activate=/);
