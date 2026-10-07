@@ -31,11 +31,11 @@ test('the online interface requires login, saves truck and payment commands on t
   const app=await boot();assert.match(app.get('#main').innerHTML,/Entrar no sistema/);
   assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');assert.match(app.get('#main').innerHTML,/Visão geral/);
   const today=app.run('today()'),month=today.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
-  assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''}),'');
+  assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:'',paymentMethod:'pix',paymentHolder:'Motorista',paymentDocument:'12345678901',paymentPixKey:'motorista@example.com'}),'');
   const id=app.state().state.trucks[0].id;assert.equal(app.state().state.trucks.length,1);
   app.get('#closing-farm').value='farm1';await app.action('confirm-close');const closing=app.state().state.closings[0];assert.equal(closing.rows[0].net,15000);
   assert.match(await app.submit('payment-form',{date:today,note:'Teste'},{id}),/transportadora/);
-  assert.equal(await app.submit('request-payments-form',{},{}),'');const requestId=app.state().state.paymentRequests[0].id;
+  assert.equal(await app.submit('request-payments-form',{},{}),'');const requestId=app.state().state.paymentRequests[0].id;assert.equal(app.state().state.paymentRequests[0].snapshot.paymentDetails.pixKey,'motorista@example.com');
   await app.action('cloud-logout');app.account('carrier');await app.submit('access-form',{email:'carrier@example.test',password:'aB3!xY'});assert.match(app.get('#main').innerHTML,/Pagamentos da transportadora/);assert.equal(app.run('state.trucks.length'),0);
   assert.match(await app.submit('payment-form',{date:today,note:'Teste'},{requestId}),/comprovante/);
   const file=new File(['%PDF-1.4\nTechnical fixture'],'receipt.pdf',{type:'application/pdf'});

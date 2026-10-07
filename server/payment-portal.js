@@ -1,4 +1,4 @@
-import {period,periodClosings,applyFixedMonthlyRule,uid,validDate,today} from './engine.js';
+import {period,periodClosings,applyFixedMonthlyRule,uid,validDate,today,paymentDetailsMissing,validatePaymentDetails} from './engine.js';
 const fail=message=>{const error=Error(message);error.status=403;throw error;};
 export const partyOf=actor=>actor?.party||'group';
 export function authorizePortalCommand(command,actor){
@@ -12,7 +12,10 @@ export function requestPayments(state,payload,actor){
  for(const closing of periodClosings(state,p))for(const row of closing.rows){
   if(payload.farmId&&row.farmId!==payload.farmId||payload.truckId&&row.truckId!==payload.truckId||payload.closingId&&closing.id!==payload.closingId)continue;
   if(row.paid||row.net<=0||row.requestId)continue;
+  const truck=state.trucks.find(item=>item.id===row.truckId),missing=paymentDetailsMissing(truck?.paymentDetails);
+  if(missing.length)throw Error('Complete os dados de pagamento da placa '+row.plate+': '+missing.join(', ')+'.');
   const id=uid(),snapshot=structuredClone(row);delete snapshot.requestId;delete snapshot.paidHistory;
+  snapshot.paymentDetails=structuredClone(validatePaymentDetails(truck.paymentDetails,true));
   state.paymentRequests.push({id,batchId,closingId:closing.id,truckId:row.truckId,period:structuredClone(closing.period),snapshot,status:'pending',requestedAt:at,requestedBy:actor.userId,requestedEmail:actor.email||'',payment:null,paymentHistory:[]});row.requestId=id;selected.push(id);
  }
  if(!selected.length)throw Error('Não há placas fechadas e sem solicitação nesta seleção.');return selected;
@@ -29,6 +32,7 @@ export function recordRequestedPayment(state,payload,actor,receipt){
  const {request,row}=locateRequest(state,payload.requestId);
  if(request.status!=='pending'||!row||row.requestId!==request.id||row.paid)throw Error('Esta solicitação não está disponível para pagamento.');
  if(row.net!==request.snapshot.net)throw Error('O valor fechado difere da solicitação. Confira com o grupo.');
+ if(paymentDetailsMissing(request.snapshot.paymentDetails).length)throw Error('Esta solicitação não tem dados de pagamento completos. Peça ao grupo que a cancele e envie novamente.');
  if(!validDate(payload.date)||payload.date>today())throw Error('Informe uma data de pagamento válida, até hoje.');
  if(!receipt||receipt.requestId!==request.id||!receipt.id||receipt.companyId!==actor.companyId||receipt.uploadedBy!==actor.userId)throw Error('Anexe um comprovante válido para esta solicitação antes de registrar o pagamento.');
  const paid={date:payload.date,note:String(payload.note||'').trim().slice(0,300),recordedAt:new Date().toISOString(),recordedBy:actor.userId,recordedEmail:actor.email||'',requestId:request.id,receipt:{id:receipt.id,name:receipt.name,mime:receipt.mime,size:receipt.size}};

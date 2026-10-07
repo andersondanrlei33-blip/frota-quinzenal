@@ -6,7 +6,7 @@ import {createReceiptApi} from '../server/receipts.js';
 const group={userId:'group',companyId:'company-one',role:'admin',party:'group'},carrier={userId:'carrier',companyId:'company-one',role:'operator',party:'carrier'};
 const responseJson=(value,status=200)=>Response.json(value,{status});
 function setup(){
- const s=initialState();s.trucks=[{id:'t',plate:'ABC1D23',driver:'Motorista',carrier:'Contratado',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''}];saveClosing(s,period('2026-10',1),'','closing','2026-10-06');let state=executeCommand(s,{type:'payment.request',payload:{month:'2026-10',half:1}},group).state;
+ const s=initialState();s.trucks=[{id:'t',plate:'ABC1D23',driver:'Motorista',carrier:'Contratado',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista',document:'12345678901',pixKey:'motorista@example.com'}}];saveClosing(s,period('2026-10',1),'','closing','2026-10-06');let state=executeCommand(s,{type:'payment.request',payload:{month:'2026-10',half:1}},group).state;
  let saved;const backend={actor:async request=>request.headers.get('Authorization')==='Bearer carrier'?carrier:request.headers.get('Authorization')==='Bearer other'?{...group,companyId:'other-company'}:request.headers.has('Authorization')?group:null,responseJson,repository:{async load(){return {state};}},receipts:{async upload(actor,requestId,bytes,details){saved={id:'de2d8f2c-452f-4916-aa4a-845b11249608',companyId:actor.companyId,uploadedBy:actor.userId,requestId,...details};return saved;},async find(company,id){return saved?.companyId===company&&saved.id===id?saved:null;},async sign(){return 'https://files.test/signed';}}};
  const api=createReceiptApi({backend});return {api,get:()=>({state,saved}),attach(){state=executeCommand(state,{type:'payment.record',payload:{requestId:state.paymentRequests[0].id,date:'2026-10-06'}},carrier,{receipt:saved}).state;}};
 }
@@ -15,6 +15,12 @@ test('only carrier operators can upload and files without a valid signature are 
  const testApp=setup(),id=testApp.get().state.paymentRequests[0].id;assert.equal((await testApp.api(upload(null,id))).status,401);assert.equal((await testApp.api(upload('group',id))).status,403);
  await assert.rejects(testApp.api(upload('carrier',id,'<html>fake</html>')),/PDF, JPG ou PNG/);assert.equal(testApp.get().saved,undefined);
  const accepted=await testApp.api(upload('carrier',id));assert.equal(accepted.status,200);assert.equal(testApp.get().saved.requestId,id);assert.equal(testApp.get().saved.uploadedBy,'carrier');assert.equal(testApp.get().saved.mime,'application/pdf');
+});
+test('an old request without a payment destination cannot receive a new receipt',async()=>{
+ const testApp=setup(),id=testApp.get().state.paymentRequests[0].id;
+ delete testApp.get().state.paymentRequests[0].snapshot.paymentDetails;
+ await assert.rejects(testApp.api(upload('carrier',id)),/não tem dados de pagamento completos/);
+ assert.equal(testApp.get().saved,undefined);
 });
 test('receipt links require authentication, the same company and an attachment in payment history',async()=>{
  const testApp=setup(),id=testApp.get().state.paymentRequests[0].id;await testApp.api(upload('carrier',id));const receipt=testApp.get().saved;

@@ -21,14 +21,18 @@ O administrador escolhe o perfil em **Configurações → Equipe e acesso** ao e
 
 ## Solicitações e comprovantes
 
+No cadastro da placa, o grupo pode informar **Pix** ou **transferência bancária**, com nome e CPF/CNPJ do titular. Essa parte pode ficar vazia ao cadastrar o caminhão. Antes de solicitar pagamento, cada placa precisa ter os dados da forma escolhida completos; a tela indica o que falta e permite abrir o cadastro para preencher. O servidor também confere os campos antes de criar as solicitações.
+
 1. O grupo confere valores e descontos e fecha a quinzena em **Fechamentos**.
-2. Clica em **Solicitar pagamentos**, para a fazenda selecionada ou todas. Pode solicitar uma placa individual pelos detalhes. Cada placa recebe uma solicitação com seu valor fechado.
-3. O usuário da transportadora entra em **Solicitações**, onde vê somente as solicitações aprovadas, com filtros de quinzena, fazenda, placa/motorista e situação.
+2. Clica em **Solicitar pagamentos**, para a fazenda selecionada ou todas. Pode solicitar uma placa individual pelos detalhes. Cada placa recebe uma solicitação com seu valor fechado e uma cópia dos dados de pagamento conferidos naquele momento.
+3. O usuário da transportadora entra em **Solicitações**, onde vê somente as solicitações aprovadas e os dados necessários para pagar cada placa, com filtros de quinzena, fazenda, placa/motorista e situação.
 4. Após realizar a transferência, registra a data e anexa o comprovante em **PDF, JPG ou PNG, até 10 MB**. Somente o acesso da transportadora pode registrar novos pagamentos. O grupo acompanha o resultado e consulta o comprovante.
 
 Os pagamentos continuam com os estados **Aberto, Fechado e Pago**. A solicitação permanece fechada, aguardando pagamento, até o registro com comprovante. O registro no portal não executa uma transferência bancária.
 
 Solicitações pendentes precisam ser canceladas com motivo antes de reabrir seu fechamento. Confirme com a transportadora antes de cancelar. A solicitação cancelada continua no histórico. Correções de pagamento pela transportadora exigem motivo e preservam os registros e comprovantes anteriores. Pagamentos registrados antes deste portal permanecem no histórico; o administrador pode corrigir um registro anterior com motivo para solicitar novamente pelo fluxo atual.
+
+Se os dados bancários de uma placa mudarem depois do envio, a solicitação já enviada mantém o destino original. O grupo deve cancelar a solicitação pendente e enviá-la novamente com os dados atualizados. Solicitações antigas sem dados de pagamento também exigem esse procedimento antes de registrar o pagamento.
 
 Os comprovantes ficam em armazenamento privado do Supabase, com validação de tamanho e assinatura do formato no servidor. Para consultar um arquivo, a API confere a empresa e o vínculo com o histórico do pagamento e fornece um link com validade de um minuto. A transportadora não recebe cadastros e prévias do grupo, nem pode acessar diretamente esses registros pela Data API.
 
@@ -50,7 +54,7 @@ Quando duas pessoas editam ao mesmo tempo, o servidor rejeita a gravação desat
 
 O banco foi iniciado sem caminhões, descontos ou pagamentos de teste. Há quatro nomes provisórios de fazendas, que podem ser editados; mais fazendas podem ser cadastradas. Fazendas com histórico podem ser inativadas.
 
-Use **Configurações → Baixar backup completo** para guardar cópias dos registros. Restauração substitui os registros da empresa e exige administrador. Esse arquivo cobre os registros da frota; contas e senhas são administradas pelo Supabase Auth.
+Use **Configurações → Baixar backup completo** para guardar cópias dos registros. Restauração substitui os registros da empresa e exige administrador. Esse arquivo cobre os registros da frota, inclusive os dados de pagamento cadastrados; contas e senhas são administradas pelo Supabase Auth.
 
 O arquivo inclui o histórico de solicitações e as referências aos comprovantes, mas não os arquivos binários do armazenamento. A restauração deve preservar solicitações e pagamentos já existentes; novos pagamentos não podem ser criados pela importação. Os comprovantes permanecem no armazenamento privado e podem ser consultados pelo portal.
 

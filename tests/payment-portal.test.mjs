@@ -6,15 +6,36 @@ import {presentState} from '../server/payment-portal.js';
 import {inspectReceipt,RECEIPT_LIMIT,receiptBelongsToHistory} from '../server/receipts.js';
 const group={userId:'group-user',email:'group@test.example',role:'admin',party:'group',companyId:'company-one'},carrier={userId:'carrier-user',email:'carrier@test.example',role:'operator',party:'carrier',companyId:'company-one'};
 const p=period('2026-10',1);
-function closed(){const s=initialState();s.trucks=s.farms.map((f,i)=>({id:'t'+i,plate:'ABC1D2'+i,driver:'Motorista '+i,carrier:'Contratado',farmId:f.id,bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''}));saveClosing(s,p,'','closing','2026-10-06');return s;}
+function closed(){const s=initialState();s.trucks=s.farms.map((f,i)=>({id:'t'+i,plate:'ABC1D2'+i,driver:'Motorista '+i,carrier:'Contratado',farmId:f.id,bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista '+i,document:'12345678901',pixKey:'motorista'+i+'@example.com'}}));saveClosing(s,p,'','closing','2026-10-06');return s;}
 const requested=()=>executeCommand(closed(),{type:'payment.request',payload:{month:p.month,half:p.half}},group).state;
 const receipt=q=>({id:'d219975c-15e8-4d98-8ff2-a9b489b0f043',companyId:group.companyId,requestId:q.id,uploadedBy:carrier.userId,name:'comprovante.pdf',mime:'application/pdf',size:120});
 const command=(type,payload)=>({type,payload});
 test('the group requests all four farms once and carrier receives only approved payment snapshots',()=>{
  const state=requested();assert.equal(state.paymentRequests.length,4);assert.equal(new Set(state.paymentRequests.map(q=>q.snapshot.farmId)).size,4);assert.equal(state.paymentRequests.reduce((n,q)=>n+q.snapshot.net,0),60000);
+ assert.equal(state.paymentRequests[0].snapshot.paymentDetails.pixKey,'motorista0@example.com');
  assert.throws(()=>executeCommand(state,command('payment.request',{month:p.month,half:p.half}),group),/Não há placas/);
  const dto=presentState({state,revision:2,company:{id:group.companyId}},carrier);assert.equal(dto.state,null);assert.equal(dto.requests.length,4);assert.equal(dto.user.party,'carrier');assert.ok(!('trucks' in dto));
  assert.throws(()=>executeCommand(state,command('truck.save',{}),carrier),/transportadora/);assert.throws(()=>executeCommand(state,command('payment.record',{requestId:state.paymentRequests[0].id,date:'2026-10-06'}),group),/acesso da transportadora/);
+});
+test('a plate can be registered without banking data, but a request needs complete Pix or bank details',()=>{
+ const state=closed();delete state.trucks[1].paymentDetails;const before=structuredClone(state);
+ assert.throws(()=>executeCommand(state,command('payment.request',{month:p.month,half:p.half}),group),/ABC1D21.*forma de pagamento/);
+ assert.deepEqual(state,before);
+ const bank={method:'bank',holder:'Motorista 1',document:'12345678901',bankName:'Banco Exemplo',agency:'1234',account:'98765-0',accountType:'corrente'};
+ const incomplete=executeCommand(state,command('truck.save',{...state.trucks[1],paymentDetails:{...bank,account:''}}),group).state;
+ assert.throws(()=>executeCommand(incomplete,command('payment.request',{month:p.month,half:p.half}),group),/ABC1D21.*conta com dígito/);
+ const complete=executeCommand(incomplete,command('truck.save',{...incomplete.trucks[1],paymentDetails:bank}),group).state;
+ const sent=executeCommand(complete,command('payment.request',{month:p.month,half:p.half}),group).state;
+ assert.equal(sent.paymentRequests.length,4);assert.equal(sent.paymentRequests[1].snapshot.paymentDetails.account,'98765-0');
+});
+test('the transporter sees the payment destination saved with the request, even after the plate is edited',()=>{
+ const state=requested(),original=state.paymentRequests[0].snapshot.paymentDetails.pixKey;
+ const updated=executeCommand(state,command('truck.save',{...state.trucks[0],paymentDetails:{...state.trucks[0].paymentDetails,pixKey:'nova-chave@example.com'}}),group).state;
+ const carrierView=presentState({state:updated,revision:2,company:{id:group.companyId}},carrier);
+ assert.equal(updated.trucks[0].paymentDetails.pixKey,'nova-chave@example.com');
+ assert.equal(carrierView.requests[0].snapshot.paymentDetails.pixKey,original);
+ const historical=structuredClone(updated);delete historical.paymentRequests[0].snapshot.paymentDetails;
+ assert.throws(()=>executeCommand(historical,command('payment.record',{requestId:historical.paymentRequests[0].id,date:'2026-10-06'}),carrier,{receipt:receipt(historical.paymentRequests[0])}),/não tem dados de pagamento completos/);
 });
 test('receipt identity, request, company and uploader are required before carrier can mark paid',()=>{
  const state=requested(),q=state.paymentRequests[0],c=command('payment.record',{requestId:q.id,date:'2026-10-06',note:'Transferência'});

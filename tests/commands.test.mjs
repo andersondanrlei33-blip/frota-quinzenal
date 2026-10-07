@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {initialState,period,saveClosing} from '../server/engine.js';
 import {executeCommand} from '../server/commands.js';
 const actor={userId:'admin-test',role:'admin'};
-const truck={id:'a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''};
+const truck={id:'a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista',document:'12345678901',pixKey:'motorista@example.com'}};
 test('server commands calculate amounts themselves and reject client supplied paid values',()=>{
   let state=initialState();state=executeCommand(state,{type:'truck.save',payload:{...truck,net:1,paid:{date:'2026-10-01'}}},actor).state;
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);

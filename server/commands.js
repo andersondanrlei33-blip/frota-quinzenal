@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 
 const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove']);
@@ -15,7 +15,7 @@ export function executeCommand(input,command,actor,context={}){
   switch(command.type){
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id);
-      const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId:text(p.farmId),bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
+      const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId:text(p.farmId),bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',paymentDetails:p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
       validateTruck(truck,state,true);const index=state.trucks.findIndex(item=>item.id===id);if(index<0)state.trucks.push(truck);else state.trucks[index]=truck;break;
     }
     case 'discount.save':{

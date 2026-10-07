@@ -1,4 +1,5 @@
 import {locateRequest,partyOf} from './payment-portal.js';
+import {paymentDetailsMissing} from './engine.js';
 export const RECEIPT_LIMIT=10*1024*1024;
 async function boundedFormData(request){
  const reader=request.body?.getReader();if(!reader)throw Error('Anexe o comprovante.');const chunks=[];let size=0;
@@ -31,6 +32,7 @@ export function createReceiptApi({backend}){
    if(!file||typeof file.arrayBuffer!=='function'||file.size>RECEIPT_LIMIT)throw Error('Anexe um comprovante de até 10 MB.');
    const current=await backend.repository.load(actor.companyId),target=locateRequest(current.state,requestId);
    if(target.request.status!=='pending'||!target.row||target.row.paid)throw Error('A solicitação não está aguardando pagamento.');
+   if(paymentDetailsMissing(target.request.snapshot.paymentDetails).length)throw Error('Esta solicitação não tem dados de pagamento completos. Peça ao grupo que a cancele e envie novamente.');
    const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectReceipt(bytes,file.name);
    const saved=await backend.receipts.upload(actor,requestId,bytes,details);return backend.responseJson(saved);
   }

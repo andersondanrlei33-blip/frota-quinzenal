@@ -1,5 +1,44 @@
 export const SCHEMA = 2;
 export const BODY_TYPES = ['Caçamba','Graneleiro'];
+export const PAYMENT_METHODS = {pix:'Pix',bank:'Transferência bancária'};
+const paymentFields={method:20,holder:100,document:25,pixKey:120,bankName:100,agency:20,account:30,accountType:20};
+export function normalizePaymentDetails(input) {
+  if(input==null)return null;
+  if(typeof input!=='object'||Array.isArray(input))throw Error('Confira os dados de pagamento.');
+  const details={};
+  for(const [field,max] of Object.entries(paymentFields)){
+    if(input[field]!=null&&typeof input[field]!=='string')throw Error('Confira os dados de pagamento.');
+    details[field]=String(input[field]||'').trim();
+    if(details[field].length>max)throw Error('Um campo dos dados de pagamento está muito longo.');
+  }
+  if(!details.method)return null;
+  if(!['pix','bank'].includes(details.method))throw Error('Selecione Pix ou transferência bancária.');
+  if(details.document&&!/^[\d.\-/\s]+$/.test(details.document))throw Error('Confira o CPF ou CNPJ do titular.');
+  if(details.accountType&&!['corrente','poupanca','pagamento'].includes(details.accountType))throw Error('Selecione um tipo de conta válido.');
+  if(details.method==='pix'){details.bankName='';details.agency='';details.account='';details.accountType='';}
+  else details.pixKey='';
+  return details;
+}
+export function paymentDetailsMissing(input) {
+  const d=normalizePaymentDetails(input);
+  if(!d)return ['forma de pagamento'];
+  const missing=[];
+  if(!d.holder)missing.push('nome do titular');
+  if(![11,14].includes(d.document.replace(/\D/g,'').length))missing.push('CPF ou CNPJ do titular');
+  if(d.method==='pix'&&!d.pixKey)missing.push('chave Pix');
+  if(d.method==='bank'){
+    if(!d.bankName)missing.push('banco');
+    if(!d.agency)missing.push('agência');
+    if(!d.account)missing.push('conta com dígito');
+    if(!d.accountType)missing.push('tipo de conta');
+  }
+  return missing;
+}
+export function validatePaymentDetails(input,required=false) {
+  const details=normalizePaymentDetails(input);
+  if(required&&paymentDetailsMissing(details).length)throw Error('Complete os dados de pagamento: '+paymentDetailsMissing(details).join(', ')+'.');
+  return details;
+}
 export const MODES = {
   daily30: 'Histórico: diária mensal ÷ 30',
   half: 'Mensal fixo: metade por quinzena completa',
@@ -169,6 +208,7 @@ export function validateTruck(t,state,requireDetails=false) {
   if (!farm) throw Error('Selecione uma fazenda.');
   if(farm.active===false&&(!existing||existing.farmId!==t.farmId))throw Error('Reative esta fazenda antes de cadastrar ou alocar um caminhão nela.');
   if (!Number.isFinite(t.monthly) || t.monthly<=0 || t.monthly>10000000) throw Error('Informe um valor mensal maior que zero.');
+  validatePaymentDetails(t.paymentDetails);
   if((requireDetails||t.bodyType) && !BODY_TYPES.includes(t.bodyType))throw Error('Selecione caçamba ou graneleiro.');
   if((requireDetails||t.axles!=null) && (!Number.isInteger(t.axles)||t.axles<1||t.axles>99))throw Error('Informe uma quantidade inteira de eixos, de 1 a 99.');
   if (!validDate(t.start) || (t.end && (!validDate(t.end) || t.end<t.start))) throw Error('O encerramento precisa ser igual ou posterior ao início.');
@@ -386,6 +426,7 @@ export function validateState(input) {
   if(new Set(vehicles).size!==vehicles.length)throw Error('O backup contém placas duplicadas em fechamentos da mesma quinzena.');
   for(const request of s.paymentRequests){
     if(!['pending','paid','cancelled'].includes(request.status)||!validDate(String(request.requestedAt).slice(0,10))||typeof request.requestedBy!=='string'||!request.snapshot||!Number.isFinite(request.snapshot.net)||request.snapshot.net<=0||!Array.isArray(request.paymentHistory))throw Error('Solicitação de pagamento inválida.');
+    if(request.snapshot.paymentDetails!==undefined)validatePaymentDetails(request.snapshot.paymentDetails,true);
     const c=s.closings.find(c=>c.id===request.closingId),row=c?.rows.find(r=>r.truckId===request.truckId);
     if(request.status!=='cancelled'&&(!row||row.requestId!==request.id||row.net!==request.snapshot.net||c.period.key!==request.period?.key))throw Error('A solicitação deve preservar o valor e a quinzena do fechamento.');
     if(request.status==='paid'&&(!row.paid?.receipt?.id||row.paid.requestId!==request.id||JSON.stringify(row.paid)!==JSON.stringify(request.payment)))throw Error('Pagamento solicitado exige comprovante e registro consistente.');
