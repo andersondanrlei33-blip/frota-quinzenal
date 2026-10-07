@@ -1,17 +1,16 @@
-import {MODES,BODY_TYPES,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=18';
-import {createReport,reportMarkup} from './reports.js?v=18';
+import {MODES,BODY_TYPES,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=19';
+import {createReport,reportMarkup} from './reports.js?v=19';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=19';
 
-const KEY='frota-quinzenal-v2';
-const LEGACY_KEY='frota-quinzenal-v1';
-let state=initialState(), loadError='';
-try { localStorage.removeItem(LEGACY_KEY);const raw=localStorage.getItem(KEY); if(raw) state=applyFixedMonthlyRule(validateState(JSON.parse(raw))); } catch { loadError='Não conseguimos ler os registros salvos. Importe um backup nas configurações antes de cadastrar novos dados.'; }
+let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
+let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',view='overview',toastTimer;
 const main=document.querySelector('#main'),modal=document.querySelector('#modal'),modalContent=document.querySelector('#modal-content');
 const e=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const opt=(v,label,selected)=>`<option value="${e(v)}" ${String(v)===String(selected)?'selected':''}>${e(label)}</option>`;
 const farmOptions=(selected,activeOnly=false)=>state.farms.filter(f=>!activeOnly||f.active!==false||f.id===selected).map(f=>opt(f.id,f.name+(f.active===false?' (Inativa)':''),selected)).join('');
 const farmField=(farm,index)=>{const saved=state.farms.find(f=>f.id===farm.id),inactive=saved?.active===false,action=inactive?'reactivate-farm':saved&&farmHasLinks(state,farm.id)?'inactivate-farm':'remove-farm',label=inactive?'Reativar':action==='inactivate-farm'?'Inativar':'Remover';return `<div class="farm-input-row"><span class="index">${String(index+1).padStart(2,'0')}</span><input aria-label="Nome da fazenda ${index+1}" name="${e(farm.id)}" data-farm-id="${e(farm.id)}" value="${e(farm.name)}" maxlength="80" required><div class="farm-actions">${inactive?'<span class="badge gray">Inativa</span>':''}<button class="btn small ${action==='remove-farm'?'danger':''}" type="button" data-action="${action}" data-id="${e(farm.id)}" aria-label="${label} ${e(farm.name)||'nova fazenda'}">${label}</button></div></div>`;};
-function addFarmInput() {
+function addFarmInput() {farmDraftDirty=true;
   const form=document.querySelector('#farms-form'),id=uid(),index=form.querySelectorAll('[data-farm-id]').length;
   document.querySelector('#farm-fields').insertAdjacentHTML('beforeend',farmField({id,name:''},index));
   form.querySelector(`[data-farm-id="${id}"]`).focus();
@@ -22,9 +21,9 @@ function requestFarmAction(id,inactivate=false) {
   if(inactivate||farmHasLinks(state,id))confirmation('Inativar '+farm.name+'?','Esta fazenda ficará fora de novos cadastros e transferências. Os contratos, descontos e pagamentos existentes continuam no controle.','confirm-inactivate-farm',id);
   else confirmation('Remover '+farm.name+'?','Esta fazenda não tem caminhões nem fechamentos vinculados e será removida da lista.','confirm-remove-farm',id);
 }
-function applyFarmAction(id,action) {
+async function applyFarmAction(id,action) {
   const form=document.querySelector('#farms-form'),drafts=form?[...form.querySelectorAll('[data-farm-id]')].map(input=>({id:input.dataset.farmId,name:input.value})):[];
-  mutate(s=>action==='remove'?removeFarm(s,id):setFarmActive(s,id,action==='reactivate'));
+  await remoteCommand(action==='remove'?'farm.remove':'farm.status',action==='remove'?{id}:{id,active:action==='reactivate'});
   if(action==='remove'&&farmFilter===id)farmFilter='';modal.close();render();
   if(view==='settings'){
     const list=state.farms.map(f=>({...f,name:drafts.find(d=>d.id===f.id)?.name??f.name}));
@@ -55,11 +54,36 @@ const filteredRows=()=>rows().filter(r=>!farmFilter||r.farmId===farmFilter);
 const uniquePlates=list=>new Set(list.map(r=>r.plate)).size;
 const sum=(list,key)=>round(list.reduce((n,r)=>n+(r[key]||0),0));
 function notify(message) { const el=document.querySelector('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),4500); }
-function mutate(fn) {
-  if(loadError) throw Error('Importe um backup válido antes de alterar os registros.');
-  const prior=structuredClone(state);
-  try { fn(state);applyFixedMonthlyRule(state);state.updatedAt=new Date().toISOString();localStorage.setItem(KEY,JSON.stringify(state)); } catch(err) { state=prior;throw err; }
+async function remoteCommand(type,payload) {
+  if(!currentUser)throw Error('Faça login antes de alterar os registros.');
+  if(saving)throw Error('Aguarde o salvamento em andamento.');
+  saving=true;document.body.classList.add('saving');
+  try { const saved=await cloud.execute(type,payload,serverRevision);adoptServerData(saved);stale=false; }
+  catch(error){if(error.status===409){stale=true;updateCloudStatus();}throw error;}
+  finally {saving=false;document.body.classList.remove('saving');}
 }
+function adoptServerData(data) {
+  state=applyFixedMonthlyRule(validateState(data.state));serverRevision=data.revision;
+  if(data.user)currentUser=data.user;if(data.company)currentCompany=data.company;loadError='';updateCloudStatus();
+}
+function updateCloudStatus() {
+  const label=document.querySelector('#cloud-status');if(label)label.textContent=stale?'Há novas alterações. Atualize os dados.':saving?'Salvando no servidor…':'Dados salvos no banco online';
+  const company=document.querySelector('#company-label');if(company)company.textContent=currentCompany?.name||'Frota';
+  const account=document.querySelector('#account-label');if(account)account.textContent=currentUser?.email||'';
+}
+async function refreshServerData() {if(saving)return;adoptServerData(await cloud.load());stale=false;farmDraftDirty=false;modal.close();reportDialog.close();render();updateCloudStatus();}
+function renderAccess() {
+  document.body.classList.add('logged-out');
+  const ready=inviteTicket&&inviteInfo;
+  main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>${ready?inviteSignin?'Aceitar acesso':'Configurar seu acesso':'Entrar no sistema'}</h1><p>${ready?e(inviteInfo.companyName):'Acesse os registros da empresa, salvos no banco online.'}</p><form id="access-form" class="auth-form">${errBox()}${ready&&inviteInfo.firstAccess?'<div class="field"><label for="access-company">Nome da empresa</label><input id="access-company" name="companyName" maxlength="120" required autocomplete="organization"></div>':''}<div class="field"><label for="access-email">E-mail</label><input id="access-email" name="email" type="email" value="${e(ready?inviteInfo.email:'')}" ${ready&&inviteInfo.email?'readonly':''} required autocomplete="username"></div><div class="field"><label for="access-password">Senha</label><input id="access-password" name="password" type="password" required ${ready&&!inviteSignin?'minlength="12"':''} autocomplete="${ready&&!inviteSignin?'new-password':'current-password'}">${ready&&!inviteSignin?'<small>Use pelo menos 12 caracteres. A senha é definida aqui.</small>':''}</div><button class="btn primary" type="submit" ${inviteTicket&&!ready?'disabled':''}>${ready&&!inviteSignin?'Criar acesso':'Entrar'}</button>${ready?`<button type="button" class="btn ghost" data-action="auth-switch">${inviteSignin?'Criar uma nova conta':'Já tenho uma conta'}</button>`:''}</form>${inviteTicket&&!ready?'<p id="invite-message" class="auth-help">Conferindo o link de acesso…</p>':'<p class="auth-help">O administrador da empresa libera os usuários e seus perfis de acesso.</p>'}</section></div>`;
+}
+async function loadTeam() {
+  if(currentUser?.role!=='admin')return;
+  const box=document.querySelector('#team-list');if(!box)return;
+  try {const data=await cloud.team();box.innerHTML=data.members.map(member=>`<div class="team-row"><div><strong>${e(member.email)}</strong><span class="secondary">${({admin:'Administrador',operator:'Operador',viewer:'Somente consulta'})[member.role]} · ${member.active?'Ativo':'Inativo'}</span></div><button type="button" class="btn small" data-action="member-status" data-id="${e(member.user_id)}" data-role="${e(member.role)}" data-active="${member.active?'false':'true'}">${member.active?'Inativar':'Reativar'}</button></div>`).join('');}
+  catch(error){box.textContent=authErrorMessage(error);}
+}
+function teamSettings() {return currentUser?.role==='admin'?`<section class="card"><div class="card-header"><div><h2>Equipe e acesso</h2><p>Gere um link individual para cada funcionário.</p></div></div><div class="form-content"><div id="team-list">Carregando usuários…</div><form id="invite-form" style="margin-top:20px">${errBox()}<div class="field"><label>E-mail do funcionário</label><input name="email" type="email" required></div><div class="field"><label>Perfil de acesso</label><select name="role"><option value="operator">Operador — cadastros e pagamentos</option><option value="viewer">Somente consulta</option><option value="admin">Administrador — controle completo</option></select></div><button class="btn primary" type="submit">Gerar link de acesso</button></form><div id="invite-result"></div></div></section>`:'';}
 function download(data,type,name) {const u=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
 function openModal(title,subtitle,body) {modalContent.innerHTML=`<div class="modal-head"><div><h2 id="modal-title">${e(title)}</h2><p>${e(subtitle)}</p></div><button class="close-modal" data-action="close-modal" aria-label="Fechar janela">×</button></div><div class="modal-body">${body}</div>`;if(!modal.open)modal.showModal();}
 const errBox=()=>'<div class="form-error" role="alert"></div>';
@@ -131,13 +155,19 @@ function closingsView() {
     `<h2 style="margin:30px 0 15px">Histórico de quinzenas</h2>${state.closings.length?state.closings.slice().sort((a,b)=>b.period.key.localeCompare(a.period.key)).map(h=>`<section class="card history-card"><div><h3>${e(periodLabel(h.period))} </h3><p style="font-weight:600;color:var(--ink);margin-bottom:5px">${e(closingNames(h))}</p><p>Fechado em ${dateLabel(h.closedDate)} · ${h.rows.length} caminhão(ões) · ${e(historyRuleTitle(h))}</p><button class="btn small ghost" style="margin-top:10px" data-action="view-period" data-month="${e(h.period.month)}" data-half="${h.period.half}" data-farm="${h.farmIds.length===1?e(h.farmIds[0]):''}">Abrir quinzena →</button><button class="btn small" style="margin:10px 0 0 7px" data-action="report" data-id="${e(h.id)}" ${!h.rows.length?'disabled':''}>Relatório</button>${h.kind==='complement'&&!h.rows.some(r=>r.paid)?`<button class="btn small ghost" style="margin:10px 0 0 7px" data-action="reopen-batch" data-id="${e(h.id)}">Reabrir fechamento</button>`:''}</div><div class="history-total"><strong>${money(sum(h.rows,'net'))}</strong><span class="badge ${h.rows.some(r=>!r.paid&&r.net>0)?'amber':h.rows.some(r=>r.paid)?'green':'gray'}">${h.rows.some(r=>!r.paid&&r.net>0)?'Fechados, aguardando pagamento':h.rows.some(r=>r.paid)?'Pagos':'Fechados'}</span><span class="secondary">${h.rows.filter(r=>r.paid).length} de ${h.rows.length} pagamento(s) registrado(s)</span></div></section>`).join(''):'<section class="card empty"><p>Seus fechamentos salvos aparecerão aqui.</p></section>'}`;
 }
 function settingsView() {
-  return head('Configurações','Consulte o cálculo, cadastre suas fazendas e cuide dos seus registros.','','AJUSTES DO CONTROLE')+`<div class="settings-grid"><section class="card"><div class="card-header"><div><h2>Regras de pagamento</h2><p>O pagamento é calculado com o valor mensal cadastrado por placa.</p></div></div><div class="form-content"><div class="field"><label>Cálculo do valor proporcional</label><div class="form-note"><strong>Mensal fixo: duas quinzenas de metade do valor</strong><br>Um mês completo de 28, 29, 30 ou 31 dias sempre soma o valor mensal cadastrado, antes dos descontos.</div><small>O valor mensal é sempre informado no cadastro de cada placa.</small></div><div class="form-note" id="mode-explanation">${ruleDescription(state.settings,currentPeriod())}</div><div class="form-note">Quinzenas fixas: 1 a 15 e 16 ao último dia do mês. Faltas e oficina descontam dias inteiros. O cálculo mantém a precisão da diária e arredonda o valor final para centavos.</div></div></section><section class="card"><div class="card-header"><h2>Backup dos registros</h2></div><div class="form-content"><p style="font-size:12px;line-height:1.8;margin-bottom:18px">Nesta versão de teste, os registros ficam neste navegador. Para levar seus dados a outro dispositivo ou guardá-los, exporte um backup.</p><div class="backup-actions"><button class="btn" data-action="backup">↓ Baixar backup completo</button><button class="btn" data-action="import-backup">↑ Restaurar backup</button><input type="file" id="backup-file" accept=".json,application/json" hidden></div><div class="form-note" style="margin-top:20px;margin-bottom:0">O backup inclui cadastros, descontos, regras e fechamentos. Restaurar substitui os registros deste navegador.</div><p class="secondary" style="margin-top:15px">${state.updatedAt?'Última gravação: '+e(new Date(state.updatedAt).toLocaleString('pt-BR',{timeZone:'America/Cuiaba'})):'Nenhum registro salvo ainda.'}</p></div></section><section class="card"><div class="card-header"><div><h2>Fazendas</h2><p>Adicione fazendas, remova as que não têm vínculos ou inative preservando o histórico.</p></div></div><form id="farms-form" class="form-content">${errBox()}<div id="farm-fields">${state.farms.map(farmField).join('')}</div><div class="actions" style="margin-top:15px"><button class="btn" type="button" data-action="add-farm">+ Adicionar fazenda</button><button class="btn primary" type="submit">Salvar fazendas</button></div></form></section><section class="card"><div class="card-header"><h2>Conheça o controle</h2></div><div class="form-content"><p style="font-size:12px;line-height:1.8;margin-bottom:18px">Você pode testar com três placas fictícias, valores mensais diferentes e dois descontos. Os exemplos usam o mês selecionado e ficam identificados no cadastro.</p><button class="btn" data-action="demo" ${state.trucks.length?'disabled':''}>Carregar dados de exemplo</button>${state.trucks.some(t=>t.sample)?'<button class="btn danger" style="margin:10px 0 0" data-action="remove-demo">Remover exemplos</button>':''}<div class="form-note" style="margin-top:18px;margin-bottom:0">Esta etapa controla o pagamento mensal dos caminhões. Produção, remuneração pelo CT-e ou nota fiscal e combustível serão acrescentados nas etapas seguintes.</div></div></section></div>`;
+  return head('Configurações','Consulte o cálculo, cadastre suas fazendas e cuide dos seus registros.','','AJUSTES DO CONTROLE')+`<div class="settings-grid"><section class="card"><div class="card-header"><div><h2>Regras de pagamento</h2><p>O pagamento é calculado com o valor mensal cadastrado por placa.</p></div></div><div class="form-content"><div class="field"><label>Cálculo do valor proporcional</label><div class="form-note"><strong>Mensal fixo: duas quinzenas de metade do valor</strong><br>Um mês completo de 28, 29, 30 ou 31 dias sempre soma o valor mensal cadastrado, antes dos descontos.</div><small>O valor mensal é sempre informado no cadastro de cada placa.</small></div><div class="form-note" id="mode-explanation">${ruleDescription(state.settings,currentPeriod())}</div><div class="form-note">Quinzenas fixas: 1 a 15 e 16 ao último dia do mês. Faltas e oficina descontam dias inteiros. O cálculo mantém a precisão da diária e arredonda o valor final para centavos.</div></div></section><section class="card"><div class="card-header"><h2>Backup dos registros</h2></div><div class="form-content"><p style="font-size:12px;line-height:1.8;margin-bottom:18px">Os registros da empresa ficam no banco online. Você pode baixar uma cópia para guardar um backup ou importar um arquivo autorizado.</p><div class="backup-actions"><button class="btn" data-action="backup">↓ Baixar backup completo</button><button class="btn" data-action="import-backup">↑ Restaurar backup</button><input type="file" id="backup-file" accept=".json,application/json" hidden></div><div class="form-note" style="margin-top:20px;margin-bottom:0">O backup inclui cadastros, descontos, regras e fechamentos. Restaurar substitui os registros da empresa no banco online e exige um administrador.</div><p class="secondary" style="margin-top:15px">${state.updatedAt?'Última gravação: '+e(new Date(state.updatedAt).toLocaleString('pt-BR',{timeZone:'America/Cuiaba'})):'Nenhum registro salvo ainda.'}</p></div></section><section class="card"><div class="card-header"><div><h2>Fazendas</h2><p>Adicione fazendas, remova as que não têm vínculos ou inative preservando o histórico.</p></div></div><form id="farms-form" class="form-content">${errBox()}<div id="farm-fields">${state.farms.map(farmField).join('')}</div><div class="actions" style="margin-top:15px"><button class="btn" type="button" data-action="add-farm">+ Adicionar fazenda</button><button class="btn primary" type="submit">Salvar fazendas</button></div></form></section><section class="card"><div class="card-header"><h2>Conheça o controle</h2></div><div class="form-content"><p style="font-size:12px;line-height:1.8;margin-bottom:18px">Você pode testar com três placas fictícias, valores mensais diferentes e dois descontos. Os exemplos usam o mês selecionado e ficam identificados no cadastro.</p><button class="btn" data-action="demo" ${state.trucks.length?'disabled':''}>Carregar dados de exemplo</button>${state.trucks.some(t=>t.sample)?'<button class="btn danger" style="margin:10px 0 0" data-action="remove-demo">Remover exemplos</button>':''}<div class="form-note" style="margin-top:18px;margin-bottom:0">Esta etapa controla o pagamento mensal dos caminhões. Produção, remuneração pelo CT-e ou nota fiscal e combustível serão acrescentados nas etapas seguintes.</div></div></section></div>`;
 }
 function render() {
+  if(!currentUser){renderAccess();return;}document.body.classList.remove('logged-out');
   view=location.hash.replace('#','') || 'overview';if(!['overview','trucks','discounts','closings','settings'].includes(view))view='overview';
   const labels={overview:'Visão geral',trucks:'Caminhões',discounts:'Descontos',closings:'Fechamentos',settings:'Configurações'};
   document.querySelector('#breadcrumb-current').textContent=labels[view];document.querySelectorAll('[data-nav]').forEach(a=>{a.classList.toggle('active',a.dataset.nav===view);a.setAttribute('aria-current',a.dataset.nav===view?'page':'false');});
   main.innerHTML=({overview,trucks:trucksView,discounts:discountsView,closings:closingsView,settings:settingsView}[view])();
+  if(view==='settings'){main.insertAdjacentHTML('beforeend',teamSettings());loadTeam();}
+  const writeActions=new Set(['new-truck','edit-truck','transfer-truck','end-activities','new-discount','edit-discount','delete-discount','close-period','reopen-period','reopen-batch','pay','undo-payment','demo','remove-demo','import-backup']);
+  document.querySelectorAll('[data-action]').forEach(button=>{if(currentUser.role==='viewer'&&writeActions.has(button.dataset.action))button.disabled=true;if(currentUser.role!=='admin'&&['add-farm','remove-farm','inactivate-farm','reactivate-farm','import-backup','demo','remove-demo'].includes(button.dataset.action))button.disabled=true;});
+  if(currentUser.role!=='admin')document.querySelectorAll('#farms-form input,#farms-form button').forEach(element=>element.disabled=true);
+  updateCloudStatus();
 }
 function truckForm(id) {
   const saved=state.trucks.find(t=>t.id===id),activeFarm=state.farms.find(f=>f.active!==false);
@@ -232,14 +262,11 @@ function requestDiscountAction(id,operation) {
   }
   openModal(operation==='edit'?'Liberar edição do desconto?':'Liberar exclusão do desconto?','O desconto está em período fechado.',`${summary}<div class="form-note">Será reaberta a parte desta fazenda nos seguintes fechamentos:<br>${plan.map(scope=>`<strong>${e(scope.farmName)}</strong> · ${e(periodLabel(scope.period))}`).join('<br>')}</div><p style="font-size:12px;line-height:1.8">As prévias serão recalculadas com os cadastros e regras atuais. Depois da correção, feche novamente as placas pendentes. Os fechamentos das outras fazendas serão preservados.</p><div class="form-actions"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn ${operation==='edit'?'primary':'danger'}" data-action="confirm-discount-reopen-${operation}" data-id="${e(id)}">${operation==='edit'?'Reabrir e editar':'Reabrir e excluir'}</button></div>`);
 }
-function applyDiscountReopen(id,operation) {
+async function applyDiscountReopen(id,operation) {
   const d=state.discounts.find(d=>d.id===id);if(!d)throw Error('O desconto selecionado não está mais disponível.');
   const plan=discountReopenPlan(d);
   if(plan.some(scope=>scope.rows.some(r=>r.paid)))throw Error('Há pagamento registrado neste fechamento. Revise o pagamento primeiro.');
-  mutate(s=>{
-    for(const scope of plan)reopenClosing(s,scope.period,scope.farmId,scope.closingId);
-    if(operation==='delete')s.discounts=s.discounts.filter(x=>x.id!==id);
-  });
+  await remoteCommand('discount.reopen',{id,operation});
   modal.close();render();
   if(operation==='edit'){discountForm(id);notify('A edição foi liberada. Confira e salve o desconto.');}
   else notify('Desconto excluído. Confira os valores e feche novamente as placas pendentes.');
@@ -289,13 +316,7 @@ function paymentForm(id) {
   const r=rowClosing(id)?.rows.find(r=>r.truckId===id);if(!r)return;modal.close();openModal('Registrar pagamento',r.plate+' · '+r.carrier,`<form id="payment-form" data-id="${e(id)}">${errBox()}<div class="form-note">Valor do fechamento: <strong>${money(r.net)}</strong>. O registro confirma o pagamento integral deste caminhão nesta quinzena.</div><div class="field"><label for="paid-date">Data do pagamento *</label><input id="paid-date" name="date" type="date" value="${today()}" max="${today()}" required></div><div class="field"><label for="paid-note">Referência / observação</label><input id="paid-note" name="note" maxlength="200" placeholder="Ex.: referência do comprovante"></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Confirmar pagamento</button></div></form>`);
 }
 function confirmation(title,text,action,id='') {if(modal.open)modal.close();openModal(title,'Confira antes de continuar.',`<p style="font-size:13px;line-height:1.8;color:var(--ink)">${e(text)}</p><div class="form-actions"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="${e(action)}" data-id="${e(id)}">Confirmar</button></div>`);}
-function addDemo() {
-  if(state.trucks.length){notify('Os exemplos só podem ser carregados com o cadastro vazio.');return;}
-  const availableFarms=state.farms.filter(farm=>farm.active!==false);
-  if(!availableFarms.length)throw Error('Cadastre ou reative uma fazenda para carregar os exemplos.');
-  const a=uid(),b=uid(),c=uid(),m=currentMonth;
-  mutate(s=>{s.trucks=[{id:a,plate:'TST1A01',driver:'Motorista de exemplo 1',carrier:'Transportadora de exemplo',farmId:availableFarms[0].id,bodyType:'Caçamba',axles:7,monthly:40000,start:m+'-01',end:'',sample:true},{id:b,plate:'TST2B02',driver:'Motorista de exemplo 2',carrier:'Transportadora de exemplo',farmId:availableFarms[0].id,bodyType:'Graneleiro',axles:9,monthly:35000,start:m+'-06',end:'',sample:true},{id:c,plate:'TST3C03',driver:'Motorista de exemplo 3',carrier:'Contratado de exemplo',farmId:(availableFarms[1]||availableFarms[0]).id,bodyType:'Caçamba',axles:9,monthly:42000,start:m+'-01',end:m+'-11',sample:true}];s.discounts=[{id:uid(),truckId:a,start:m+'-08',end:m+'-09',reason:'Falta',note:'Exemplo: dois dias de falta.'},{id:uid(),truckId:b,start:m+'-12',end:m+'-12',reason:'Oficina',note:'Exemplo: manutenção.'}];});currentHalf=1;render();notify('Exemplos fictícios carregados. Você pode editar e conferir os cálculos.');
-}
+async function addDemo() {await remoteCommand('examples.load',{month:currentMonth});currentHalf=1;render();notify('Exemplos carregados no banco da empresa.');}
 function exportCsv() {
   const p=currentPeriod(),c=closing(),list=filteredRows();if(!list.length)return;
   const matrix=[['Período','Placa','Motorista','Transportador','Fazenda','Tipo de caminhão','Eixos','Mensal R$','Início considerado','Fim considerado','Dias no período','Dias descontados','Dias a pagar','Bruto R$','Descontos R$','Líquido R$','Situação','Data pagamento','Regra']];
@@ -344,18 +365,22 @@ function closeReport() {reportDialog.close();document.body.classList.remove('rep
 function printReport() {if(!reportDialog.open||document.querySelector('#report-print').disabled)return;const title=document.title;document.title=`Frota - Relatório ${reportContext.period.key}${reportContext.plate?' - '+reportContext.plate:''}`;try{window.print();}finally{document.title=title;}}
 reportDialog.addEventListener('close',()=>{document.body.classList.remove('report-open');reportInvoker?.focus?.();});
 let pendingBackup=null;
-document.addEventListener('click',ev=>{
+document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-action]');if(!b||b.disabled)return;const a=b.dataset.action,id=b.dataset.id;
   try {
-    if(a==='close-modal')modal.close();
+    if(a==='cloud-refresh')await refreshServerData();
+    else if(a==='auth-switch'){inviteSignin=!inviteSignin;renderAccess();}
+    else if(a==='cloud-logout'){try{await cloud.logout();}finally{currentUser=null;currentCompany=null;state=initialState();modal.close();reportDialog.close();modalContent.innerHTML='';document.querySelector('#report-content').innerHTML='';render();}}
+    else if(a==='member-status'){await cloud.updateMember(id,b.dataset.role,b.dataset.active==='true');await loadTeam();}
+    else if(a==='close-modal')modal.close();
     else if(a==='new-truck'){if(modal.open)modal.close();truckForm();}
     else if(a==='edit-truck')truckForm(id);
     else if(a==='add-farm')addFarmInput();
     else if(a==='remove-farm')requestFarmAction(id);
     else if(a==='inactivate-farm')requestFarmAction(id,true);
-    else if(a==='confirm-remove-farm')applyFarmAction(id,'remove');
-    else if(a==='confirm-inactivate-farm')applyFarmAction(id,'inactivate');
-    else if(a==='reactivate-farm')applyFarmAction(id,'reactivate');
+    else if(a==='confirm-remove-farm')await applyFarmAction(id,'remove');
+    else if(a==='confirm-inactivate-farm')await applyFarmAction(id,'inactivate');
+    else if(a==='reactivate-farm')await applyFarmAction(id,'reactivate');
     else if(a==='transfer-truck')transferForm(id);
     else if(a==='end-activities'){if(modal.open)modal.close();endActivitiesForm(id);}
     else if(a==='truck-history')truckHistory(id);
@@ -365,44 +390,60 @@ document.addEventListener('click',ev=>{
     else if(a==='half'){currentHalf=Number(b.dataset.half);render();}
     else if(a==='detail')detail(id);
     else if(a==='close-period')closePeriodModal();
-    else if(a==='confirm-close'){const farm=document.querySelector('#closing-farm')?.value||'';mutate(s=>saveClosing(s,currentPeriod(),farm));modal.close();render();notify('Fechamento salvo somente para as placas pendentes.');}
+    else if(a==='confirm-close'){const farm=document.querySelector('#closing-farm')?.value||'';await remoteCommand('period.close',{month:currentMonth,half:currentHalf,farmId:farm});modal.close();render();notify('Fechamento salvo somente para as placas pendentes.');}
     else if(a==='show-closing')closingSummary();
     else if(a==='go-closings'){modal.close();location.hash='closings';render();}
     else if(a==='reopen-period')reopenPeriodModal();
-    else if(a==='confirm-reopen'){const farm=document.querySelector('#reopening-farm')?.value||'';mutate(s=>reopenClosing(s,currentPeriod(),farm));modal.close();render();notify('A seleção foi reaberta para ajustes.');}
+    else if(a==='confirm-reopen'){const farm=document.querySelector('#reopening-farm')?.value||'';await remoteCommand('period.reopen',{month:currentMonth,half:currentHalf,farmId:farm});modal.close();render();notify('A seleção foi reaberta para ajustes.');}
     else if(a==='reopen-batch'){const batch=state.closings.find(c=>c.id===id);if(!batch||batch.kind!=='complement')throw Error('Selecione um fechamento complementar.');if(batch.rows.some(r=>r.paid))throw Error('Há pagamentos registrados neste complemento.');confirmation('Reabrir somente este complemento?',periodLabel(batch.period)+' · Os outros fechamentos e pagamentos serão preservados.','confirm-reopen-batch',id);}
-    else if(a==='confirm-reopen-batch'){const batch=state.closings.find(c=>c.id===id);if(!batch||batch.kind!=='complement')throw Error('Confira o complemento selecionado.');mutate(s=>reopenClosing(s,batch.period,'',batch.id));currentMonth=batch.period.month;currentHalf=batch.period.half;modal.close();render();notify('Somente o complemento foi reaberto.');}
+    else if(a==='confirm-reopen-batch'){const batch=state.closings.find(c=>c.id===id);if(!batch||batch.kind!=='complement')throw Error('Confira o complemento selecionado.');await remoteCommand('period.reopen',{month:batch.period.month,half:batch.period.half,closingId:batch.id});currentMonth=batch.period.month;currentHalf=batch.period.half;modal.close();render();notify('Somente o complemento foi reaberto.');}
     else if(a==='pay')paymentForm(id);
     else if(a==='undo-payment')confirmation('Desfazer registro de pagamento?','O caminhão voltará a aparecer como “Fechado”. Isso altera somente o registro no controle.','confirm-undo-payment',id);
-    else if(a==='confirm-undo-payment'){mutate(()=>rowClosing(id).rows.find(r=>r.truckId===id).paid=null);modal.close();render();notify('Registro desfeito. O valor voltou ao saldo a pagar.');}
+    else if(a==='confirm-undo-payment'){await remoteCommand('payment.undo',{closingId:rowClosing(id).id,truckId:id});modal.close();render();notify('Registro desfeito. O valor voltou ao saldo a pagar.');}
     else if(a==='delete-discount')requestDiscountAction(id,'delete');
-    else if(a==='confirm-discount-reopen-edit')applyDiscountReopen(id,'edit');
-    else if(a==='confirm-discount-reopen-delete')applyDiscountReopen(id,'delete');
+    else if(a==='confirm-discount-reopen-edit')await applyDiscountReopen(id,'edit');
+    else if(a==='confirm-discount-reopen-delete')await applyDiscountReopen(id,'delete');
     else if(a==='review-discount-payment'||a==='view-history-payment'){const batch=state.closings.find(c=>c.id===b.dataset.closing);if(!batch)throw Error('O fechamento selecionado não está mais disponível.');currentMonth=batch.period.month;currentHalf=batch.period.half;farmFilter=b.dataset.farm||'';modal.close();location.hash='closings';render();detail(id);}
-    else if(a==='confirm-delete-discount'){const d=state.discounts.find(d=>d.id===id);if(!d)return;if(discountLocked(d,state))throw Error('Reabra a quinzena antes de excluir este desconto.');mutate(s=>s.discounts=s.discounts.filter(x=>x.id!==id));modal.close();render();notify('Desconto excluído.');}
+    else if(a==='confirm-delete-discount'){const d=state.discounts.find(d=>d.id===id);if(!d)return;if(discountLocked(d,state))throw Error('Reabra a quinzena antes de excluir este desconto.');await remoteCommand('discount.remove',{id});modal.close();render();notify('Desconto excluído.');}
     else if(a==='view-period'){currentMonth=b.dataset.month;currentHalf=Number(b.dataset.half);farmFilter=b.dataset.farm||'';render();window.scrollTo({top:0,behavior:'smooth'});}
     else if(a==='export-csv')exportCsv();
     else if(a==='report'||a==='print')openReport(a==='report'?id||'':'',b);
     else if(a==='print-report')printReport();
     else if(a==='close-report')closeReport();
-    else if(a==='demo')addDemo();
+    else if(a==='demo')await addDemo();
     else if(a==='remove-demo'){if(state.closings.some(c=>c.rows.some(r=>state.trucks.find(t=>t.id===r.truckId)?.sample)))throw Error('Reabra os fechamentos dos exemplos antes de removê-los.');confirmation('Remover dados de exemplo?','Somente as placas marcadas como exemplo e seus descontos serão removidos. Cadastros criados por você serão preservados.','confirm-remove-demo');}
-    else if(a==='confirm-remove-demo'){const ids=state.trucks.filter(t=>t.sample).map(t=>t.id);if(state.closings.some(c=>c.rows.some(r=>ids.includes(r.truckId))))throw Error('Reabra os fechamentos dos exemplos primeiro.');mutate(s=>{s.trucks=s.trucks.filter(t=>!t.sample);s.discounts=s.discounts.filter(d=>!ids.includes(d.truckId));});modal.close();render();notify('Exemplos removidos.');}
+    else if(a==='confirm-remove-demo'){const ids=state.trucks.filter(t=>t.sample).map(t=>t.id);if(state.closings.some(c=>c.rows.some(r=>ids.includes(r.truckId))))throw Error('Reabra os fechamentos dos exemplos primeiro.');await remoteCommand('examples.remove',{});modal.close();render();notify('Exemplos removidos.');}
     else if(a==='backup'){if(loadError)throw Error('Os registros precisam ser recuperados antes de exportar.');download(JSON.stringify(state,null,2),'application/json',`frota-backup-${today()}.json`);notify('Backup completo baixado.');}
     else if(a==='import-backup')document.querySelector('#backup-file').click();
-    else if(a==='confirm-import'){if(!pendingBackup)return;localStorage.setItem(KEY,JSON.stringify(pendingBackup));state=pendingBackup;pendingBackup=null;loadError='';modal.close();farmFilter='';render();notify('Backup restaurado.');}
-  }catch(err){notify(err.message||'Não foi possível salvar. Confira o armazenamento deste navegador.');}
+    else if(a==='confirm-import'){if(!pendingBackup)return;await remoteCommand('backup.import',{state:pendingBackup});pendingBackup=null;loadError='';modal.close();farmFilter='';render();notify('Backup restaurado.');}
+  }catch(err){notify(err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.');}
 });
-document.addEventListener('submit',ev=>{
-  const f=ev.target;if(!['truck-form','discount-form','payment-form','farms-form','transfer-form','end-activities-form'].includes(f.id))return;ev.preventDefault();const data=new FormData(f);
+document.addEventListener('submit',async ev=>{
+  const f=ev.target;
+  if(f.id==='access-form'){
+    ev.preventDefault();const values=new FormData(f),button=f.querySelector('[type="submit"]');button.disabled=true;
+    try{
+      const email=String(values.get('email')),password=String(values.get('password')),companyName=String(values.get('companyName')||'');
+      if(inviteTicket&&inviteInfo&&!inviteSignin)await cloud.register(inviteTicket,email,password,companyName);
+      const data=await cloud.login(email,password,inviteTicket&&inviteSignin?inviteTicket:null,companyName);
+      adoptServerData(data);farmDraftDirty=false;stale=false;inviteTicket=null;inviteInfo=null;inviteSignin=false;location.hash='#overview';render();
+    }catch(error){if(error.code==='ACCOUNT_EXISTS'){inviteSignin=true;renderAccess();formError(document.querySelector('#access-form'),authErrorMessage(error));}else formError(f,authErrorMessage(error));}
+    finally{button.disabled=false;}return;
+  }
+  if(f.id==='invite-form'){
+    ev.preventDefault();const values=new FormData(f),button=f.querySelector('[type="submit"]');button.disabled=true;
+    try{const result=await cloud.invite(String(values.get('email')),String(values.get('role'))),link=location.origin+location.pathname+'#activate='+result.ticket;document.querySelector('#invite-result').innerHTML=`<div class="form-note" style="margin-top:15px"><strong>Link individual para ${e(result.email)}</strong><p>Envie este link ao funcionário para ele definir o acesso. Validade: 72 horas.</p><input aria-label="Link de acesso" readonly value="${e(link)}" style="margin-top:10px" onclick="this.select()"></div>`;}
+    catch(error){formError(f,authErrorMessage(error));}finally{button.disabled=false;}return;
+  }
+  if(!['truck-form','discount-form','payment-form','farms-form','transfer-form','end-activities-form'].includes(f.id))return;ev.preventDefault();const data=new FormData(f);
   try {
-    if(f.id==='truck-form'){const id=f.dataset.id||uid(),prior=state.trucks.find(t=>t.id===id),t={id,plate:String(data.get('plate')).toUpperCase().replace(/[^A-Z0-9]/g,''),driver:String(data.get('driver')).trim(),carrier:String(data.get('carrier')).trim(),farmId:data.get('farmId')||prior?.farmId,bodyType:data.get('bodyType'),axles:Number(data.get('axles')==='other'?data.get('otherAxles'):data.get('axles')),monthly:parseAmount(data.get('monthly')),start:data.get('start'),end:data.get('end')||'',...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:structuredClone(prior.transferIn)}:{}),...(prior?.transferOut?{transferOut:structuredClone(prior.transferOut)}:{}),...(prior?.serviceEnded?{serviceEnded:structuredClone(prior.serviceEnded)}:{})};validateTruck(t,state,true);mutate(s=>{const index=s.trucks.findIndex(x=>x.id===id);if(index<0)s.trucks.push(t);else s.trucks[index]=t;});modal.close();render();notify('Cadastro salvo.');}
-    else if(f.id==='end-activities-form'){const date=String(data.get('date'));mutate(s=>endActivities(s,f.dataset.id,date,String(data.get('note')||'')));currentMonth=date.slice(0,7);currentHalf=Number(date.slice(8))<=15?1:2;farmFilter='';modal.close();location.hash='closings';render();notify('Atividades encerradas e quinzena desta placa fechada.');}
-    else if(f.id==='transfer-form'){mutate(s=>transferTruck(s,f.dataset.id,String(data.get('toFarmId')),String(data.get('date')),String(data.get('note')||'')));farmFilter='';modal.close();render();notify('Transferência registrada. Confira os períodos e valores por fazenda.');}
-    else if(f.id==='discount-form'){const d={id:f.dataset.id||uid(),truckId:data.get('truckId'),start:data.get('start'),end:data.get('end'),reason:data.get('reason'),note:String(data.get('note')).trim()};validateDiscount(d,state);mutate(s=>{const index=s.discounts.findIndex(x=>x.id===d.id);if(index<0)s.discounts.push(d);else s.discounts[index]=d;});modal.close();render();notify('Desconto salvo e prévia atualizada.');}
-    else if(f.id==='payment-form'){const c=rowClosing(f.dataset.id),r=c?.rows.find(r=>r.truckId===f.dataset.id);if(!r||r.paid)throw Error('Confira a situação deste pagamento.');const date=data.get('date');if(!validDate(date)||date>today())throw Error('Informe uma data de pagamento válida, até hoje.');mutate(()=>{r.paid={date,note:String(data.get('note')).trim()};});modal.close();render();notify('Pagamento registrado.');}
-    else if(f.id==='farms-form'){const farms=[...f.querySelectorAll('[data-farm-id]')].map(input=>({...state.farms.find(farm=>farm.id===input.dataset.farmId),id:input.dataset.farmId,name:input.value.trim()}));if(!farms.length||farms.some(farm=>!farm.name))throw Error('Preencha o nome de cada fazenda.');if(farms.some(farm=>farm.name.length>80))throw Error('Use até 80 caracteres para o nome da fazenda.');if(new Set(farms.map(farm=>farm.name.toLocaleLowerCase('pt-BR'))).size!==farms.length)throw Error('Use nomes diferentes para identificar cada fazenda.');mutate(s=>s.farms=farms);render();notify('Fazendas salvas.');}
-  }catch(err){formError(f,err.message||'Não foi possível salvar. Confira o armazenamento deste navegador.');}
+    if(f.id==='truck-form'){const id=f.dataset.id||uid(),prior=state.trucks.find(t=>t.id===id),t={id,plate:String(data.get('plate')).toUpperCase().replace(/[^A-Z0-9]/g,''),driver:String(data.get('driver')).trim(),carrier:String(data.get('carrier')).trim(),farmId:data.get('farmId')||prior?.farmId,bodyType:data.get('bodyType'),axles:Number(data.get('axles')==='other'?data.get('otherAxles'):data.get('axles')),monthly:parseAmount(data.get('monthly')),start:data.get('start'),end:data.get('end')||'',...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:structuredClone(prior.transferIn)}:{}),...(prior?.transferOut?{transferOut:structuredClone(prior.transferOut)}:{}),...(prior?.serviceEnded?{serviceEnded:structuredClone(prior.serviceEnded)}:{})};validateTruck(t,state,true);await remoteCommand('truck.save',t);modal.close();render();notify('Cadastro salvo.');}
+    else if(f.id==='end-activities-form'){const date=String(data.get('date'));await remoteCommand('truck.end',{id:f.dataset.id,date,note:String(data.get('note')||'')});currentMonth=date.slice(0,7);currentHalf=Number(date.slice(8))<=15?1:2;farmFilter='';modal.close();location.hash='closings';render();notify('Atividades encerradas e quinzena desta placa fechada.');}
+    else if(f.id==='transfer-form'){await remoteCommand('truck.transfer',{id:f.dataset.id,toFarmId:String(data.get('toFarmId')),date:String(data.get('date')),note:String(data.get('note')||'')});farmFilter='';modal.close();render();notify('Transferência registrada. Confira os períodos e valores por fazenda.');}
+    else if(f.id==='discount-form'){const d={id:f.dataset.id||uid(),truckId:data.get('truckId'),start:data.get('start'),end:data.get('end'),reason:data.get('reason'),note:String(data.get('note')).trim()};validateDiscount(d,state);await remoteCommand('discount.save',d);modal.close();render();notify('Desconto salvo e prévia atualizada.');}
+    else if(f.id==='payment-form'){const c=rowClosing(f.dataset.id),r=c?.rows.find(r=>r.truckId===f.dataset.id);if(!r||r.paid)throw Error('Confira a situação deste pagamento.');const date=data.get('date');if(!validDate(date)||date>today())throw Error('Informe uma data de pagamento válida, até hoje.');await remoteCommand('payment.record',{closingId:c.id,truckId:r.truckId,date,note:String(data.get('note')).trim()});modal.close();render();notify('Pagamento registrado.');}
+    else if(f.id==='farms-form'){const farms=[...f.querySelectorAll('[data-farm-id]')].map(input=>({...state.farms.find(farm=>farm.id===input.dataset.farmId),id:input.dataset.farmId,name:input.value.trim()}));if(!farms.length||farms.some(farm=>!farm.name))throw Error('Preencha o nome de cada fazenda.');if(farms.some(farm=>farm.name.length>80))throw Error('Use até 80 caracteres para o nome da fazenda.');if(new Set(farms.map(farm=>farm.name.toLocaleLowerCase('pt-BR'))).size!==farms.length)throw Error('Use nomes diferentes para identificar cada fazenda.');await remoteCommand('farms.save',{farms});farmDraftDirty=false;render();notify('Fazendas salvas.');}
+  }catch(err){formError(f,err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.');}
 });
 document.addEventListener('change',async ev=>{
   const el=ev.target;
@@ -415,7 +456,7 @@ document.addEventListener('change',async ev=>{
   else if(el.id==='transfer-farm'||el.id==='transfer-date')updateTransferPreview();
   else if(el.id==='closing-farm')updateClosingPreview();
   else if(el.id==='reopening-farm')updateReopeningPreview();
-  else if(el.id==='backup-file'&&el.files[0]){try{const file=el.files[0];if(file.size>10000000)throw Error('O arquivo é grande demais para este controle.');pendingBackup=applyFixedMonthlyRule(validateState(JSON.parse(await file.text())));confirmation('Restaurar este backup?',`O arquivo contém ${pendingBackup.trucks.length} caminhão(ões), ${pendingBackup.discounts.length} desconto(s) e ${pendingBackup.closings.length} fechamento(s). Os registros atuais deste navegador serão substituídos. Baixe um backup dos registros atuais antes de continuar, se precisar preservá-los.`,'confirm-import');}catch(err){pendingBackup=null;notify(err.message||'Não foi possível ler o backup.');}el.value='';}
+  else if(el.id==='backup-file'&&el.files[0]){try{const file=el.files[0];if(file.size>10000000)throw Error('O arquivo é grande demais para este controle.');pendingBackup=applyFixedMonthlyRule(validateState(JSON.parse(await file.text())));confirmation('Restaurar este backup?',`O arquivo contém ${pendingBackup.trucks.length} caminhão(ões), ${pendingBackup.discounts.length} desconto(s) e ${pendingBackup.closings.length} fechamento(s). Os registros atuais da empresa serão substituídos no banco online. Baixe um backup dos registros atuais antes de continuar, se precisar preservá-los.`,'confirm-import');}catch(err){pendingBackup=null;notify(err.message||'Não foi possível ler o backup.');}el.value='';}
 });
 document.addEventListener('input',ev=>{if(ev.target.id==='truck-search'){search=ev.target.value;const pos=ev.target.selectionStart;render();const el=document.querySelector('#truck-search');el.focus();el.setSelectionRange(pos,pos);}});
 modal.addEventListener('click',ev=>{if(ev.target===modal){const r=modal.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)modal.close();}});
@@ -444,5 +485,8 @@ document.addEventListener('focusout',ev=>{
   else if(ev.target.value.trim())ev.target.setCustomValidity('Informe um valor válido. Exemplo: 40.000,00.');
 });
 
+document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;});
 window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
 render();
+if(inviteTicket){cloud.inspectInvite(inviteTicket).then(info=>{inviteInfo=info;renderAccess();}).catch(error=>{const message=document.querySelector('#invite-message');if(message)message.textContent=authErrorMessage(error);});}
+setInterval(async()=>{if(!currentUser||saving||document.visibilityState==='hidden')return;try{const next=await cloud.version();if(next.revision!==serverRevision||next.role&&next.role!==currentUser.role){if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}else{await refreshServerData();}}}catch(error){if(error.status===401||error.status===403){currentUser=null;state=initialState();modal.close();reportDialog.close();render();}else{stale=true;updateCloudStatus();}}},60000);

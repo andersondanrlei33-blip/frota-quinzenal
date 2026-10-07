@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,period,saveClosing,transferTruck,validateState} from '../dist/engine.js';
-import {createReport,reportMarkup} from '../dist/reports.js';
+import {initialState,period,saveClosing,transferTruck,validateState} from '../server/engine.js';
+import {createReport,reportMarkup} from '../frontend/reports.js';
 
 function fleet(count=40){
   const state=initialState();

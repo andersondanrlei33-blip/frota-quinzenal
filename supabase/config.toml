@@ -1,0 +1,11 @@
+project_id = "frota-quinzenal"
+
+[functions.fleet-api]
+verify_jwt = true
+entrypoint = "../server/edge-api.js"
+
+# O primeiro acesso é autenticado por um convite secreto, de uso único,
+# validado no banco. Não permite cadastro sem um convite válido.
+[functions.fleet-access]
+verify_jwt = false
+entrypoint = "../server/edge-access.js"

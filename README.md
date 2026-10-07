@@ -1,33 +1,56 @@
 # Frota — pagamentos quinzenais
 
-Sistema de teste para cadastrar caminhões e fazendas, calcular o pagamento mensal em duas quinzenas, registrar descontos, transferir caminhões e gerar relatórios.
+Sistema online para uma empresa controlar caminhões contratados, fazendas, faltas, oficina, fechamentos e pagamentos. Os registros ficam no PostgreSQL do Supabase e são compartilhados pela equipe. O GitHub Pages hospeda a interface.
 
-## Como usar
+**Acessar:** https://andersondanrlei33-blip.github.io/frota-quinzenal/
 
-- Cadastre as fazendas e os caminhões com o valor mensal combinado.
-- Use a Visão geral para acompanhar a frota e os valores do mês.
-- Em Fechamentos, selecione o mês e a quinzena, confira os descontos e registre os pagamentos.
-- O relatório permite filtrar por fazenda, placa, competência, quinzena e somente pagos. A impressão permite salvar em PDF.
-- Um mês completo sem descontos soma o valor mensal cadastrado. Cada quinzena completa corresponde à metade, e períodos parciais são proporcionais aos dias daquela quinzena.
+## Primeiro acesso e equipe
 
-## Registros separados por navegador
+O proprietário recebe um link privado de ativação, válido por 72 horas e de uso único. Nesse link define nome da empresa, e-mail e senha com pelo menos 12 caracteres. Não há senha padrão nem cadastro público de empresas.
 
-Cada visitante começa sem caminhões, descontos ou pagamentos. As fazendas iniciais têm nomes genéricos e podem ser alteradas, removidas ou ampliadas.
+Em **Configurações → Equipe e acesso**, o administrador gera um link individual para o e-mail de cada funcionário e o entrega diretamente a ele. O funcionário define sua própria senha; quem já tem uma conta pode entrar com a senha existente. O sistema não envia esses links por e-mail.
 
-Os registros ficam no armazenamento local do navegador de cada pessoa. Não há banco de dados compartilhado nem envio de pagamentos para um servidor. Navegadores, dispositivos e endereços de site diferentes mantêm registros diferentes. Use o backup nas configurações para guardar ou transportar seus dados.
+- **Administrador:** controle completo, fazendas, equipe e restauração de backup.
+- **Operador:** caminhões, descontos, transferências, fechamentos e registros de pagamento.
+- **Somente consulta:** acesso às informações e relatórios.
 
-Esta versão remove o armazenamento da antiga versão de teste (`frota-quinzenal-v1`) ao carregar. Os novos registros usam uma chave independente e permanecem salvos depois da atualização.
+O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão fica somente na memória da página: ao recarregar ou fechar, o usuário entra novamente. Caminhões, descontos e pagamentos continuam no servidor.
 
-## Publicar com GitHub Pages
+## Cálculo e operação
 
-A pasta `docs` contém os arquivos estáticos prontos. Em **Settings → Pages**, selecione **Deploy from a branch**, a branch principal e a pasta **/docs**. Salve e aguarde a publicação.
+As quinzenas são fixas: dias 1–15 e 16–último dia do mês. Uma quinzena completa paga metade do valor mensal; a segunda recebe o centavo de ajuste, quando necessário. O mês completo soma exatamente o valor mensal combinado, mesmo em fevereiro ou em meses de 31 dias.
 
-Documentação: [Configurar a publicação do GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+Entrada, encerramento, falta e oficina são proporcionais aos dias efetivos de cada quinzena. Dias de entrada e de encerramento são incluídos. Transferências com data dividem os valores por fazenda. Os cálculos e validações são feitos no servidor.
+
+O fechamento preserva os valores e descontos considerados. Registrar pagamento altera o controle; não realiza transferência bancária. Caminhões cadastrados depois podem receber fechamento complementar. Relatórios permitem selecionar mês, quinzena, fazenda, placa e somente pagos, com paginação por fazenda para 40 caminhões.
+
+Quando duas pessoas editam ao mesmo tempo, o servidor rejeita a gravação desatualizada e solicita atualizar os dados. Nenhuma falha de conexão é tratada como salvamento concluído. A interface consulta atualizações a cada minuto; o botão **Atualizar dados** também recarrega o banco.
+
+## Dados e continuidade
+
+O banco foi iniciado sem caminhões, descontos ou pagamentos de teste. Há quatro nomes provisórios de fazendas, que podem ser editados; mais fazendas podem ser cadastradas. Fazendas com histórico podem ser inativadas.
+
+Use **Configurações → Baixar backup completo** para guardar cópias dos registros. Restauração substitui os registros da empresa e exige administrador. Esse arquivo cobre os registros da frota; contas e senhas são administradas pelo Supabase Auth.
+
+O projeto está no plano gratuito aprovado. Projetos gratuitos podem ser pausados por baixa atividade durante sete dias, e backups do banco não ficam disponíveis para download nesse plano. Consulte a [documentação de disponibilidade do Supabase](https://supabase.com/docs/guides/deployment/going-into-prod#availability) para definir o plano e a rotina de backup antes de depender do sistema na operação diária. Nenhum plano pago foi contratado.
+
+Produção, cobrança por CT-e/nota fiscal e combustível pertencem às próximas etapas.
 
 ## Desenvolvimento
 
-O sistema usa HTML, CSS e JavaScript sem dependências de produção. O código de desenvolvimento fica em `dist`; a cópia de publicação fica em `docs`. Ao atualizar o sistema, mantenha essas pastas sincronizadas.
+Requer Node.js 22 ou posterior. Não há dependências de terceiros na interface ou nos testes.
 
-Com Node.js instalado, execute `npm test` para conferir os cálculos e os fluxos. Para testar no navegador com Python instalado, execute `python -m http.server 8000 --directory docs` e abra `http://localhost:8000`.
+```sh
+npm test
+npm run build
+```
 
-Esta cópia não contém os cadastros ou pagamentos do teste anterior, as planilhas originais, os arquivos de apoio da conversa nem credenciais.
+- `frontend/`: interface e cliente autenticado; não grava registros nem credenciais no armazenamento persistente do navegador.
+- `server/`: comandos e validações financeiras, API, autenticação e funções Supabase.
+- `supabase/migrations/`: estrutura, permissões e transações do banco.
+- `docs/`: arquivos estáticos publicados pelo GitHub Pages, gerados pelo build.
+- `tests/`: cálculo, relatórios, API, permissões, concorrência e interface conectada ao servidor.
+
+As chaves públicas de conexão em `frontend/config.js` são identificadores de acesso público. As chaves administrativas são fornecidas somente pelo ambiente das Edge Functions. Nunca coloque senhas, tokens de ativação, chaves secretas ou arquivos de autenticação no repositório.
+
+As migrações já aplicadas no projeto não devem ser reaplicadas manualmente. Mudanças no servidor exigem publicar também as duas Edge Functions; publicar somente `docs/` atualiza apenas a interface. A função `fleet-api` exige JWT válido; `fleet-access` verifica o convite secreto antes de permitir o primeiro acesso.

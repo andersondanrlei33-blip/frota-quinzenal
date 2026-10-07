@@ -1,4 +1,7 @@
 node_modules/
-*.tar.gz
+.env
+.env.*
+!.env.example
+supabase/.temp/
+work/
 *.log
-preview.pid

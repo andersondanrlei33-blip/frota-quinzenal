@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../dist/engine.js';
+import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
 
 const truck={id:'a',plate:'ABC1D23',driver:'João',carrier:'Transportes',farmId:'farm1',monthly:40000,start:'2026-10-06',end:'2026-11-10'};
 const settings={mode:'daily30',includeStart:true,includeEnd:true,confirmed:true};
