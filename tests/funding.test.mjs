@@ -15,12 +15,12 @@ function closed(){
  saveClosing(state,p,'farm1','closing-one','2026-10-06');
  return state;
 }
-const create=(state,amount=10000)=>executeCommand(state,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',amount,description:'Adiantamento do frete'}),group).state;
+const create=state=>executeCommand(state,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',amount:1,description:'Transporte da quinzena'}),group).state;
 const proof=t=>({id:'d219975c-15e8-4d98-8ff2-a9b489b0f043',transferId:t.id,companyId:group.companyId,uploadedBy:carrier.userId,name:'recibo-assinado.pdf',mime:'application/pdf',size:400});
 
-test('a signed carrier receipt precedes a group transfer and remains separate from driver payments',()=>{
+test('the receipt amount is the farm fortnight net total and stays separate from driver payments',()=>{
  const state=create(closed());const t=state.fundingTransfers[0];
- assert.equal(t.status,'awaiting_receipt');assert.equal(t.amount,10000);assert.equal(state.closings[0].rows[0].paid,null);
+ assert.equal(t.status,'awaiting_receipt');assert.equal(t.amount,state.closings[0].rows.filter(row=>row.farmId==='farm1').reduce((n,row)=>n+row.net,0));assert.equal(state.closings[0].rows[0].paid,null);
  assert.throws(()=>executeCommand(state,command('funding.record',{id:t.id,date:today()}),group),/recibo assinado/);
  assert.throws(()=>executeCommand(state,command('funding.receipt',{id:t.id}),group,{fundingReceipt:proof(t)}),/transportadora/);
  for(const wrong of [null,{...proof(t),companyId:'other'},{...proof(t),transferId:'other'},{...proof(t),uploadedBy:'other'}])assert.throws(()=>executeCommand(state,command('funding.receipt',{id:t.id}),carrier,{fundingReceipt:wrong}),/recibo assinado válido/);
@@ -34,18 +34,18 @@ test('a signed carrier receipt precedes a group transfer and remains separate fr
  assert.throws(()=>reopenClosing(paid,p,'farm1'),/Transferências já efetuadas/);
 });
 
-test('multiple transfers can cover a single fortnight, cancellation preserves a signed receipt, and carrier sees no truck register',()=>{
- const first=create(closed(),10000),second=create(first,5000);
- assert.equal(second.fundingTransfers.length,2);
- assert.throws(()=>executeCommand(second,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',amount:0,description:'Adiantamento'}),group),/valor válido/);
- assert.throws(()=>executeCommand(second,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',amount:100,description:'Adiantamento'}),carrier),/transportadora/);
- const t=second.fundingTransfers[0],attached=executeCommand(second,command('funding.receipt',{id:t.id}),carrier,{fundingReceipt:proof(t)}).state;
+test('only one active fortnight receipt is allowed, cancellation preserves its signed receipt, and carrier sees no truck register',()=>{
+ const first=create(closed());
+ assert.throws(()=>create(first),/Já existe um recibo solicitado/);
+ assert.throws(()=>executeCommand(first,command('funding.create',{month:p.month,half:p.half,farmId:'farm1',description:'Adiantamento'}),carrier),/transportadora/);
+ const t=first.fundingTransfers[0],attached=executeCommand(first,command('funding.receipt',{id:t.id}),carrier,{fundingReceipt:proof(t)}).state;
  const cancelled=executeCommand(attached,command('funding.cancel',{id:t.id,reason:'Valor substituído'}),group).state;
  assert.equal(cancelled.fundingTransfers[0].status,'cancelled');assert.equal(cancelled.fundingTransfers[0].receipt.id,proof(t).id);
  assert.equal(fundingReceiptBelongsToHistory(cancelled,t.id,proof(t).id),true);
- const carrierView=presentState({state:cancelled,revision:4,company:{id:group.companyId}},carrier);
+ const recreated=create(cancelled);assert.equal(recreated.fundingTransfers.length,2);assert.throws(()=>create(recreated),/Já existe um recibo solicitado/);
+ const carrierView=presentState({state:recreated,revision:4,company:{id:group.companyId}},carrier);
  assert.equal(carrierView.state,null);assert.equal(carrierView.fundingTransfers.length,2);assert.equal(carrierView.fundingTransfers[0].receipt.name,'recibo-assinado.pdf');
- assert.throws(()=>executeCommand(cancelled,command('backup.import',{state:initialState()}),group),/histórico de recibos/);
+ assert.throws(()=>executeCommand(recreated,command('backup.import',{state:initialState()}),group),/histórico de recibos/);
 });
 
 test('signed receipt upload and viewing are restricted to the carrier and its company',async()=>{

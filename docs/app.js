@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=31';
-import {createReport,reportMarkup} from './reports.js?v=31';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=31';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=32';
+import {createReport,reportMarkup} from './reports.js?v=32';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=32';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -541,8 +541,8 @@ document.addEventListener('submit',async ev=>{
   if(!['truck-form','discount-form','payment-form','farms-form','transfer-form','end-activities-form','funding-create-form','funding-upload-form','funding-record-form','funding-cancel-form'].includes(f.id))return;ev.preventDefault();const data=new FormData(f);
   try {
     if(f.id==='funding-create-form'){
-      const [periodKey,farmId]=String(data.get('selection')||'').split('|'),month=periodKey?.slice(0,7),half=Number(periodKey?.slice(-1)),amount=parseAmount(data.get('amount'));
-      await remoteCommand('funding.create',{month,half,farmId,amount,description:String(data.get('description')||'').trim()});modal.close();render();notify('Solicitação de recibo enviada à transportadora.');
+      const [periodKey,farmId]=String(data.get('selection')||'').split('|'),month=periodKey?.slice(0,7),half=Number(periodKey?.slice(-1));
+      await remoteCommand('funding.create',{month,half,farmId,description:String(data.get('description')||'').trim()});modal.close();render();notify('Solicitação de recibo enviada à transportadora.');
     }
     else if(f.id==='funding-upload-form'){
       if(!isCarrier()||!canOperate())throw Error('O recibo exige acesso da transportadora.');
@@ -579,6 +579,7 @@ document.addEventListener('change',async ev=>{
   const el=ev.target;
   if(el.matches?.('[data-member-profile]')){try{const [party,role]=el.value.split(':');await cloud.updateMember(el.dataset.id,role,el.dataset.active==='true',party);await loadTeam();notify('Perfil de acesso atualizado.');}catch(error){notify(error.message);await loadTeam();}return;}
   if(el.id==='request-period'){portalPeriod=el.value;render();return;}
+  if(el.id==='funding-selection'){const [key,farmId]=String(el.value||'').split('|'),amount=document.querySelector('#funding-amount');if(amount)amount.value=money(fundingPeriodTotal(key,farmId));return;}
   if(el.id==='request-farm'){portalFarm=el.value;render();return;}
   if(el.id==='request-scope'){portalScope=el.value;render();return;}
   if(['report-month','report-half','report-farm','report-scope','report-plate'].includes(el.id)){updateReportPeriod();return;}
@@ -720,11 +721,13 @@ function fundingPanel(){
 }
 function createFundingForm(){
  if(isCarrier()||!canOperate())throw Error('Esta solicitação exige acesso do grupo.');
- const choices=[...new Map(state.closings.flatMap(c=>c.rows.map(r=>[c.period.key+'|'+r.farmId,{key:c.period.key+'|'+r.farmId,period:c.period,farmName:r.farmName}]))).values()].sort((a,b)=>b.period.key.localeCompare(a.period.key));
- if(!choices.length)throw Error('Feche uma quinzena antes de solicitar o recibo.');
+ const choices=[...new Map(state.closings.flatMap(c=>c.rows.map(r=>[c.period.key+'|'+r.farmId,{key:c.period.key+'|'+r.farmId,period:c.period,farmId:r.farmId,farmName:r.farmName}]))).values()].filter(x=>fundingPeriodTotal(x.period.key,x.farmId)>0&&!state.fundingTransfers.some(t=>t.period?.key===x.period.key&&t.farmId===x.farmId&&t.status!=='cancelled')).sort((a,b)=>b.period.key.localeCompare(a.period.key));
+ if(!choices.length)throw Error('Não há quinzenas fechadas com saldo líquido disponível para solicitar recibo.');
  const preferred=choices.find(x=>x.period.key===portalPeriod&&(!portalFarm||x.key.endsWith('|'+portalFarm)))?.key||choices[0].key;
- openModal('Solicitar recibo da transportadora','Um documento assinado para cada transferência prevista.',`<form id="funding-create-form">${errBox()}<div class="field"><label>Fazenda e quinzena *</label><select name="selection" required>${choices.map(x=>opt(x.key,x.farmName+' · '+periodLabel(x.period),preferred)).join('')}</select></div><div class="field"><label>Valor da transferência (R$) *</label><input id="funding-amount" name="amount" inputmode="decimal" placeholder="Ex.: 30.736,20" required></div><div class="field"><label>Descrição do serviço *</label><textarea name="description" maxlength="200" required placeholder="Ex.: adiantamento referente ao transporte de algodão"></textarea></div><div class="form-note">O valor pode ser um adiantamento e não precisa ser igual ao total dos motoristas. A transportadora anexará o recibo assinado antes do repasse.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Enviar solicitação de recibo</button></div></form>`);
+ const [selectedPeriod,selectedFarm]=preferred.split('|');
+ openModal('Solicitar recibo da transportadora','Um recibo assinado no valor líquido da quinzena.',`<form id="funding-create-form">${errBox()}<div class="field"><label>Fazenda e quinzena *</label><select id="funding-selection" name="selection" required>${choices.map(x=>opt(x.key,x.farmName+' · '+periodLabel(x.period),preferred)).join('')}</select></div><div class="field"><label>Total líquido da quinzena (R$)</label><input id="funding-amount" value="${e(money(fundingPeriodTotal(selectedPeriod,selectedFarm)))}" readonly aria-readonly="true"><small>Calculado automaticamente pela soma dos valores líquidos fechados das placas.</small></div><div class="field"><label>Descrição do serviço *</label><textarea name="description" maxlength="200" required placeholder="Ex.: transporte de algodão na quinzena"></textarea></div><div class="form-note">O valor do recibo corresponde ao total líquido desta fazenda e quinzena. A transportadora anexará o documento assinado antes de o grupo registrar a transferência.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Solicitar recibo da quinzena</button></div></form>`);
 }
+function fundingPeriodTotal(periodKey,farmId){return round(state.closings.filter(c=>c.period?.key===periodKey).flatMap(c=>c.rows).filter(row=>row.farmId===farmId).reduce((total,row)=>total+Math.round(Number(row.net||0)*100),0)/100);}
 function uploadFundingForm(id){
  const t=portalFundingTransfers.find(item=>item.id===id);if(!t||t.status!=='awaiting_receipt'||!isCarrier()||!canOperate())throw Error('Esta transferência não está aguardando recibo.');
  openModal('Anexar recibo assinado',t.farmName+' · '+periodLabel(t.period),`<form id="funding-upload-form" data-id="${e(id)}">${errBox()}<div class="form-note"><strong>${money(t.amount)}</strong><br>${e(t.description)}<br>Confira se o documento assinado corresponde a esta transferência.</div><div class="field"><label>Recibo assinado *</label><input type="file" name="receipt" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required><small>PDF, JPG ou PNG de até 10 MB. O grupo poderá conferir o arquivo antes de registrar o repasse.</small></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Enviar recibo assinado</button></div></form>`);
