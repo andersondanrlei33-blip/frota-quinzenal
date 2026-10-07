@@ -41,8 +41,21 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     },
     async sign(receipt){const result=await service('/storage/v1/object/sign/'+bucket+'/'+objectPath(receipt.objectKey),{method:'POST',body:{expiresIn:60}});const returned=result?.signedURL||result?.signedUrl;if(!returned)throw Error('Não foi possível abrir o comprovante.');const signed=new URL(returned.startsWith('/storage/')?returned:'/storage/v1'+returned,url);if(signed.origin!==new URL(url).origin||!signed.pathname.startsWith('/storage/v1/object/sign/'+bucket+'/'))throw Error('Endereço de comprovante inválido.');return signed.href;}
   };
+  const fundingReceipts={
+    async find(companyId,id){if(!/^[0-9a-f-]{36}$/i.test(id||''))return null;const rows=await service('/rest/v1/fleet_funding_receipts?'+new URLSearchParams({id:'eq.'+id,company_id:'eq.'+companyId,select:'*'}));const row=rows?.[0];return row?{id:row.id,companyId:row.company_id,transferId:row.transfer_id,uploadedBy:row.uploaded_by,name:row.file_name,mime:row.content_type,size:row.size_bytes,objectKey:row.object_key}:null;},
+    async upload(who,transferId,bytes,details){
+      const id=crypto.randomUUID(),key=who.companyId+'/funding/'+id+'/recibo.'+details.extension;
+      const response=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(key),{method:'POST',headers:{...serviceHeaders,'Content-Type':details.mime,'x-upsert':'false','Cache-Control':'no-store'},body:bytes});
+      if(!response.ok)throw Error('Não foi possível guardar o recibo assinado. Tente novamente.');
+      try{await service('/rest/v1/fleet_funding_receipts',{method:'POST',body:{id,company_id:who.companyId,transfer_id:transferId,uploaded_by:who.userId,object_key:key,file_name:details.name,content_type:details.mime,size_bytes:details.size}});}
+      catch(error){await service('/storage/v1/object/'+bucket,{method:'DELETE',body:{prefixes:[key]}}).catch(()=>{});throw error;}
+      return {id,name:details.name,mime:details.mime,size:details.size};
+    },
+    sign:receipts.sign
+  };
   repository.verifyReceipt=async(who,id,requestId)=>{const receipt=await receipts.find(who.companyId,id);if(!receipt||receipt.requestId!==requestId||receipt.uploadedBy!==who.userId)throw Error('Anexe um comprovante válido para esta solicitação.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do comprovante não está disponível. Anexe novamente.');return receipt;};
-  return {service,rpc,user,actor,repository,receipts,responseJson};
+  repository.verifyFundingReceipt=async(who,id,transferId)=>{const receipt=await fundingReceipts.find(who.companyId,id);if(!receipt||receipt.transferId!==transferId||receipt.uploadedBy!==who.userId)throw Error('Anexe o recibo assinado da transportadora para esta transferência.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do recibo não está disponível. Anexe novamente.');return receipt;};
+  return {service,rpc,user,actor,repository,receipts,fundingReceipts,responseJson};
 }
 export async function sha256(value){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
 export function randomTicket(){return [...crypto.getRandomValues(new Uint8Array(32))].map(byte=>byte.toString(16).padStart(2,'0')).join('');}

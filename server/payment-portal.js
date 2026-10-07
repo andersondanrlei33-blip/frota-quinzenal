@@ -2,9 +2,9 @@ import {period,periodClosings,applyFixedMonthlyRule,uid,validDate,today,paymentD
 const fail=message=>{const error=Error(message);error.status=403;throw error;};
 export const partyOf=actor=>actor?.party||'group';
 export function authorizePortalCommand(command,actor){
- const party=partyOf(actor),payment=['payment.record','payment.undo'].includes(command.type);
- if(party==='carrier'&&!payment)fail('A transportadora pode registrar pagamentos e comprovantes das solicitações recebidas.');
- if(party==='group'&&command.type==='payment.record')fail('O pagamento deve ser registrado pelo acesso da transportadora, com comprovante.');
+ const party=partyOf(actor),payment=['payment.record','payment.undo','funding.receipt'].includes(command.type);
+ if(party==='carrier'&&!payment)fail('A transportadora pode enviar recibos assinados e registrar pagamentos dos motoristas.');
+ if(party==='group'&&['payment.record','funding.receipt'].includes(command.type))fail('Este documento deve ser enviado pelo acesso da transportadora.');
  if(party==='group'&&command.type==='payment.undo'&&actor.role!=='admin')fail('Somente a transportadora pode corrigir esse pagamento.');
 }
 export function requestPayments(state,payload,actor){
@@ -50,6 +50,8 @@ export function undoRequestedPayment(state,payload,actor){
  request.paymentHistory.push({payment:structuredClone(request.payment),reason,at:new Date().toISOString(),by:actor.userId});row.paidHistory=structuredClone(request.paymentHistory);row.paid=null;request.payment=null;request.status='pending';
 }
 export function protectPortalBackup(current,restored){
+ for(const transfer of current.fundingTransfers||[]){const other=restored.fundingTransfers?.find(t=>t.id===transfer.id);if(JSON.stringify(transfer)!==JSON.stringify(other))throw Error('O backup não pode substituir o histórico de recibos e transferências.');}
+ for(const transfer of restored.fundingTransfers||[])if(!current.fundingTransfers?.some(t=>t.id===transfer.id))throw Error('Transferências não podem ser criadas por importação.');
  for(const request of current.paymentRequests){const other=restored.paymentRequests.find(r=>r.id===request.id);if(JSON.stringify(request)!==JSON.stringify(other))throw Error('O backup não pode substituir o histórico de solicitações e pagamentos do portal.');}
  for(const request of restored.paymentRequests)if(!current.paymentRequests.some(r=>r.id===request.id))throw Error('Solicitações do portal não podem ser criadas por importação.');
  for(const closing of current.closings)for(const row of closing.rows)if(row.paid||row.requestId||row.paidHistory?.length){const other=restored.closings.find(c=>c.id===closing.id)?.rows.find(r=>r.truckId===row.truckId);if(JSON.stringify(row)!==JSON.stringify(other))throw Error('O backup deve preservar os pagamentos e solicitações já registrados.');}
@@ -57,6 +59,6 @@ export function protectPortalBackup(current,restored){
 }
 export function presentState(current,actor){
  const user={id:actor.userId,email:actor.email||'',role:actor.role,party:partyOf(actor)};
- if(partyOf(actor)==='carrier')return {revision:current.revision,company:current.company,user,state:null,requests:structuredClone(current.state.paymentRequests||[])};
+ if(partyOf(actor)==='carrier')return {revision:current.revision,company:current.company,user,state:null,requests:structuredClone(current.state.paymentRequests||[]),fundingTransfers:structuredClone(current.state.fundingTransfers||[])};
  return {...current,user};
 }

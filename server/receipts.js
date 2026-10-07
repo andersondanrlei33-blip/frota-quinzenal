@@ -20,27 +20,35 @@ export function inspectReceipt(bytes,name){
 export function receiptBelongsToHistory(state,requestId,receiptId){
  const request=state.paymentRequests.find(r=>r.id===requestId);return !!request&&(request.payment?.receipt?.id===receiptId||request.paymentHistory.some(item=>item.payment?.receipt?.id===receiptId));
 }
+export function fundingReceiptBelongsToHistory(state,transferId,receiptId){
+ const transfer=state.fundingTransfers?.find(item=>item.id===transferId);
+ return !!transfer&&transfer.receipt?.id===receiptId;
+}
 export function createReceiptApi({backend}){
  return async request=>{
   const actor=await backend.actor(request);if(!actor?.userId)return backend.responseJson({error:'Faça login.'},401);
   if(!actor.companyId)return backend.responseJson({error:'Sua conta não tem acesso a esta empresa.'},403);
   const path=new URL(request.url).pathname;
-  if(request.method==='POST'&&path.endsWith('/api/receipts')){
+  if(request.method==='POST'&&(path.endsWith('/api/receipts')||path.endsWith('/api/funding-receipts'))){
+   const funding=path.endsWith('/api/funding-receipts');
    if(partyOf(actor)!=='carrier'||actor.role==='viewer')return backend.responseJson({error:'Somente a transportadora pode anexar comprovantes de pagamento.'},403);
    if(Number(request.headers.get('Content-Length'))>RECEIPT_LIMIT+65536)throw Error('O comprovante deve ter até 10 MB.');
-   const data=await boundedFormData(request),requestId=String(data.get('requestId')||''),file=data.get('file');
+   const data=await boundedFormData(request),requestId=String(data.get(funding?'transferId':'requestId')||''),file=data.get('file');
    if(!file||typeof file.arrayBuffer!=='function'||file.size>RECEIPT_LIMIT)throw Error('Anexe um comprovante de até 10 MB.');
-   const current=await backend.repository.load(actor.companyId),target=locateRequest(current.state,requestId);
-   if(target.request.status!=='pending'||!target.row||target.row.paid)throw Error('A solicitação não está aguardando pagamento.');
-   if(paymentDetailsMissing(target.request.snapshot.paymentDetails).length)throw Error('Esta solicitação não tem dados de pagamento completos. Peça ao grupo que a cancele e envie novamente.');
+   const current=await backend.repository.load(actor.companyId);
+   if(funding){const transfer=current.state.fundingTransfers?.find(item=>item.id===requestId);if(!transfer||transfer.status!=='awaiting_receipt')throw Error('Esta transferência não está aguardando recibo.');}
+   else{const target=locateRequest(current.state,requestId);if(target.request.status!=='pending'||!target.row||target.row.paid)throw Error('A solicitação não está aguardando pagamento.');if(paymentDetailsMissing(target.request.snapshot.paymentDetails).length)throw Error('Esta solicitação não tem dados de pagamento completos. Peça ao grupo que a cancele e envie novamente.');}
    const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectReceipt(bytes,file.name);
-   const saved=await backend.receipts.upload(actor,requestId,bytes,details);return backend.responseJson(saved);
+   const saved=await (funding?backend.fundingReceipts:backend.receipts).upload(actor,requestId,bytes,details);return backend.responseJson(saved);
   }
   if(request.method==='GET'){
    const id=path.split('/').at(-1);if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Comprovante inválido.');
-   const receipt=await backend.receipts.find(actor.companyId,id),current=await backend.repository.load(actor.companyId);
-   if(!receipt||!receiptBelongsToHistory(current.state,receipt.requestId,id))return backend.responseJson({error:'Comprovante não encontrado para esta empresa.'},404);
-   return backend.responseJson({name:receipt.name,signedUrl:await backend.receipts.sign(receipt),expiresIn:60});
+   const current=await backend.repository.load(actor.companyId),receipt=await backend.receipts.find(actor.companyId,id);
+   if(receipt&&receiptBelongsToHistory(current.state,receipt.requestId,id))return backend.responseJson({name:receipt.name,signedUrl:await backend.receipts.sign(receipt),expiresIn:60});
+   if(!current.state.fundingTransfers?.length)return backend.responseJson({error:'Documento não encontrado para esta empresa.'},404);
+   const fundingReceipt=await backend.fundingReceipts.find(actor.companyId,id);
+   if(!fundingReceipt||!fundingReceiptBelongsToHistory(current.state,fundingReceipt.transferId,id))return backend.responseJson({error:'Documento não encontrado para esta empresa.'},404);
+   return backend.responseJson({name:fundingReceipt.name,signedUrl:await backend.fundingReceipts.sign(fundingReceipt),expiresIn:60});
   }
   return backend.responseJson({error:'Método não permitido.'},405);
  };

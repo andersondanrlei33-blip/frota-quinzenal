@@ -1,5 +1,6 @@
 import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
+import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
 const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove']);
 const allowedRoles=new Set(['admin','operator']);
@@ -42,6 +43,10 @@ export function executeCommand(input,command,actor,context={}){
     case 'payment.cancel':cancelRequest(state,p.requestId,text(p.note||'',300),actor);break;
     case 'payment.record':recordRequestedPayment(state,p,actor,context.receipt);break;
     case 'payment.undo':undoRequestedPayment(state,p,actor);break;
+    case 'funding.create':createFunding(state,p,actor);break;
+    case 'funding.receipt':attachFundingReceipt(state,p,actor,context.fundingReceipt);break;
+    case 'funding.record':recordFunding(state,p,actor);break;
+    case 'funding.cancel':cancelFunding(state,p,actor);break;
     case 'truck.transfer':transferTruck(state,p.id,p.toFarmId,p.date,text(p.note||'',300));break;
     case 'truck.end':endActivities(state,p.id,p.date,text(p.note||'',300));break;
     case 'farms.save':{

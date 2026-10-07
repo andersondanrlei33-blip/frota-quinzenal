@@ -16,9 +16,10 @@ async function boot(role='admin',activation=false,storage=null,party='group'){
   let account={role,party};const proofs=new Map();
   const repository={async load(){return structuredClone(stored);},async version(){return stored.revision;},async commit(company,revision,state){if(revision!==stored.revision)return null;stored={...stored,state:structuredClone(state),revision:revision+1};return structuredClone(stored);}};
   repository.verifyReceipt=async(actor,id,requestId)=>{const proof=proofs.get(id);if(!proof||proof.requestId!==requestId)throw Error('Comprovante inválido.');return proof;};
+  repository.verifyFundingReceipt=async(actor,id,transferId)=>{const proof=proofs.get(id);if(!proof||proof.transferId!==transferId||proof.uploadedBy!==actor.userId)throw Error('Recibo inválido.');return proof;};
   const api=createFleetApi({repository,authenticate:async request=>request.headers.get('Authorization')?{userId:account.party==='carrier'?'carrier-test':'group-test',companyId:'company-one',email:'user@example.test',...account}:null});
   const calls=[];
-  const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:[]});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
+  const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')||url.endsWith('/api/funding-receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),transferId:options.body.get('transferId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:[]});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
   class FormData {constructor(form){this.values=form?.data||new Map();}get(name){return this.values.get(name);}has(name){return this.values.has(name);}append(name,value){this.values.set(name,value);}}
   const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return intervals.length;},console});
   vm.runInContext(code,sandbox,{timeout:1000});await new Promise(resolve=>setImmediate(resolve));
@@ -44,6 +45,24 @@ test('payment details display CPF and CNPJ with punctuation',async()=>{
   assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
   assert.equal(app.run("formatPaymentDocument('12345678000199')"),'12.345.678/0001-99');
   assert.match(app.run("paymentDetailsMarkup({method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'})"),/CPF\/CNPJ: <strong>055\.561\.101-90<\/strong>/);
+});
+test('group requests a transfer receipt, carrier uploads it, and group records the transfer',async()=>{
+  const app=await boot();await app.submit('access-form',{email:'group@example.test',password:'sixchars'});
+  const month=app.run('today()').slice(0,7),date=app.run('today()');app.run(`currentMonth='${month}';currentHalf=1;`);
+  assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''}),'');
+  app.get('#closing-farm').value='farm1';await app.action('confirm-close');app.run("location.hash='#requests';render()");
+  assert.equal(await app.submit('funding-create-form',{selection:month+'-1|farm1',amount:'10.000,00',description:'Adiantamento do frete'}),'');
+  const transfer=app.state().state.fundingTransfers[0];assert.equal(transfer.amount,10000);assert.match(app.get('#main').innerHTML,/Solicitar recibo/);
+  await app.action('cloud-logout');app.account('carrier');await app.submit('access-form',{email:'carrier@example.test',password:'sixchars'});
+  assert.match(app.get('#main').innerHTML,/Anexar recibo/);
+  const file=new File(['%PDF-1.4\nFixture'],'recibo-assinado.pdf',{type:'application/pdf'});
+  assert.equal(await app.submit('funding-upload-form',{receipt:file},{id:transfer.id}),'');
+  assert.equal(app.state().state.fundingTransfers[0].status,'receipt_submitted');
+  await app.action('cloud-logout');app.account('group','admin');await app.submit('access-form',{email:'group@example.test',password:'sixchars'});app.run("location.hash='#requests';render()");
+  assert.match(app.get('#main').innerHTML,/Registrar transferência/);
+  assert.equal(await app.submit('funding-record-form',{date,reference:'TED 123'},{id:transfer.id}),'');
+  assert.equal(app.state().state.fundingTransfers[0].status,'transferred');
+  assert.equal(app.state().state.closings[0].rows[0].paid,null);
 });
 test('CPF and CNPJ are masked as entered or pasted, with editable separators',async()=>{
   const app=await boot();

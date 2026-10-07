@@ -1,10 +1,10 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=30';
-import {createReport,reportMarkup} from './reports.js?v=30';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=30';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=31';
+import {createReport,reportMarkup} from './reports.js?v=31';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=31';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
-let portalRequests=[],portalPeriod='',portalFarm='',portalSearch='',portalScope='pending';
+let portalRequests=[],portalFundingTransfers=[],portalPeriod='',portalFarm='',portalSearch='',portalScope='pending';
 const isCarrier=()=>currentUser?.party==='carrier';
 const canOperate=()=>['admin','operator'].includes(currentUser?.role);
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',view='overview',toastTimer;
@@ -101,7 +101,7 @@ async function remoteCommand(type,payload) {
 }
 function adoptServerData(data) {
   if(data.user)currentUser=data.user;if(data.company)currentCompany=data.company;
-  if(isCarrier()){state=initialState();portalRequests=data.requests||[];}else{state=applyFixedMonthlyRule(validateState(data.state));portalRequests=state.paymentRequests;}
+  if(isCarrier()){state=initialState();portalRequests=data.requests||[];portalFundingTransfers=data.fundingTransfers||[];}else{state=applyFixedMonthlyRule(validateState(data.state));portalRequests=state.paymentRequests;portalFundingTransfers=state.fundingTransfers;}
   serverRevision=data.revision;loadError='';updateCloudStatus();
 }
 function updateCloudStatus() {
@@ -209,8 +209,9 @@ function render() {
   const labels={overview:'Visão geral',trucks:'Caminhões',discounts:'Descontos',closings:'Fechamentos',settings:'Configurações',requests:'Solicitações de pagamento'};
   document.querySelector('#breadcrumb-current').textContent=labels[view];document.querySelectorAll('[data-nav]').forEach(a=>{a.hidden=isCarrier()&&a.dataset.nav!=='requests';a.classList.toggle('active',a.dataset.nav===view);a.setAttribute('aria-current',a.dataset.nav===view?'page':'false');});
   main.innerHTML=({overview,trucks:trucksView,discounts:discountsView,closings:closingsView,settings:settingsView,requests:requestsView}[view])();
+  if(view==='requests')main.insertAdjacentHTML('beforeend',fundingPanel());
   if(view==='settings'){main.insertAdjacentHTML('beforeend',teamSettings());loadTeam();}
-  const writeActions=new Set(['new-truck','edit-truck','transfer-truck','end-activities','new-discount','edit-discount','delete-discount','close-period','reopen-period','reopen-batch','pay','undo-payment','demo','remove-demo','import-backup','request-payments','request-one','cancel-request','correct-request','legacy-undo','pay-request']);
+  const writeActions=new Set(['new-truck','edit-truck','transfer-truck','end-activities','new-discount','edit-discount','delete-discount','close-period','reopen-period','reopen-batch','pay','undo-payment','demo','remove-demo','import-backup','request-payments','request-one','cancel-request','correct-request','legacy-undo','pay-request','funding-create','funding-upload','funding-record','funding-cancel']);
   document.querySelectorAll('[data-action]').forEach(button=>{if(currentUser.role==='viewer'&&writeActions.has(button.dataset.action))button.disabled=true;if(currentUser.role!=='admin'&&['add-farm','remove-farm','inactivate-farm','reactivate-farm','import-backup','demo','remove-demo'].includes(button.dataset.action))button.disabled=true;});
   if(currentUser.role!=='admin')document.querySelectorAll('#farms-form input,#farms-form button').forEach(element=>element.disabled=true);
   updateCloudStatus();
@@ -454,9 +455,13 @@ document.addEventListener('click',async ev=>{
     else if(a==='restore-session')await restoreSession();
     else if(a==='forget-session'){cloud.forgetSession();render();}
     else if(a==='auth-switch'){inviteSignin=!inviteSignin;renderAccess();}
-    else if(a==='cloud-logout'){try{await cloud.logout();}finally{currentUser=null;currentCompany=null;state=initialState();portalRequests=[];modal.close();reportDialog.close();modalContent.innerHTML='';document.querySelector('#report-content').innerHTML='';render();}}
+    else if(a==='cloud-logout'){try{await cloud.logout();}finally{currentUser=null;currentCompany=null;state=initialState();portalRequests=[];portalFundingTransfers=[];modal.close();reportDialog.close();modalContent.innerHTML='';document.querySelector('#report-content').innerHTML='';render();}}
     else if(a==='member-status'){await cloud.updateMember(id,b.dataset.role,b.dataset.active==='true',b.dataset.party||null);await loadTeam();}
     else if(a==='request-payments')requestPaymentsForm();
+    else if(a==='funding-create')createFundingForm();
+    else if(a==='funding-upload')uploadFundingForm(id);
+    else if(a==='funding-record')recordFundingForm(id);
+    else if(a==='funding-cancel')cancelFundingForm(id);
     else if(a==='request-one')requestPaymentsForm(id);
     else if(a==='request-detail')requestDetail(id);
     else if(a==='pay-request')paymentForm(id);
@@ -533,9 +538,25 @@ document.addEventListener('submit',async ev=>{
     else{const note=String(data.get('note')||'').trim();if(!note)throw Error('Informe o motivo.');await remoteCommand(f.dataset.operation==='cancel'?'payment.cancel':'payment.undo',f.dataset.operation==='legacy'?{closingId:rowClosing(f.dataset.id).id,truckId:f.dataset.id,note}:{requestId:f.dataset.id,note});modal.close();render();notify(f.dataset.operation==='cancel'?'Solicitação cancelada. O fechamento pode ser reaberto.':'Correção registrada. O histórico e os comprovantes anteriores foram preservados.');}}
     catch(error){formError(f,error.message);}finally{button.disabled=false;}return;
   }
-  if(!['truck-form','discount-form','payment-form','farms-form','transfer-form','end-activities-form'].includes(f.id))return;ev.preventDefault();const data=new FormData(f);
+  if(!['truck-form','discount-form','payment-form','farms-form','transfer-form','end-activities-form','funding-create-form','funding-upload-form','funding-record-form','funding-cancel-form'].includes(f.id))return;ev.preventDefault();const data=new FormData(f);
   try {
-    if(f.id==='truck-form'){
+    if(f.id==='funding-create-form'){
+      const [periodKey,farmId]=String(data.get('selection')||'').split('|'),month=periodKey?.slice(0,7),half=Number(periodKey?.slice(-1)),amount=parseAmount(data.get('amount'));
+      await remoteCommand('funding.create',{month,half,farmId,amount,description:String(data.get('description')||'').trim()});modal.close();render();notify('Solicitação de recibo enviada à transportadora.');
+    }
+    else if(f.id==='funding-upload-form'){
+      if(!isCarrier()||!canOperate())throw Error('O recibo exige acesso da transportadora.');
+      const file=data.get('receipt');if(!file||!file.size||file.size>10*1024*1024)throw Error('Anexe um PDF, JPG ou PNG de até 10 MB.');
+      const button=f.querySelector('[type="submit"]');button.disabled=true;
+      try{const receipt=await cloud.uploadFundingReceipt(f.dataset.id,file);await remoteCommand('funding.receipt',{id:f.dataset.id,receiptId:receipt.id});modal.close();render();notify('Recibo assinado enviado ao grupo.');}finally{button.disabled=false;}
+    }
+    else if(f.id==='funding-record-form'){
+      await remoteCommand('funding.record',{id:f.dataset.id,date:String(data.get('date')||''),reference:String(data.get('reference')||'').trim()});modal.close();render();notify('Transferência à transportadora registrada.');
+    }
+    else if(f.id==='funding-cancel-form'){
+      await remoteCommand('funding.cancel',{id:f.dataset.id,reason:String(data.get('reason')||'').trim()});modal.close();render();notify('Solicitação de recibo cancelada.');
+    }
+    else if(f.id==='truck-form'){
       const id=f.dataset.id||uid(),prior=state.trucks.find(t=>t.id===id),method=String(data.get('paymentMethod')||'');
       const selectedBank=String(data.get('paymentBankSelection')||'');
       const paymentDetails=normalizePaymentDetails({method,holder:String(data.get('paymentHolder')||''),document:formatPaymentDocument(data.get('paymentDocument')),pixKey:method==='pix'?String(data.get('paymentPixKey')||''):'',bankName:method==='bank'?(selectedBank==='other'?String(data.get('paymentOtherBankName')||''):selectedBank):'',agency:method==='bank'?String(data.get('paymentAgency')||''):'',account:method==='bank'?String(data.get('paymentAccount')||''):'',accountType:method==='bank'?String(data.get('paymentAccountType')||''):''});
@@ -592,7 +613,7 @@ function updateDateRange(form) {
 document.addEventListener('input',ev=>{
   if(ev.target.id==='truck-payment-document')maskPaymentDocumentInput(ev.target);
   if(['discount-start','discount-end','truck-start','truck-end'].includes(ev.target.id))updateDateRange(ev.target.form);
-  if(['truck-monthly','discount-amount'].includes(ev.target.id))ev.target.setCustomValidity('');
+  if(['truck-monthly','discount-amount','funding-amount'].includes(ev.target.id))ev.target.setCustomValidity('');
   if(ev.target.id==='transfer-date')updateTransferPreview();
   if(ev.target.id==='activity-end-date')updateActivityEndPreview();
 });
@@ -613,7 +634,7 @@ document.addEventListener('keydown',ev=>{
 });
 document.addEventListener('focusout',ev=>{
   if(ev.target.id==='truck-payment-document'){ev.target.value=formatPaymentDocumentInput(ev.target.value);return;}
-  if(!['truck-monthly','discount-amount'].includes(ev.target.id))return;
+  if(!['truck-monthly','discount-amount','funding-amount'].includes(ev.target.id))return;
   const n=parseAmount(ev.target.value);
   if(Number.isFinite(n)&&n>0){ev.target.value=amountLabel(n);ev.target.setCustomValidity('');}
   else if(ev.target.value.trim())ev.target.setCustomValidity('Informe um valor válido. Exemplo: 40.000,00.');
@@ -645,12 +666,14 @@ async function checkForUpdates(force=false){
     if(stale||next.revision!==serverRevision||next.role&&next.role!==currentUser.role||next.party&&next.party!==currentUser.party){
       if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}
       else{
-        const knownRequests=new Set(portalRequests.map(request=>request.id));
+        const knownRequests=new Set(portalRequests.map(request=>request.id)),knownFunding=new Map(portalFundingTransfers.map(t=>[t.id,t.status]));
         if(!await refreshServerData({automatic:true}))return;
         if(isCarrier()){
           const added=portalRequests.filter(request=>request.status==='pending'&&!knownRequests.has(request.id)).length;
           if(added)notify(added===1?'Nova solicitação de pagamento recebida.':`${added} novas solicitações de pagamento recebidas.`);
+          else if(portalFundingTransfers.some(t=>t.status==='awaiting_receipt'&&!knownFunding.has(t.id)))notify('Nova solicitação de recibo recebida.');
         }
+        else if(portalFundingTransfers.some(t=>t.status==='receipt_submitted'&&knownFunding.get(t.id)==='awaiting_receipt'))notify('A transportadora enviou um recibo assinado para conferência.');
       }
     }
   }catch(error){
@@ -682,11 +705,35 @@ function requestReasonForm(id,operation){const title=operation==='cancel'?'Cance
 const requestStatus=r=>r.status==='paid'?'Pago':r.status==='cancelled'?'Solicitação cancelada':'Fechado, aguardando pagamento';
 const timeLabel=value=>value?new Date(value).toLocaleString('pt-BR',{timeZone:'America/Cuiaba'}):'—';
 function requestsView(){
- const periods=[...new Map(portalRequests.map(r=>[r.period.key,r.period])).values()].sort((a,b)=>b.key.localeCompare(a.key)),farms=isCarrier()?[...new Map(portalRequests.map(r=>[r.snapshot.farmId,{id:r.snapshot.farmId,name:r.snapshot.farmName}])).values()]:state.farms;
+ const periods=[...new Map([...portalRequests,...portalFundingTransfers].map(r=>[r.period.key,r.period])).values()].sort((a,b)=>b.key.localeCompare(a.key)),farms=isCarrier()?[...new Map([...portalRequests.map(r=>({id:r.snapshot.farmId,name:r.snapshot.farmName})),...portalFundingTransfers.map(t=>({id:t.farmId,name:t.farmName}))].map(f=>[f.id,f])).values()]:state.farms;
  const base=portalRequests.filter(r=>(!portalPeriod||r.period.key===portalPeriod)&&(!portalFarm||r.snapshot.farmId===portalFarm)&&(!portalSearch||(r.snapshot.plate+' '+r.snapshot.driver).toLocaleLowerCase('pt-BR').includes(portalSearch.toLocaleLowerCase('pt-BR')))).sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt)||a.snapshot.farmName.localeCompare(b.snapshot.farmName));
  const list=base.filter(r=>portalScope==='all'||r.status===portalScope);
  const total=round(list.reduce((n,r)=>n+r.snapshot.net,0)),paid=round(base.filter(r=>r.status==='paid').reduce((n,r)=>n+r.snapshot.net,0)),pending=round(base.filter(r=>r.status==='pending').reduce((n,r)=>n+r.snapshot.net,0));
  return head(isCarrier()?'Pagamentos da transportadora':'Solicitações de pagamento',isCarrier()?'Receba as solicitações do grupo e registre cada pagamento com comprovante.':'Acompanhe os pagamentos das fazendas e consulte os comprovantes da transportadora.','','GRUPO E TRANSPORTADORA')+`<div class="period-bar"><div class="period-controls"><select id="request-period" aria-label="Filtrar quinzena">${opt('','Todas as quinzenas',portalPeriod)}${periods.map(p=>opt(p.key,periodLabel(p),portalPeriod)).join('')}</select><select id="request-farm" aria-label="Filtrar fazenda">${opt('','Todas as fazendas',portalFarm)}${farms.map(f=>opt(f.id,f.name,portalFarm)).join('')}</select><select id="request-scope" aria-label="Filtrar situação">${opt('pending','Aguardando pagamento',portalScope)}${opt('paid','Pagos',portalScope)}${opt('cancelled','Solicitações canceladas',portalScope)}${opt('all','Todas as solicitações',portalScope)}</select><input id="request-search" type="search" value="${e(portalSearch)}" placeholder="Buscar placa ou motorista" aria-label="Buscar placa ou motorista"></div></div><div class="metric-grid request-metrics"><div class="metric"><div class="metric-label">Solicitações nesta seleção</div><div class="metric-value">${base.length}</div></div><div class="metric featured"><div class="metric-label">Aguardando pagamento</div><div class="metric-value money">${money(pending)}</div></div><div class="metric"><div class="metric-label">Pagamentos registrados</div><div class="metric-value money">${money(paid)}</div></div></div><section class="card"><div class="card-header"><div><h2>Pagamentos por motorista e placa</h2><p>Valores aprovados pelo grupo das fazendas.</p></div></div>${list.length?`<div class="table-wrap"><table><thead><tr><th>PLACA / MOTORISTA</th><th>FAZENDA / QUINZENA</th><th class="num">VALOR SOLICITADO</th><th>SITUAÇÃO</th><th>AÇÕES</th></tr></thead><tbody>${list.map(r=>`<tr><td><strong class="plate">${e(r.snapshot.plate)}</strong><span class="secondary">${e(r.snapshot.driver)}</span></td><td>${e(r.snapshot.farmName)}<span class="secondary">${e(periodLabel(r.period))}</span></td><td class="num value">${money(r.snapshot.net)}</td><td><span class="badge ${r.status==='paid'?'green':r.status==='cancelled'?'gray':'amber'}">${requestStatus(r)}</span>${r.payment?'<span class="secondary">Pago em '+dateLabel(r.payment.date)+'</span>':'<span class="secondary">Solicitado em '+dateLabel(r.requestedAt.slice(0,10))+'</span>'}${r.status==='pending'&&paymentDetailsMissing(r.snapshot.paymentDetails).length?'<span class="secondary">Faltam dados de pagamento</span>':''}</td><td><div class="actions">${r.status==='pending'&&isCarrier()&&canOperate()&&!paymentDetailsMissing(r.snapshot.paymentDetails).length?`<button class="btn primary small" data-action="pay-request" data-id="${e(r.id)}">Registrar pagamento</button>`:''}${r.payment?.receipt?`<button class="btn small" data-action="receipt-view" data-id="${e(r.payment.receipt.id)}">Comprovante</button>`:''}<button class="btn small" data-action="request-detail" data-id="${e(r.id)}">Detalhes</button></div></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty"><h3>Nenhuma solicitação nesta seleção</h3><p>${isCarrier()?'As solicitações enviadas pelo grupo aparecerão aqui.':'Feche a quinzena e use “Solicitar pagamentos” em Fechamentos.'}</p></div>`}<div class="card-footer"><span>${list.length} solicitação(ões) nesta seleção</span><strong>Total: ${money(total)}</strong></div></section>`;
 }
 function requestDetail(id){const request=portalRequests.find(r=>r.id===id);if(!request)throw Error('Solicitação não encontrada.');const row=request.snapshot;openModal(row.plate+' · '+row.driver,row.farmName+' · '+periodLabel(request.period),`<div class="form-note"><strong>${requestStatus(request)}</strong><br>Valor solicitado: <strong>${money(row.net)}</strong><br>Solicitado em ${e(timeLabel(request.requestedAt))}${request.requestedEmail?' por '+e(request.requestedEmail):''}</div><div class="detail-grid"><div><small>Valor bruto</small><strong>${money(row.gross)}</strong></div><div><small>Descontos</small><strong>${money(row.discount)}</strong></div><div><small>Dias a pagar</small><strong>${row.payableDays}</strong></div><div><small>Transportador contratado</small><strong>${e(row.carrier)}</strong></div></div>${paymentDetailsMarkup(row.paymentDetails,request.status)}${request.payment?`<div class="form-note">Pago em ${dateLabel(request.payment.date)}${request.payment.recordedEmail?' por '+e(request.payment.recordedEmail):''}<br>${e(request.payment.receipt.name)}<br><button class="btn small" data-action="receipt-view" data-id="${e(request.payment.receipt.id)}">Abrir comprovante</button></div>`:''}${request.status==='cancelled'?`<div class="form-note">Cancelada em ${e(timeLabel(request.cancelledAt))}<br>Motivo: ${e(request.cancelReason)}</div>`:''}${request.paymentHistory.length?`<div class="event-list"><h3>Correções anteriores</h3>${request.paymentHistory.map(item=>`<p>${e(timeLabel(item.at))} · ${e(item.reason)}<br>Pagamento anterior em ${dateLabel(item.payment.date)} · <button class="btn small" data-action="receipt-view" data-id="${e(item.payment.receipt.id)}">Comprovante anterior</button></p>`).join('')}</div>`:''}<div class="form-actions">${request.status==='pending'&&canOperate()?(isCarrier()?(paymentDetailsMissing(row.paymentDetails).length?'':`<button class="btn primary" data-action="pay-request" data-id="${e(id)}">Registrar pagamento com comprovante</button>`):`<button class="btn danger" data-action="cancel-request" data-id="${e(id)}">Cancelar solicitação</button>`):request.status==='paid'&&isCarrier()&&canOperate()?`<button class="btn danger" data-action="correct-request" data-id="${e(id)}">Corrigir registro</button>`:''}<button class="btn" data-action="close-modal">Fechar</button></div>`);}
-async function showReceipt(id){const receipt=await cloud.receiptLink(id);openModal('Comprovante de pagamento',receipt.name,`<div class="form-note">Documento privado do pagamento. O link de acesso vale por um minuto.</div><div class="form-actions"><a class="btn primary" href="${e(receipt.signedUrl)}" target="_blank" rel="noopener noreferrer">Abrir comprovante</a><button class="btn" data-action="close-modal">Fechar</button></div>`);}
+async function showReceipt(id){const receipt=await cloud.receiptLink(id);openModal('Documento anexado',receipt.name,`<div class="form-note">Arquivo privado. O link de acesso vale por um minuto.</div><div class="form-actions"><a class="btn primary" href="${e(receipt.signedUrl)}" target="_blank" rel="noopener noreferrer">Abrir documento</a><button class="btn" data-action="close-modal">Fechar</button></div>`);}
+const fundingStatus={awaiting_receipt:'Aguardando recibo',receipt_submitted:'Recibo enviado',transferred:'Transferido',cancelled:'Cancelado'};
+function fundingPanel(){
+ const list=portalFundingTransfers.filter(t=>(!portalPeriod||t.period.key===portalPeriod)&&(!portalFarm||t.farmId===portalFarm)).slice().sort((a,b)=>b.requestedAt.localeCompare(a.requestedAt));
+ return `<section class="card" style="margin-top:24px"><div class="card-header"><div><h2>Repasses da fazenda à transportadora</h2><p>Um recibo assinado por transferência. Estes valores são independentes dos pagamentos por placa.</p></div>${!isCarrier()&&canOperate()?'<button class="btn primary" data-action="funding-create">Solicitar recibo</button>':''}</div>${list.length?`<div class="table-wrap"><table><thead><tr><th>FAZENDA / QUINZENA</th><th>DESCRIÇÃO</th><th class="num">VALOR</th><th>SITUAÇÃO</th><th>AÇÕES</th></tr></thead><tbody>${list.map(t=>`<tr><td><strong>${e(t.farmName)}</strong><span class="secondary">${e(periodLabel(t.period))}</span></td><td>${e(t.description)}</td><td class="num value">${money(t.amount)}</td><td><span class="badge ${t.status==='transferred'?'green':t.status==='cancelled'?'gray':'amber'}">${fundingStatus[t.status]||e(t.status)}</span>${t.transfer?`<span class="secondary">${dateLabel(t.transfer.date)}</span>`:''}</td><td><div class="actions">${t.status==='awaiting_receipt'&&isCarrier()&&canOperate()?`<button class="btn primary small" data-action="funding-upload" data-id="${e(t.id)}">Anexar recibo</button>`:''}${t.receipt?`<button class="btn small" data-action="receipt-view" data-id="${e(t.receipt.id)}">Ver recibo</button>`:''}${t.status==='receipt_submitted'&&!isCarrier()&&canOperate()?`<button class="btn primary small" data-action="funding-record" data-id="${e(t.id)}">Registrar transferência</button>`:''}${['awaiting_receipt','receipt_submitted'].includes(t.status)&&!isCarrier()&&canOperate()?`<button class="btn small" data-action="funding-cancel" data-id="${e(t.id)}">Cancelar</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty"><p>Os recibos solicitados para transferências aparecerão aqui.</p></div>'}</section>`;
+}
+function createFundingForm(){
+ if(isCarrier()||!canOperate())throw Error('Esta solicitação exige acesso do grupo.');
+ const choices=[...new Map(state.closings.flatMap(c=>c.rows.map(r=>[c.period.key+'|'+r.farmId,{key:c.period.key+'|'+r.farmId,period:c.period,farmName:r.farmName}]))).values()].sort((a,b)=>b.period.key.localeCompare(a.period.key));
+ if(!choices.length)throw Error('Feche uma quinzena antes de solicitar o recibo.');
+ const preferred=choices.find(x=>x.period.key===portalPeriod&&(!portalFarm||x.key.endsWith('|'+portalFarm)))?.key||choices[0].key;
+ openModal('Solicitar recibo da transportadora','Um documento assinado para cada transferência prevista.',`<form id="funding-create-form">${errBox()}<div class="field"><label>Fazenda e quinzena *</label><select name="selection" required>${choices.map(x=>opt(x.key,x.farmName+' · '+periodLabel(x.period),preferred)).join('')}</select></div><div class="field"><label>Valor da transferência (R$) *</label><input id="funding-amount" name="amount" inputmode="decimal" placeholder="Ex.: 30.736,20" required></div><div class="field"><label>Descrição do serviço *</label><textarea name="description" maxlength="200" required placeholder="Ex.: adiantamento referente ao transporte de algodão"></textarea></div><div class="form-note">O valor pode ser um adiantamento e não precisa ser igual ao total dos motoristas. A transportadora anexará o recibo assinado antes do repasse.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Enviar solicitação de recibo</button></div></form>`);
+}
+function uploadFundingForm(id){
+ const t=portalFundingTransfers.find(item=>item.id===id);if(!t||t.status!=='awaiting_receipt'||!isCarrier()||!canOperate())throw Error('Esta transferência não está aguardando recibo.');
+ openModal('Anexar recibo assinado',t.farmName+' · '+periodLabel(t.period),`<form id="funding-upload-form" data-id="${e(id)}">${errBox()}<div class="form-note"><strong>${money(t.amount)}</strong><br>${e(t.description)}<br>Confira se o documento assinado corresponde a esta transferência.</div><div class="field"><label>Recibo assinado *</label><input type="file" name="receipt" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required><small>PDF, JPG ou PNG de até 10 MB. O grupo poderá conferir o arquivo antes de registrar o repasse.</small></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Enviar recibo assinado</button></div></form>`);
+}
+function recordFundingForm(id){
+ const t=portalFundingTransfers.find(item=>item.id===id);if(!t||t.status!=='receipt_submitted'||isCarrier()||!canOperate())throw Error('Confira o recibo antes de registrar a transferência.');
+ openModal('Registrar transferência à transportadora',t.farmName+' · '+periodLabel(t.period),`<form id="funding-record-form" data-id="${e(id)}">${errBox()}<div class="form-note"><strong>${money(t.amount)}</strong><br>${e(t.description)}<br>Recibo anexado: ${e(t.receipt.name)}. Use “Ver recibo” na lista para conferi-lo antes de confirmar.</div><div class="field"><label>Data da transferência *</label><input type="date" name="date" value="${today()}" max="${today()}" required></div><div class="field"><label>Referência bancária ou observação</label><input name="reference" maxlength="120"></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Voltar</button><button class="btn primary" type="submit">Confirmar transferência efetuada</button></div></form>`);
+}
+function cancelFundingForm(id){
+ const t=portalFundingTransfers.find(item=>item.id===id);if(!t||!['awaiting_receipt','receipt_submitted'].includes(t.status)||isCarrier()||!canOperate())throw Error('Esta transferência não pode ser cancelada.');
+ openModal('Cancelar solicitação de recibo',t.farmName+' · '+money(t.amount),`<form id="funding-cancel-form" data-id="${e(id)}">${errBox()}<div class="field"><label>Motivo *</label><textarea name="reason" maxlength="300" required></textarea></div><div class="form-note">O histórico da solicitação e o recibo já anexado serão preservados.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Voltar</button><button class="btn danger" type="submit">Cancelar solicitação</button></div></form>`);
+}

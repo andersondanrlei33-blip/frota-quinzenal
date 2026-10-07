@@ -30,6 +30,12 @@ No cadastro da placa, o grupo pode informar **Pix** ou **transferência bancári
 
 Com a aba da transportadora visível, o painel confere novas solicitações a cada 15 segundos e atualiza a lista automaticamente. Ao voltar para a aba, confere imediatamente. Se um formulário ou detalhe estiver aberto, a atualização aguarda o fechamento da janela. CPF e CNPJ aparecem pontuados nos dados de pagamento.
 
+## Recibo da transportadora antes do repasse
+
+Em **Solicitações → Repasses da fazenda à transportadora**, o grupo cria uma solicitação por transferência prevista, escolhendo fazenda, quinzena fechada, valor e descrição do serviço. Um adiantamento pode ter valor diferente do total dos motoristas; é possível registrar várias transferências para a mesma fazenda e quinzena. A transportadora anexa o recibo assinado em PDF, JPG ou PNG (até 10 MB). O arquivo fica privado e visível aos usuários autorizados do grupo e da transportadora. Depois de conferi-lo, o grupo registra a data da transferência e uma referência opcional. O sistema preserva o histórico de solicitações canceladas e impede marcar o repasse como efetuado sem o recibo.
+
+Esse recibo documenta a transferência **fazenda → transportadora**. Os comprovantes de pagamento **transportadora → motorista** continuam por placa, em um fluxo separado. O portal não assina nem gera o recibo; a transportadora envia o documento já assinado.
+
 Os pagamentos continuam com os estados **Aberto, Fechado e Pago**. A solicitação permanece fechada, aguardando pagamento, até o registro com comprovante. O registro no portal não executa uma transferência bancária.
 
 Solicitações pendentes precisam ser canceladas com motivo antes de reabrir seu fechamento. Confirme com a transportadora antes de cancelar. A solicitação cancelada continua no histórico. Correções de pagamento pela transportadora exigem motivo e preservam os registros e comprovantes anteriores. Pagamentos registrados antes deste portal permanecem no histórico; o administrador pode corrigir um registro anterior com motivo para solicitar novamente pelo fluxo atual.

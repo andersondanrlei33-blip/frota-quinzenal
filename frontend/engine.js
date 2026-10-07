@@ -88,10 +88,10 @@ export function period(month,half) {
 export const dateLabel = s => validDate(s) ? s.split('-').reverse().join('/') : '—';
 export const periodLabel = p => `${dateLabel(p.start)} a ${dateLabel(p.end)}`;
 export function initialState() {
-  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],paymentRequests:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],paymentRequests:[],fundingTransfers:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
 }
 export function farmHasLinks(state,id) {
-  return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
+  return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.fundingTransfers?.some(r=>r.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
 }
 export function removeFarm(state,id) {
   if(!state.farms.some(f=>f.id===id))throw Error('Esta fazenda não está cadastrada.');
@@ -188,6 +188,7 @@ export function saveClosing(state,p,farmId='',id=uid(),closedDate=today()) {
 export function reopenClosing(state,p,farmId='',closingId='') {
   const matching=periodClosings(state,p).filter(c=>(!farmId||c.farmIds.includes(farmId))&&(!closingId||c.id===closingId));
   if(!matching.length)throw Error('Não há fechamento salvo para esta seleção.');
+  if(state.fundingTransfers?.some(t=>t.period.key===p.key&&t.status!=='cancelled'&&matching.some(c=>c.rows.some(r=>r.farmId===t.farmId&&(!farmId||farmId===t.farmId)))))throw Error('Cancele a solicitação de recibo desta fazenda antes de reabrir a quinzena. Transferências já efetuadas não podem ser reabertas.');
   const affected=matching.flatMap(c=>c.rows.filter(r=>!farmId||r.farmId===farmId));
   if(affected.some(r=>r.paid))throw Error('Há pagamentos registrados nessa seleção. Desfaça esses registros antes de reabrir.');
   if(affected.some(r=>r.requestId))throw Error('Cancele as solicitações de pagamento desta seleção antes de reabrir o fechamento.');
@@ -399,7 +400,7 @@ export function applyFixedMonthlyRule(state) {
 }
 export function migrateState(s) {
   if(!s || ![1,SCHEMA].includes(s.schema))throw Error('Este arquivo não é um backup válido do Frota.');
-  const result=structuredClone(s);result.paymentRequests??=[];
+  const result=structuredClone(s);result.paymentRequests??=[];result.fundingTransfers??=[];
   if(s.schema===1){
     result.schema=SCHEMA;
     result.trucks=result.trucks?.map(t=>({...t,bodyType:t.bodyType||'',axles:t.axles??null}));
@@ -409,8 +410,8 @@ export function migrateState(s) {
 }
 export function validateState(input) {
   const s=migrateState(input);
-  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
-  for(const list of [s.farms,s.trucks,s.discounts,s.closings,s.paymentRequests]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
+  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !Array.isArray(s.fundingTransfers) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
+  for(const list of [s.farms,s.trucks,s.discounts,s.closings,s.paymentRequests,s.fundingTransfers]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
   for(const t of s.trucks) { if(typeof t.driver!=='string'||typeof t.carrier!=='string'||typeof t.plate!=='string')throw Error('Cadastro inválido no backup.'); validateTruck(t,s); }
   for(const d of s.discounts) { if(typeof d.note!=='string') throw Error('Desconto inválido no backup.'); validateDiscount(d,{...s,closings:[]},false); }
@@ -433,5 +434,10 @@ export function validateState(input) {
     if(request.status==='pending'&&(row.paid||request.payment))throw Error('Situação de pagamento inconsistente.');
   }
   for(const c of s.closings)for(const r of c.rows)if(r.requestId&&!s.paymentRequests.some(q=>q.id===r.requestId&&q.status!=='cancelled'&&q.closingId===c.id&&q.truckId===r.truckId))throw Error('Solicitação vinculada ao fechamento não encontrada.');
+  for(const transfer of s.fundingTransfers){
+    const p=period(transfer.period?.month,transfer.period?.half);
+    if(!s.farms.some(f=>f.id===transfer.farmId)||typeof transfer.farmName!=='string'||!transfer.farmName||transfer.period?.key!==p.key||!Number.isFinite(transfer.amount)||transfer.amount<=0||round(transfer.amount)!==transfer.amount||typeof transfer.description!=='string'||!transfer.description.trim()||transfer.description.length>200||!validDate(String(transfer.requestedAt).slice(0,10))||!['awaiting_receipt','receipt_submitted','transferred','cancelled'].includes(transfer.status))throw Error('Transferência à transportadora inválida.');
+    if(transfer.status==='awaiting_receipt'&&(transfer.receipt||transfer.transfer)||transfer.status==='receipt_submitted'&&(!transfer.receipt?.id||transfer.transfer)||transfer.status==='transferred'&&(!transfer.receipt?.id||!validDate(transfer.transfer?.date)||transfer.transfer.date>today())||transfer.status==='cancelled'&&(!transfer.cancelReason||transfer.transfer))throw Error('Situação do recibo ou da transferência inconsistente.');
+  }
   return s;
 }

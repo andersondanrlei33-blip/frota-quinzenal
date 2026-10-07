@@ -46,6 +46,7 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async invite(email,role,party='group'){return api('/api/team/invite',{email,role,party});},
     async updateMember(userId,role,active,party=null){return api('/api/team/status',{userId,role,active,party});},
     async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async uploadFundingReceipt(transferId,file){const body=new FormData();body.append('transferId',transferId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/funding-receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
     hasSession(){return !!session;}
   };

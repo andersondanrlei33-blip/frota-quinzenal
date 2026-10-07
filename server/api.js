@@ -32,7 +32,8 @@ export function createFleetApi({repository,authenticate}){
         const current=await repository.load(actor.companyId);
         if(current.revision!==command.expectedRevision)return json({error:'Outra pessoa atualizou os registros. Atualize os dados antes de salvar.',revision:current.revision},409);
         const receipt=command.type==='payment.record'?await repository.verifyReceipt?.(actor,command.payload.receiptId,command.payload.requestId):null;
-        const result=executeCommand(current.state,command,actor,{receipt});
+        const fundingReceipt=command.type==='funding.receipt'?await repository.verifyFundingReceipt?.(actor,command.payload.receiptId,command.payload.id):null;
+        const result=executeCommand(current.state,command,actor,{receipt,fundingReceipt});
         const saved=await repository.commit(actor.companyId,command.expectedRevision,result.state,result.audit);
         if(!saved)return json({error:'Outra pessoa atualizou os registros. Atualize os dados antes de salvar.'},409);
         return json(presentState(saved,actor));
