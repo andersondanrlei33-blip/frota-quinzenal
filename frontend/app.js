@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=25';
-import {createReport,reportMarkup} from './reports.js?v=25';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=25';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=26';
+import {createReport,reportMarkup} from './reports.js?v=26';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=26';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -11,6 +11,7 @@ let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:
 const main=document.querySelector('#main'),modal=document.querySelector('#modal'),modalContent=document.querySelector('#modal-content');
 const e=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const opt=(v,label,selected)=>`<option value="${e(v)}" ${String(v)===String(selected)?'selected':''}>${e(label)}</option>`;
+const BANKS=['Banco do Brasil','Caixa Econômica Federal','Bradesco','Itaú Unibanco','Santander','Sicoob','Sicredi','Nubank','Banco Inter','C6 Bank','BTG Pactual','Banrisul','Banco Safra','Banco PAN','Banco Mercantil','Banco BMG','PagBank','Banco BV','Banco do Nordeste','Banco da Amazônia','Banestes','BRB','Unicred','Cresol'];
 const farmOptions=(selected,activeOnly=false)=>state.farms.filter(f=>!activeOnly||f.active!==false||f.id===selected).map(f=>opt(f.id,f.name+(f.active===false?' (Inativa)':''),selected)).join('');
 const farmField=(farm,index)=>{const saved=state.farms.find(f=>f.id===farm.id),inactive=saved?.active===false,action=inactive?'reactivate-farm':saved&&farmHasLinks(state,farm.id)?'inactivate-farm':'remove-farm',label=inactive?'Reativar':action==='inactivate-farm'?'Inativar':'Remover';return `<div class="farm-input-row"><span class="index">${String(index+1).padStart(2,'0')}</span><input aria-label="Nome da fazenda ${index+1}" name="${e(farm.id)}" data-farm-id="${e(farm.id)}" value="${e(farm.name)}" maxlength="80" required><div class="farm-actions">${inactive?'<span class="badge gray">Inativa</span>':''}<button class="btn small ${action==='remove-farm'?'danger':''}" type="button" data-action="${action}" data-id="${e(farm.id)}" aria-label="${label} ${e(farm.name)||'nova fazenda'}">${label}</button></div></div>`;};
 function addFarmInput() {farmDraftDirty=true;
@@ -179,6 +180,7 @@ function truckForm(id) {
   if(!saved&&!activeFarm)throw Error('Cadastre ou reative uma fazenda antes de cadastrar o caminhão.');
   const t=saved||{plate:'',driver:'',carrier:'',farmId:activeFarm.id,bodyType:'',axles:null,monthly:null,start:today(),end:''};
   const payment=t.paymentDetails||{},paymentMethod=payment.method||'';
+  const savedBank=payment.bankName||'',bankSelection=BANKS.includes(savedBank)?savedBank:savedBank?'other':'';
   const axes=t.axles==null?'':[7,9].includes(t.axles)?String(t.axles):'other';
   openModal(id?'Editar caminhão':'Cadastrar caminhão','Informe o contrato desta placa.',`<form id="truck-form" data-id="${e(id||'')}">${errBox()}
     <div class="fields-two"><div class="field"><label for="truck-plate">Placa *</label><input id="truck-plate" name="plate" value="${e(t.plate)}" placeholder="ABC1D23" maxlength="8" required style="text-transform:uppercase"></div><div class="field"><label for="truck-farm">Fazenda *</label><select id="truck-farm" name="farmId" ${t.transferIn||t.transferOut?'disabled':''}>${farmOptions(t.farmId,true)}</select></div></div>
@@ -194,7 +196,7 @@ function truckForm(id) {
     <div id="truck-payment-fields" ${paymentMethod?'':'hidden'}>
       <div class="fields-two"><div class="field"><label for="truck-payment-holder">Nome do titular</label><input id="truck-payment-holder" name="paymentHolder" value="${e(payment.holder||'')}" maxlength="100" autocomplete="off"></div><div class="field"><label for="truck-payment-document">CPF ou CNPJ do titular</label><input id="truck-payment-document" name="paymentDocument" value="${e(payment.document||'')}" maxlength="25" inputmode="numeric" autocomplete="off"></div></div>
       <div id="truck-pix-fields" ${paymentMethod==='pix'?'':'hidden'}><div class="field"><label for="truck-payment-pix">Chave Pix</label><input id="truck-payment-pix" name="paymentPixKey" value="${e(payment.pixKey||'')}" maxlength="120" autocomplete="off"></div></div>
-      <div id="truck-bank-fields" ${paymentMethod==='bank'?'':'hidden'}><div class="field"><label for="truck-payment-bank">Banco</label><input id="truck-payment-bank" name="paymentBankName" value="${e(payment.bankName||'')}" maxlength="100" placeholder="Nome ou código do banco" autocomplete="off"></div><div class="fields-two"><div class="field"><label for="truck-payment-agency">Agência</label><input id="truck-payment-agency" name="paymentAgency" value="${e(payment.agency||'')}" maxlength="20" autocomplete="off"></div><div class="field"><label for="truck-payment-account">Conta com dígito</label><input id="truck-payment-account" name="paymentAccount" value="${e(payment.account||'')}" maxlength="30" autocomplete="off"></div></div><div class="field"><label for="truck-payment-account-type">Tipo de conta</label><select id="truck-payment-account-type" name="paymentAccountType">${opt('','Selecione',payment.accountType||'')}${opt('corrente','Conta corrente',payment.accountType||'')}${opt('poupanca','Poupança',payment.accountType||'')}${opt('pagamento','Conta de pagamento',payment.accountType||'')}</select></div></div>
+      <div id="truck-bank-fields" ${paymentMethod==='bank'?'':'hidden'}><div class="field"><label for="truck-payment-bank">Banco</label><select id="truck-payment-bank" name="paymentBankSelection">${opt('','Selecione o banco',bankSelection)}${BANKS.map(bank=>opt(bank,bank,bankSelection)).join('')}${opt('other','Outro banco',bankSelection)}</select></div><div class="field" id="truck-other-bank-field" ${bankSelection==='other'?'':'hidden'}><label for="truck-other-bank">Nome do outro banco</label><input id="truck-other-bank" name="paymentOtherBankName" value="${bankSelection==='other'?e(savedBank):''}" maxlength="100" autocomplete="off"></div><div class="fields-two"><div class="field"><label for="truck-payment-agency">Agência</label><input id="truck-payment-agency" name="paymentAgency" value="${e(payment.agency||'')}" maxlength="20" autocomplete="off"></div><div class="field"><label for="truck-payment-account">Conta com dígito</label><input id="truck-payment-account" name="paymentAccount" value="${e(payment.account||'')}" maxlength="30" autocomplete="off"></div></div><div class="field"><label for="truck-payment-account-type">Tipo de conta</label><select id="truck-payment-account-type" name="paymentAccountType">${opt('','Selecione',payment.accountType||'')}${opt('corrente','Conta corrente',payment.accountType||'')}${opt('poupanca','Poupança',payment.accountType||'')}${opt('pagamento','Conta de pagamento',payment.accountType||'')}</select></div></div>
     </div>
     ${id?'<div class="form-note">Esta edição atualiza as prévias. Os valores dos fechamentos salvos permanecem preservados. Solicitações já enviadas guardam os dados de pagamento anteriores; para corrigi-las, cancele e envie novamente.</div>':''}
     <div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar caminhão</button></div></form>`);
@@ -207,6 +209,11 @@ function updateTruckPaymentFields(form){
   form.querySelector('#truck-payment-fields').hidden=!method;
   form.querySelector('#truck-pix-fields').hidden=method!=='pix';
   form.querySelector('#truck-bank-fields').hidden=method!=='bank';
+  updateOtherBankField(form);
+}
+function updateOtherBankField(form){
+  if(!form||form.id!=='truck-form')return;
+  form.querySelector('#truck-other-bank-field').hidden=form.elements.paymentBankSelection.value!=='other';
 }
 
 
@@ -488,7 +495,8 @@ document.addEventListener('submit',async ev=>{
   try {
     if(f.id==='truck-form'){
       const id=f.dataset.id||uid(),prior=state.trucks.find(t=>t.id===id),method=String(data.get('paymentMethod')||'');
-      const paymentDetails=normalizePaymentDetails({method,holder:String(data.get('paymentHolder')||''),document:String(data.get('paymentDocument')||''),pixKey:method==='pix'?String(data.get('paymentPixKey')||''):'',bankName:method==='bank'?String(data.get('paymentBankName')||''):'',agency:method==='bank'?String(data.get('paymentAgency')||''):'',account:method==='bank'?String(data.get('paymentAccount')||''):'',accountType:method==='bank'?String(data.get('paymentAccountType')||''):''});
+      const selectedBank=String(data.get('paymentBankSelection')||'');
+      const paymentDetails=normalizePaymentDetails({method,holder:String(data.get('paymentHolder')||''),document:String(data.get('paymentDocument')||''),pixKey:method==='pix'?String(data.get('paymentPixKey')||''):'',bankName:method==='bank'?(selectedBank==='other'?String(data.get('paymentOtherBankName')||''):selectedBank):'',agency:method==='bank'?String(data.get('paymentAgency')||''):'',account:method==='bank'?String(data.get('paymentAccount')||''):'',accountType:method==='bank'?String(data.get('paymentAccountType')||''):''});
       const t={id,plate:String(data.get('plate')).toUpperCase().replace(/[^A-Z0-9]/g,''),driver:String(data.get('driver')).trim(),carrier:String(data.get('carrier')).trim(),farmId:data.get('farmId')||prior?.farmId,bodyType:data.get('bodyType'),axles:Number(data.get('axles')==='other'?data.get('otherAxles'):data.get('axles')),monthly:parseAmount(data.get('monthly')),start:data.get('start'),end:data.get('end')||'',paymentDetails,...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:structuredClone(prior.transferIn)}:{}),...(prior?.transferOut?{transferOut:structuredClone(prior.transferOut)}:{}),...(prior?.serviceEnded?{serviceEnded:structuredClone(prior.serviceEnded)}:{})};
       validateTruck(t,state,true);await remoteCommand('truck.save',t);modal.close();render();notify('Cadastro salvo.');
     }
@@ -517,6 +525,7 @@ document.addEventListener('change',async ev=>{
   else if(['discount-start','discount-end','truck-start','truck-end'].includes(el.id))updateDateRange(el.form);
   else if(el.id==='truck-axles'){const other=el.value==='other',field=document.querySelector('#other-axles-field'),input=document.querySelector('#truck-other-axles');field.hidden=!other;input.required=other;if(!other)input.value='';}
   else if(el.id==='truck-payment-method')updateTruckPaymentFields(el.form);
+  else if(el.id==='truck-payment-bank')updateOtherBankField(el.form);
   else if(el.id==='activity-end-date')updateActivityEndPreview();
   else if(el.id==='transfer-farm'||el.id==='transfer-date')updateTransferPreview();
   else if(el.id==='closing-farm')updateClosingPreview();
