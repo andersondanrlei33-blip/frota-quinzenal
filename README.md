@@ -10,9 +10,25 @@ O proprietário recebe um link privado de ativação, válido por 72 horas e de 
 
 Em **Configurações → Equipe e acesso**, o administrador gera um link individual para o e-mail de cada funcionário e o entrega diretamente a ele. O funcionário define sua própria senha; quem já tem uma conta pode entrar com a senha existente. O sistema não envia esses links por e-mail.
 
-- **Administrador:** controle completo, fazendas, equipe e restauração de backup.
-- **Operador:** caminhões, descontos, transferências, fechamentos e registros de pagamento.
-- **Somente consulta:** acesso às informações e relatórios.
+- **Administrador do grupo:** todas as fazendas, equipe, configurações, cadastros, fechamentos e solicitações.
+- **Grupo — operador:** caminhões, descontos, transferências, fechamentos e solicitações de pagamento de todas as fazendas do grupo.
+- **Transportadora — operador:** recebe as solicitações aprovadas e registra os pagamentos com comprovante obrigatório.
+- **Somente consulta:** acompanha as informações disponíveis para seu lado do portal, grupo ou transportadora, sem alterações.
+
+O administrador escolhe o perfil em **Configurações → Equipe e acesso** ao gerar o link. Também pode mudar o perfil de um funcionário existente. O último administrador ativo do grupo permanece protegido contra inativação ou troca de perfil. O grupo tem acesso consolidado às suas quatro fazendas e pode filtrar uma fazenda. Há uma transportadora responsável por todos os pagamentos deste grupo.
+
+## Solicitações e comprovantes
+
+1. O grupo confere valores e descontos e fecha a quinzena em **Fechamentos**.
+2. Clica em **Solicitar pagamentos**, para a fazenda selecionada ou todas. Pode solicitar uma placa individual pelos detalhes. Cada placa recebe uma solicitação com seu valor fechado.
+3. O usuário da transportadora entra em **Solicitações**, onde vê somente as solicitações aprovadas, com filtros de quinzena, fazenda, placa/motorista e situação.
+4. Após realizar a transferência, registra a data e anexa o comprovante em **PDF, JPG ou PNG, até 10 MB**. Somente o acesso da transportadora pode registrar novos pagamentos. O grupo acompanha o resultado e consulta o comprovante.
+
+Os pagamentos continuam com os estados **Aberto, Fechado e Pago**. A solicitação permanece fechada, aguardando pagamento, até o registro com comprovante. O registro no portal não executa uma transferência bancária.
+
+Solicitações pendentes precisam ser canceladas com motivo antes de reabrir seu fechamento. Confirme com a transportadora antes de cancelar. A solicitação cancelada continua no histórico. Correções de pagamento pela transportadora exigem motivo e preservam os registros e comprovantes anteriores. Pagamentos registrados antes deste portal permanecem no histórico; o administrador pode corrigir um registro anterior com motivo para solicitar novamente pelo fluxo atual.
+
+Os comprovantes ficam em armazenamento privado do Supabase, com validação de tamanho e assinatura do formato no servidor. Para consultar um arquivo, a API confere a empresa e o vínculo com o histórico do pagamento e fornece um link com validade de um minuto. A transportadora não recebe cadastros e prévias do grupo, nem pode acessar diretamente esses registros pela Data API.
 
 O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão fica somente na memória da página: ao recarregar ou fechar, o usuário entra novamente. Caminhões, descontos e pagamentos continuam no servidor.
 
@@ -33,6 +49,8 @@ Quando duas pessoas editam ao mesmo tempo, o servidor rejeita a gravação desat
 O banco foi iniciado sem caminhões, descontos ou pagamentos de teste. Há quatro nomes provisórios de fazendas, que podem ser editados; mais fazendas podem ser cadastradas. Fazendas com histórico podem ser inativadas.
 
 Use **Configurações → Baixar backup completo** para guardar cópias dos registros. Restauração substitui os registros da empresa e exige administrador. Esse arquivo cobre os registros da frota; contas e senhas são administradas pelo Supabase Auth.
+
+O arquivo inclui o histórico de solicitações e as referências aos comprovantes, mas não os arquivos binários do armazenamento. A restauração deve preservar solicitações e pagamentos já existentes; novos pagamentos não podem ser criados pela importação. Os comprovantes permanecem no armazenamento privado e podem ser consultados pelo portal.
 
 O projeto está no plano gratuito aprovado. Projetos gratuitos podem ser pausados por baixa atividade durante sete dias, e backups do banco não ficam disponíveis para download nesse plano. Consulte a [documentação de disponibilidade do Supabase](https://supabase.com/docs/guides/deployment/going-into-prod#availability) para definir o plano e a rotina de backup antes de depender do sistema na operação diária. Nenhum plano pago foi contratado.
 

@@ -49,10 +49,10 @@ export function period(month,half) {
 export const dateLabel = s => validDate(s) ? s.split('-').reverse().join('/') : '—';
 export const periodLabel = p => `${dateLabel(p.start)} a ${dateLabel(p.end)}`;
 export function initialState() {
-  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],paymentRequests:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
 }
 export function farmHasLinks(state,id) {
-  return state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
+  return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
 }
 export function removeFarm(state,id) {
   if(!state.farms.some(f=>f.id===id))throw Error('Esta fazenda não está cadastrada.');
@@ -151,6 +151,7 @@ export function reopenClosing(state,p,farmId='',closingId='') {
   if(!matching.length)throw Error('Não há fechamento salvo para esta seleção.');
   const affected=matching.flatMap(c=>c.rows.filter(r=>!farmId||r.farmId===farmId));
   if(affected.some(r=>r.paid))throw Error('Há pagamentos registrados nessa seleção. Desfaça esses registros antes de reabrir.');
+  if(affected.some(r=>r.requestId))throw Error('Cancele as solicitações de pagamento desta seleção antes de reabrir o fechamento.');
   state.closings=state.closings.flatMap(c=>{
     if(!matching.includes(c))return [c];
     if(!farmId)return [];
@@ -228,6 +229,7 @@ function prepareEndActivities(state,id,date) {
   const p=period(date.slice(0,7),Number(date.slice(8))<=15?1:2),family=new Set();let ancestor=current;
   while(ancestor){if(family.has(ancestor.id))throw Error('O histórico desta placa está inconsistente.');family.add(ancestor.id);ancestor=ancestor.transferIn?state.trucks.find(t=>t.id===ancestor.transferIn.fromTruckId):null;}
   const existing=periodClosings(state,p).find(c=>c.rows.some(r=>r.truckId===current.id));
+  if(state.closings.some(c=>c.period.key>=p.key&&c.rows.some(r=>family.has(r.truckId)&&r.requestId&&!r.paid)))throw Error('Cancele a solicitação de pagamento antes de revisar o encerramento desta placa.');
   if(current.serviceEnded?.date===date&&existing&&!pendingRows(state,p).some(r=>family.has(r.truckId))){
     const all=periodClosings(state,p).flatMap(c=>c.rows).filter(r=>family.has(r.truckId));
     return {next:structuredClone(state),truckId:current.id,plate:current.plate,farmName:state.farms.find(f=>f.id===current.farmId).name,date,period:p,rows:all,pending:[],conflicts:[],revisions:[],cancelled:[],alreadyEnded:true,existingId:existing.id};
@@ -324,7 +326,7 @@ export function applyFixedMonthlyRule(state) {
     previous.set(c.id,{settings:structuredClone(c.settings),rows:structuredClone(c.rows.filter(r=>!r.paid))});
     for(const r of c.rows){
       const used=r.calculationSettings||c.settings;
-      if(r.paid||(used.mode==='half'&&used.fixedMonthlyVersion===1))continue;
+      if(r.paid||r.requestId||(used.mode==='half'&&used.fixedMonthlyVersion===1))continue;
       const rate=fixedPeriodAmount(r.monthly,c.period)/days(c.period.start,c.period.end);
       r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(rate*r.payableDays-amountDiscountTotal(r));if(r.net<0)throw Error('Os descontos por valor excedem o saldo do fechamento.');r.discount=round(r.gross-r.net);
       r.calculationSettings={...used,mode:'half',fixedMonthlyVersion:1};delete r.roundingAdjusted;changed.add(c.id);
@@ -357,7 +359,7 @@ export function applyFixedMonthlyRule(state) {
 }
 export function migrateState(s) {
   if(!s || ![1,SCHEMA].includes(s.schema))throw Error('Este arquivo não é um backup válido do Frota.');
-  const result=structuredClone(s);
+  const result=structuredClone(s);result.paymentRequests??=[];
   if(s.schema===1){
     result.schema=SCHEMA;
     result.trucks=result.trucks?.map(t=>({...t,bodyType:t.bodyType||'',axles:t.axles??null}));
@@ -367,8 +369,8 @@ export function migrateState(s) {
 }
 export function validateState(input) {
   const s=migrateState(input);
-  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
-  for(const list of [s.farms,s.trucks,s.discounts,s.closings]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
+  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
+  for(const list of [s.farms,s.trucks,s.discounts,s.closings,s.paymentRequests]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
   for(const t of s.trucks) { if(typeof t.driver!=='string'||typeof t.carrier!=='string'||typeof t.plate!=='string')throw Error('Cadastro inválido no backup.'); validateTruck(t,s); }
   for(const d of s.discounts) { if(typeof d.note!=='string') throw Error('Desconto inválido no backup.'); validateDiscount(d,{...s,closings:[]},false); }
@@ -382,5 +384,13 @@ export function validateState(input) {
   }
   const vehicles=s.closings.flatMap(c=>c.rows.map(r=>c.period.key+'|'+r.truckId));
   if(new Set(vehicles).size!==vehicles.length)throw Error('O backup contém placas duplicadas em fechamentos da mesma quinzena.');
+  for(const request of s.paymentRequests){
+    if(!['pending','paid','cancelled'].includes(request.status)||!validDate(String(request.requestedAt).slice(0,10))||typeof request.requestedBy!=='string'||!request.snapshot||!Number.isFinite(request.snapshot.net)||request.snapshot.net<=0||!Array.isArray(request.paymentHistory))throw Error('Solicitação de pagamento inválida.');
+    const c=s.closings.find(c=>c.id===request.closingId),row=c?.rows.find(r=>r.truckId===request.truckId);
+    if(request.status!=='cancelled'&&(!row||row.requestId!==request.id||row.net!==request.snapshot.net||c.period.key!==request.period?.key))throw Error('A solicitação deve preservar o valor e a quinzena do fechamento.');
+    if(request.status==='paid'&&(!row.paid?.receipt?.id||row.paid.requestId!==request.id||JSON.stringify(row.paid)!==JSON.stringify(request.payment)))throw Error('Pagamento solicitado exige comprovante e registro consistente.');
+    if(request.status==='pending'&&(row.paid||request.payment))throw Error('Situação de pagamento inconsistente.');
+  }
+  for(const c of s.closings)for(const r of c.rows)if(r.requestId&&!s.paymentRequests.some(q=>q.id===r.requestId&&q.status!=='cancelled'&&q.closingId===c.id&&q.truckId===r.truckId))throw Error('Solicitação vinculada ao fechamento não encontrada.');
   return s;
 }

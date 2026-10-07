@@ -1,4 +1,5 @@
 import {executeCommand} from './commands.js';
+import {presentState,authorizePortalCommand} from './payment-portal.js';
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 async function readBody(request,maxBytes=10_000_000){
   if(!request.headers.get('Content-Type')?.startsWith('application/json'))throw Error('Envie os dados em JSON.');
@@ -19,24 +20,27 @@ export function createFleetApi({repository,authenticate}){
       if(!actor.companyId||!['admin','operator','viewer'].includes(actor.role))return json({error:'Sua conta não tem acesso a esta empresa.'},403);
       const url=new URL(request.url),path=url.pathname.slice(url.pathname.indexOf('/api/'));
       if(request.method==='GET'&&path==='/api/state'){
-        const current=await repository.load(actor.companyId);return json({...current,user:{id:actor.userId,email:actor.email||'',role:actor.role}});
+        const current=await repository.load(actor.companyId);return json(presentState(current,actor));
       }
-      if(request.method==='GET'&&path==='/api/version')return json({revision:await repository.version(actor.companyId),role:actor.role});
+      if(request.method==='GET'&&path==='/api/version')return json({revision:await repository.version(actor.companyId),role:actor.role,party:actor.party||'group'});
       if(request.method==='POST'&&path==='/api/commands'){
         if(actor.role==='viewer')return json({error:'Você tem acesso somente para consulta.'},403);
         const command=await readBody(request);
+        if(!command||typeof command.type!=='string'||!command.payload||typeof command.payload!=='object'||Array.isArray(command.payload))return json({error:'Comando inválido.'},400);
+        authorizePortalCommand(command,actor);
         if(!Number.isSafeInteger(command.expectedRevision)||command.expectedRevision<0)return json({error:'Informe a versão dos registros.'},400);
         const current=await repository.load(actor.companyId);
         if(current.revision!==command.expectedRevision)return json({error:'Outra pessoa atualizou os registros. Atualize os dados antes de salvar.',revision:current.revision},409);
-        const result=executeCommand(current.state,command,actor);
+        const receipt=command.type==='payment.record'?await repository.verifyReceipt?.(actor,command.payload.receiptId,command.payload.requestId):null;
+        const result=executeCommand(current.state,command,actor,{receipt});
         const saved=await repository.commit(actor.companyId,command.expectedRevision,result.state,result.audit);
         if(!saved)return json({error:'Outra pessoa atualizou os registros. Atualize os dados antes de salvar.'},409);
-        return json(saved);
+        return json(presentState(saved,actor));
       }
       return json({error:'Rota não encontrada.'},404);
     }catch(error){
       if(error?.code==='DATABASE_UNAVAILABLE')return json({error:'O banco está indisponível. Os dados não foram salvos.'},503);
-      return json({error:error.message||'Não foi possível concluir o pedido.'},400);
+      return json({error:error.message||'Não foi possível concluir o pedido.'},[400,401,403,404,409].includes(error.status)?error.status:400);
     }
   };
 }

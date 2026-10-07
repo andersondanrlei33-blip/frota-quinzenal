@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#172c2b"><meta name="referrer" content="no-referrer">
   <meta name="description" content="Controle de caminhões, descontos e pagamentos por quinzena.">
   <title>Frota — Pagamentos quinzenais</title>
-  <link rel="stylesheet" href="./styles.css?v=21">
+  <link rel="stylesheet" href="./styles.css?v=22">
 </head>
 <body>
   <aside class="sidebar">
@@ -16,6 +16,7 @@
       <a href="#trucks" data-nav="trucks"><span>▤</span> Caminhões</a>
       <a href="#discounts" data-nav="discounts"><span>−</span> Descontos</a>
       <a href="#closings" data-nav="closings"><span>▣</span> Fechamentos</a>
+      <a href="#requests" data-nav="requests"><span>▣</span> Solicitações</a>
       <a href="#settings" data-nav="settings"><span>⚙</span> Configurações</a>
     </nav>
     <div class="sidebar-bottom"><span class="step-tag">ETAPA 01</span><strong>Pagamentos</strong><p>Uma quinzena de cada vez.</p><div class="storage-label"><i></i><span id="cloud-status">Banco online</span></div><div id="account-label" class="secondary"></div><div class="cloud-sidebar-actions"><button class="btn small" data-action="cloud-refresh">Atualizar dados</button><button class="btn small" data-action="cloud-logout">Sair</button></div></div>
@@ -28,6 +29,6 @@
   <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
   <dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=21"></script>
+  <script type="module" src="./app.js?v=22"></script>
 </body>
 </html>

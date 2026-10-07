@@ -2,8 +2,8 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
   if(!url?.startsWith('https://')||!publishableKey)throw Error('Configure a conexão com o banco online.');
   let session=null,refreshing=null,companyId='';
   const authUrl=path=>url+'/auth/v1/'+path;
-  const request=async (endpoint,{method='GET',body,token=null,company=false}={})=>{
-    const response=await fetchImpl(endpoint,{method,cache:'no-store',headers:{apikey:publishableKey,...(token?{Authorization:'Bearer '+token}:{}),...(company&&companyId?{'X-Fleet-Company':companyId}:{}),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});
+  const request=async (endpoint,{method='GET',body,token=null,company=false,raw=false}={})=>{
+    const response=await fetchImpl(endpoint,{method,cache:'no-store',headers:{apikey:publishableKey,...(token?{Authorization:'Bearer '+token}:{}),...(company&&companyId?{'X-Fleet-Company':companyId}:{}),...(body&&!raw?{'Content-Type':'application/json'}:{})},body:body?(raw?body:JSON.stringify(body)):undefined});
     let value;try{value=await response.json();}catch{throw Error('O servidor não respondeu corretamente. Tente novamente.');}
     if(!response.ok){const error=Error(value.error||value.msg||value.message||'Não foi possível concluir a solicitação.');error.status=response.status;error.code=value.code;throw error;}
     return value;
@@ -28,8 +28,10 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async inspectInvite(ticket){return access({action:'inspect',ticket});},
     async register(ticket,email,password,companyName){const result=await access({action:'register',ticket,email,password,companyName});companyId=result.companyId;return result;},
     async team(){return api('/api/team');},
-    async invite(email,role){return api('/api/team/invite',{email,role});},
-    async updateMember(userId,role,active){return api('/api/team/status',{userId,role,active});},
+    async invite(email,role,party='group'){return api('/api/team/invite',{email,role,party});},
+    async updateMember(userId,role,active,party=null){return api('/api/team/status',{userId,role,active,party});},
+    async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
     hasSession(){return !!session;}
   };
 }

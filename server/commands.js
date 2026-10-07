@@ -1,14 +1,16 @@
 import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps} from './engine.js';
+import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 
 const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove']);
 const allowedRoles=new Set(['admin','operator']);
 const text=(value,max=100)=>{if(typeof value!=='string'||value.trim().length>max)throw Error('Confira os campos de texto.');return value.trim();};
 function requireRecord(list,id,label,key='id'){const record=list.find(item=>item[key]===id);if(!record)throw Error(label+' não encontrado.');return record;}
 
-export function executeCommand(input,command,actor){
+export function executeCommand(input,command,actor,context={}){
   if(!actor?.userId||!allowedRoles.has(actor.role))throw Error('Você não tem permissão para alterar os registros.');
   if(!command||typeof command.type!=='string'||!command.payload||typeof command.payload!=='object'||Array.isArray(command.payload))throw Error('Comando inválido.');
   if(adminActions.has(command.type)&&actor.role!=='admin')throw Error('Esta ação exige um administrador.');
+  authorizePortalCommand(command,actor);
   const state=validateState(input),p=command.payload;
   switch(command.type){
     case 'truck.save':{
@@ -36,12 +38,10 @@ export function executeCommand(input,command,actor){
     }
     case 'period.close':saveClosing(state,period(p.month,p.half),p.farmId||'');break;
     case 'period.reopen':reopenClosing(state,period(p.month,p.half),p.farmId||'',p.closingId||'');break;
-    case 'payment.record':{
-      const closing=requireRecord(state.closings,p.closingId,'Fechamento'),row=requireRecord(closing.rows,p.truckId,'Pagamento','truckId');
-      if(row.paid)throw Error('Este pagamento já está registrado.');if(row.net<=0)throw Error('Não há saldo a pagar para esta placa.');if(!validDate(p.date)||p.date>today())throw Error('Informe uma data de pagamento válida, até hoje.');
-      row.paid={date:p.date,note:text(p.note||'',300)};break;
-    }
-    case 'payment.undo':{const closing=requireRecord(state.closings,p.closingId,'Fechamento'),row=requireRecord(closing.rows,p.truckId,'Pagamento','truckId');if(!row.paid)throw Error('Este pagamento não está registrado.');row.paid=null;break;}
+    case 'payment.request':requestPayments(state,p,actor);break;
+    case 'payment.cancel':cancelRequest(state,p.requestId,text(p.note||'',300),actor);break;
+    case 'payment.record':recordRequestedPayment(state,p,actor,context.receipt);break;
+    case 'payment.undo':undoRequestedPayment(state,p,actor);break;
     case 'truck.transfer':transferTruck(state,p.id,p.toFarmId,p.date,text(p.note||'',300));break;
     case 'truck.end':endActivities(state,p.id,p.date,text(p.note||'',300));break;
     case 'farms.save':{
@@ -53,7 +53,7 @@ export function executeCommand(input,command,actor){
     case 'farm.remove':removeFarm(state,p.id);break;
     case 'farm.status':setFarmActive(state,p.id,p.active);break;
     case 'backup.import':{
-      const restored=applyFixedMonthlyRule(validateState(p.state));Object.assign(state,restored);break;
+      const restored=applyFixedMonthlyRule(validateState(p.state));protectPortalBackup(state,restored);Object.assign(state,restored);break;
     }
     case 'examples.load':{
       if(state.trucks.length)throw Error('Os exemplos exigem um cadastro de caminhões vazio.');

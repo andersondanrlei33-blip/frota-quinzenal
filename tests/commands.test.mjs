@@ -22,11 +22,13 @@ test('server commands preserve paid snapshots and reject discounts in closed per
 });
 test('server records and reverses the payment for the selected truck row',()=>{
   const state=initialState();state.trucks=[truck];const closing=saveClosing(state,period('2026-10',1),'','closing-payment','2026-10-06');
-  const command={type:'payment.record',payload:{closingId:closing.id,truckId:truck.id,date:'2026-10-06',note:'Transferência'}};
-  const paid=executeCommand(state,command,actor).state;
+  const requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1}},actor).state,requestId=requested.paymentRequests[0].id;
+  const carrier={userId:'carrier-test',role:'operator',party:'carrier',companyId:'company-one'},receipt={id:'receipt-test',companyId:'company-one',uploadedBy:'carrier-test',requestId,name:'receipt.pdf',mime:'application/pdf',size:100};
+  const command={type:'payment.record',payload:{requestId,date:'2026-10-06',note:'Transferência'}};
+  const paid=executeCommand(requested,command,carrier,{receipt}).state;
   assert.equal(paid.closings[0].rows[0].paid.date,'2026-10-06');assert.equal(state.closings[0].rows[0].paid,null);
-  assert.throws(()=>executeCommand(paid,command,actor),/registrad/);
-  assert.throws(()=>executeCommand(state,{...command,payload:{...command.payload,truckId:'missing'}},actor),/não encontrado/);
-  const undone=executeCommand(paid,{type:'payment.undo',payload:{closingId:closing.id,truckId:truck.id}},actor).state;
+  assert.throws(()=>executeCommand(paid,command,carrier,{receipt}),/disponível/);
+  assert.throws(()=>executeCommand(requested,{...command,payload:{...command.payload,requestId:'missing'}},carrier,{receipt}),/não encontrada/);
+  const undone=executeCommand(paid,{type:'payment.undo',payload:{requestId,note:'Corrigir referência'}},carrier).state;
   assert.equal(undone.closings[0].rows[0].paid,null);assert.equal(undone.closings[0].rows[0].net,15000);
 });
