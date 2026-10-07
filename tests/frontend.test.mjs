@@ -10,7 +10,7 @@ const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'ut
 const code=[raw('engine.js'),raw('reports.js'),raw('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key'};",raw('cloud-ui.js'),raw('app.js')].join('\n');
 function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,required:false,hidden:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},setCustomValidity(value){this.validationMessage=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
 async function boot(role='admin',activation=false,storage=null,party='group'){
-  const nodes=new Map(),handlers=new Map(),get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
+  const nodes=new Map(),handlers=new Map(),intervals=[],get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
   const document={body:domNode(),visibilityState:'visible',querySelector:get,querySelectorAll:()=>[],addEventListener(type,fn){if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};get('#modal').querySelector=get;
   let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
   let account={role,party};const proofs=new Map();
@@ -20,13 +20,31 @@ async function boot(role='admin',activation=false,storage=null,party='group'){
   const calls=[];
   const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:[]});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
   class FormData {constructor(form){this.values=form?.data||new Map();}get(name){return this.values.get(name);}has(name){return this.values.has(name);}append(name,value){this.values.set(name,value);}}
-  const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:()=>1,console});
+  const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return intervals.length;},console});
   vm.runInContext(code,sandbox,{timeout:1000});await new Promise(resolve=>setImmediate(resolve));
   const emit=async(type,event)=>{for(const handler of handlers.get(type)||[])await handler(event);};
   const submit=async(id,data,dataset={})=>{const error=domNode(),button=domNode(),form={id,dataset,data:new Map(Object.entries(data)),querySelector:selector=>selector==='[type="submit"]'?button:error};await emit('submit',{target:form,preventDefault(){}});return error.textContent;};
   const action=async(name,id='',extra={})=>emit('click',{target:{closest:()=>({disabled:false,dataset:{action:name,id,...extra}})}});
-  return {get,submit,action,calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};}};
+  return {get,submit,action,calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};},poll:async()=>{for(const fn of intervals)await fn();},mutateState:fn=>{const state=structuredClone(stored.state);fn(state);stored={...stored,state,revision:stored.revision+1};}};
 }
+test('carrier receives new requests automatically without closing an open payment dialog',async()=>{
+  const app=await boot('operator',false,null,'carrier');
+  assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
+  const makeRequest=(id,plate)=>({id,period:period('2026-10',1),requestedAt:'2026-10-07T10:00:00.000Z',status:'pending',snapshot:{plate,driver:'Motorista',farmId:'farm1',farmName:'Fazenda 1',net:12000,paymentDetails:{method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'}},payment:null,paymentHistory:[]});
+  app.mutateState(state=>state.paymentRequests.push(makeRequest('request-one','AAA1A11')));
+  await app.poll();assert.match(app.get('#main').innerHTML,/AAA1A11/);assert.match(app.get('#toast').textContent,/Nova solicitação/);
+  app.get('#modal').open=true;
+  app.mutateState(state=>state.paymentRequests.push(makeRequest('request-two','BBB2B22')));
+  await app.poll();assert.doesNotMatch(app.get('#main').innerHTML,/BBB2B22/);assert.equal(app.get('#modal').open,true);
+  app.get('#modal').open=false;
+  await app.poll();assert.match(app.get('#main').innerHTML,/BBB2B22/);
+});
+test('payment details display CPF and CNPJ with punctuation',async()=>{
+  const app=await boot();
+  assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
+  assert.equal(app.run("formatPaymentDocument('12345678000199')"),'12.345.678/0001-99');
+  assert.match(app.run("paymentDetailsMarkup({method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'})"),/CPF\/CNPJ: <strong>055\.561\.101-90<\/strong>/);
+});
 test('the carrier portal returns after a page refresh and logout ends that tab session',async()=>{
   const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
   const first=await boot('operator',false,storage,'carrier');

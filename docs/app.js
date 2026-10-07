@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=28';
-import {createReport,reportMarkup} from './reports.js?v=28';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=28';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=29';
+import {createReport,reportMarkup} from './reports.js?v=29';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=29';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -11,6 +11,12 @@ let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:
 const main=document.querySelector('#main'),modal=document.querySelector('#modal'),modalContent=document.querySelector('#modal-content');
 const e=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const opt=(v,label,selected)=>`<option value="${e(v)}" ${String(v)===String(selected)?'selected':''}>${e(label)}</option>`;
+function formatPaymentDocument(value){
+  const digits=String(value||'').replace(/\D/g,'');
+  if(digits.length===11)return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4');
+  if(digits.length===14)return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5');
+  return String(value||'');
+}
 // Números-código do Banco Central: https://www.bcb.gov.br/content/estabilidadefinanceira/str1/ParticipantesSTR.pdf
 const BANKS=[
   ['001','Banco do Brasil'],['003','Banco da Amazônia'],['004','Banco do Nordeste'],
@@ -85,7 +91,14 @@ function updateCloudStatus() {
   const company=document.querySelector('#company-label');if(company)company.textContent=currentCompany?.name||'Frota';
   const account=document.querySelector('#account-label');if(account)account.textContent=currentUser?(currentUser.email+' · '+(isCarrier()?'Transportadora':'Grupo das fazendas')):'';
 }
-async function refreshServerData() {if(saving)return;adoptServerData(await cloud.load());stale=false;farmDraftDirty=false;modal.close();reportDialog.close();render();updateCloudStatus();}
+async function refreshServerData({automatic=false}={}) {
+  if(saving)return false;
+  const data=await cloud.load();
+  if(automatic&&(saving||modal.open||reportDialog.open||farmDraftDirty)){stale=true;updateCloudStatus();return false;}
+  adoptServerData(data);stale=false;farmDraftDirty=false;
+  if(!automatic){modal.close();reportDialog.close();}
+  render();updateCloudStatus();return true;
+}
 function renderAccess() {
   document.body.classList.add('logged-out');
   const ready=inviteTicket&&inviteInfo;
@@ -203,7 +216,7 @@ function truckForm(id) {
     <div class="form-note"><strong>Dados para pagamento</strong><br>Você pode cadastrar a placa sem preencher esta parte. Antes de solicitar o pagamento, será preciso completá-la.</div>
     <div class="field"><label for="truck-payment-method">Forma de pagamento</label><select id="truck-payment-method" name="paymentMethod">${opt('','Preencher depois',paymentMethod)}${opt('pix','Pix',paymentMethod)}${opt('bank','Transferência bancária',paymentMethod)}</select></div>
     <div id="truck-payment-fields" ${paymentMethod?'':'hidden'}>
-      <div class="fields-two"><div class="field"><label for="truck-payment-holder">Nome do titular</label><input id="truck-payment-holder" name="paymentHolder" value="${e(payment.holder||'')}" maxlength="100" autocomplete="off"></div><div class="field"><label for="truck-payment-document">CPF ou CNPJ do titular</label><input id="truck-payment-document" name="paymentDocument" value="${e(payment.document||'')}" maxlength="25" inputmode="numeric" autocomplete="off"></div></div>
+      <div class="fields-two"><div class="field"><label for="truck-payment-holder">Nome do titular</label><input id="truck-payment-holder" name="paymentHolder" value="${e(payment.holder||'')}" maxlength="100" autocomplete="off"></div><div class="field"><label for="truck-payment-document">CPF ou CNPJ do titular</label><input id="truck-payment-document" name="paymentDocument" value="${e(formatPaymentDocument(payment.document||''))}" maxlength="25" inputmode="numeric" autocomplete="off"></div></div>
       <div id="truck-pix-fields" ${paymentMethod==='pix'?'':'hidden'}><div class="field"><label for="truck-payment-pix">Chave Pix</label><input id="truck-payment-pix" name="paymentPixKey" value="${e(payment.pixKey||'')}" maxlength="120" autocomplete="off"></div></div>
       <div id="truck-bank-fields" ${paymentMethod==='bank'?'':'hidden'}><div class="field"><label for="truck-payment-bank">Banco</label><select id="truck-payment-bank" name="paymentBankSelection">${opt('','Selecione o banco',bankSelection)}${BANKS.map(([code,name])=>opt(name,`${code} - ${name}`,bankSelection)).join('')}${opt('other','Outro banco',bankSelection)}</select></div><div class="field" id="truck-other-bank-field" ${bankSelection==='other'?'':'hidden'}><label for="truck-other-bank">Nome do outro banco</label><input id="truck-other-bank" name="paymentOtherBankName" value="${bankSelection==='other'?e(savedBank):''}" maxlength="100" autocomplete="off"></div><div class="fields-two"><div class="field"><label for="truck-payment-agency">Agência</label><input id="truck-payment-agency" name="paymentAgency" value="${e(payment.agency||'')}" maxlength="20" autocomplete="off"></div><div class="field"><label for="truck-payment-account">Conta com dígito</label><input id="truck-payment-account" name="paymentAccount" value="${e(payment.account||'')}" maxlength="30" autocomplete="off"></div></div><div class="field"><label for="truck-payment-account-type">Tipo de conta</label><select id="truck-payment-account-type" name="paymentAccountType">${opt('','Selecione',payment.accountType||'')}${opt('corrente','Conta corrente',payment.accountType||'')}${opt('poupanca','Poupança',payment.accountType||'')}${opt('pagamento','Conta de pagamento',payment.accountType||'')}</select></div></div>
     </div>
@@ -507,7 +520,7 @@ document.addEventListener('submit',async ev=>{
     if(f.id==='truck-form'){
       const id=f.dataset.id||uid(),prior=state.trucks.find(t=>t.id===id),method=String(data.get('paymentMethod')||'');
       const selectedBank=String(data.get('paymentBankSelection')||'');
-      const paymentDetails=normalizePaymentDetails({method,holder:String(data.get('paymentHolder')||''),document:String(data.get('paymentDocument')||''),pixKey:method==='pix'?String(data.get('paymentPixKey')||''):'',bankName:method==='bank'?(selectedBank==='other'?String(data.get('paymentOtherBankName')||''):selectedBank):'',agency:method==='bank'?String(data.get('paymentAgency')||''):'',account:method==='bank'?String(data.get('paymentAccount')||''):'',accountType:method==='bank'?String(data.get('paymentAccountType')||''):''});
+      const paymentDetails=normalizePaymentDetails({method,holder:String(data.get('paymentHolder')||''),document:formatPaymentDocument(data.get('paymentDocument')),pixKey:method==='pix'?String(data.get('paymentPixKey')||''):'',bankName:method==='bank'?(selectedBank==='other'?String(data.get('paymentOtherBankName')||''):selectedBank):'',agency:method==='bank'?String(data.get('paymentAgency')||''):'',account:method==='bank'?String(data.get('paymentAccount')||''):'',accountType:method==='bank'?String(data.get('paymentAccountType')||''):''});
       const t={id,plate:String(data.get('plate')).toUpperCase().replace(/[^A-Z0-9]/g,''),driver:String(data.get('driver')).trim(),carrier:String(data.get('carrier')).trim(),farmId:data.get('farmId')||prior?.farmId,bodyType:data.get('bodyType'),axles:Number(data.get('axles')==='other'?data.get('otherAxles'):data.get('axles')),monthly:parseAmount(data.get('monthly')),start:data.get('start'),end:data.get('end')||'',paymentDetails,...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:structuredClone(prior.transferIn)}:{}),...(prior?.transferOut?{transferOut:structuredClone(prior.transferOut)}:{}),...(prior?.serviceEnded?{serviceEnded:structuredClone(prior.serviceEnded)}:{})};
       validateTruck(t,state,true);await remoteCommand('truck.save',t);modal.close();render();notify('Cadastro salvo.');
     }
@@ -565,6 +578,7 @@ document.addEventListener('input',ev=>{
   if(ev.target.id==='activity-end-date')updateActivityEndPreview();
 });
 document.addEventListener('focusout',ev=>{
+  if(ev.target.id==='truck-payment-document'){ev.target.value=formatPaymentDocument(ev.target.value);return;}
   if(!['truck-monthly','discount-amount'].includes(ev.target.id))return;
   const n=parseAmount(ev.target.value);
   if(Number.isFinite(n)&&n>0){ev.target.value=amountLabel(n);ev.target.setCustomValidity('');}
@@ -585,7 +599,36 @@ async function restoreSession(){
 }
 if(inviteTicket)render();else restoreSession();
 if(inviteTicket){cloud.inspectInvite(inviteTicket).then(info=>{inviteInfo=info;renderAccess();}).catch(error=>{const message=document.querySelector('#invite-message');if(message)message.textContent=authErrorMessage(error);});}
-setInterval(async()=>{if(!currentUser||saving||document.visibilityState==='hidden')return;try{const next=await cloud.version();if(next.revision!==serverRevision||next.role&&next.role!==currentUser.role||next.party&&next.party!==currentUser.party){if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}else{await refreshServerData();}}}catch(error){if(error.status===401||error.status===403){cloud.forgetSession();currentUser=null;state=initialState();modal.close();reportDialog.close();render();}else{stale=true;updateCloudStatus();}}},60000);
+let checkingUpdates=false,nextGroupCheck=0;
+async function checkForUpdates(force=false){
+  if(!currentUser||saving||checkingUpdates||document.visibilityState==='hidden')return;
+  if(!force&&!isCarrier()&&Date.now()<nextGroupCheck)return;
+  if(!isCarrier())nextGroupCheck=Date.now()+60000;
+  const userId=currentUser.id;checkingUpdates=true;
+  try{
+    const next=await cloud.version();
+    if(!currentUser||currentUser.id!==userId||saving)return;
+    if(stale||next.revision!==serverRevision||next.role&&next.role!==currentUser.role||next.party&&next.party!==currentUser.party){
+      if(modal.open||reportDialog.open||farmDraftDirty){stale=true;updateCloudStatus();}
+      else{
+        const knownRequests=new Set(portalRequests.map(request=>request.id));
+        if(!await refreshServerData({automatic:true}))return;
+        if(isCarrier()){
+          const added=portalRequests.filter(request=>request.status==='pending'&&!knownRequests.has(request.id)).length;
+          if(added)notify(added===1?'Nova solicitação de pagamento recebida.':`${added} novas solicitações de pagamento recebidas.`);
+        }
+      }
+    }
+  }catch(error){
+    if(error.status===401||error.status===403){cloud.forgetSession();currentUser=null;state=initialState();modal.close();reportDialog.close();render();}
+    else{stale=true;updateCloudStatus();}
+  }finally{checkingUpdates=false;}
+}
+setInterval(checkForUpdates,15000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkForUpdates(true);});
+window.addEventListener('focus',()=>checkForUpdates(true));
+modal.addEventListener('close',()=>{if(stale&&currentUser)checkForUpdates(true);});
+reportDialog.addEventListener('close',()=>{if(stale&&currentUser)checkForUpdates(true);});
 
 function requestPaymentsButton(){const list=filteredRows().filter(r=>r.closed&&!r.paid&&!r.requestId&&r.net>0);return `<button class="btn primary" data-action="request-payments" ${!list.length||!canOperate()?'disabled':''}>Solicitar pagamentos</button>`;}
 function portalClosingNotice(list){const count=list.filter(r=>r.requestId&&!r.paid).length;return `<div class="notice neutral"><span>${count?count+' placa(s) já solicitada(s) à transportadora.':'Depois do fechamento, solicite os pagamentos à transportadora. O grupo acompanha os comprovantes pelo portal.'}</span><a href="#requests">Acompanhar solicitações →</a></div>`;}
@@ -594,7 +637,7 @@ function paymentDetailsMarkup(input,status='pending'){
  if(missing.length)return `<div class="form-note warn"><strong>Dados de pagamento não registrados nesta solicitação.</strong>${status==='pending'?'<br>O grupo precisa cancelar a solicitação, preencher o cadastro da placa e enviar novamente.':''}</div>`;
  const details=normalizePaymentDetails(input);
  const destination=details.method==='pix'?`Chave Pix: <strong>${e(details.pixKey)}</strong>`:`Banco: <strong>${e(details.bankName)}</strong><br>Agência: <strong>${e(details.agency)}</strong> · Conta: <strong>${e(details.account)}</strong> · Tipo: <strong>${e({corrente:'Corrente',poupanca:'Poupança',pagamento:'Pagamento'}[details.accountType])}</strong>`;
- return `<div class="form-note"><strong>Dados para pagamento</strong><br>${e(PAYMENT_METHODS[details.method])} · Titular: <strong>${e(details.holder)}</strong><br>CPF/CNPJ: <strong>${e(details.document)}</strong><br>${destination}</div>`;
+ return `<div class="form-note"><strong>Dados para pagamento</strong><br>${e(PAYMENT_METHODS[details.method])} · Titular: <strong>${e(details.holder)}</strong><br>CPF/CNPJ: <strong>${e(formatPaymentDocument(details.document))}</strong><br>${destination}</div>`;
 }
 function requestPaymentsForm(truckId=''){
  if(isCarrier()||!canOperate())throw Error('A solicitação exige acesso do grupo.');const list=filteredRows().filter(r=>r.closed&&!r.paid&&!r.requestId&&r.net>0&&(!truckId||r.truckId===truckId));if(!list.length)throw Error('Não há placas fechadas e sem solicitação nesta seleção.');

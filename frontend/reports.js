@@ -1,4 +1,4 @@
-import {periodRows,periodLabel,dateLabel,round,money} from './engine.js?v=28';
+import {periodRows,periodLabel,dateLabel,round,money} from './engine.js?v=29';
 
 const reportEscape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const reportSum=(rows,key)=>round(rows.reduce((total,row)=>total+(row[key]||0),0));

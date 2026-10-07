@@ -28,6 +28,8 @@ No cadastro da placa, o grupo pode informar **Pix** ou **transferência bancári
 3. O usuário da transportadora entra em **Solicitações**, onde vê somente as solicitações aprovadas e os dados necessários para pagar cada placa, com filtros de quinzena, fazenda, placa/motorista e situação.
 4. Após realizar a transferência, registra a data e anexa o comprovante em **PDF, JPG ou PNG, até 10 MB**. Somente o acesso da transportadora pode registrar novos pagamentos. O grupo acompanha o resultado e consulta o comprovante.
 
+Com a aba da transportadora visível, o painel confere novas solicitações a cada 15 segundos e atualiza a lista automaticamente. Ao voltar para a aba, confere imediatamente. Se um formulário ou detalhe estiver aberto, a atualização aguarda o fechamento da janela. CPF e CNPJ aparecem pontuados nos dados de pagamento.
+
 Os pagamentos continuam com os estados **Aberto, Fechado e Pago**. A solicitação permanece fechada, aguardando pagamento, até o registro com comprovante. O registro no portal não executa uma transferência bancária.
 
 Solicitações pendentes precisam ser canceladas com motivo antes de reabrir seu fechamento. Confirme com a transportadora antes de cancelar. A solicitação cancelada continua no histórico. Correções de pagamento pela transportadora exigem motivo e preservam os registros e comprovantes anteriores. Pagamentos registrados antes deste portal permanecem no histórico; o administrador pode corrigir um registro anterior com motivo para solicitar novamente pelo fluxo atual.
@@ -37,8 +39,6 @@ Se os dados bancários de uma placa mudarem depois do envio, a solicitação já
 Os comprovantes ficam em armazenamento privado do Supabase, com validação de tamanho e assinatura do formato no servidor. Para consultar um arquivo, a API confere a empresa e o vínculo com o histórico do pagamento e fornece um link com validade de um minuto. A transportadora não recebe cadastros e prévias do grupo, nem pode acessar diretamente esses registros pela Data API.
 
 O administrador pode inativar ou reativar usuários. O último administrador ativo não pode ser inativado ou rebaixado. A sessão de acesso fica no armazenamento temporário da aba e é revalidada no servidor ao recarregar a página. O botão **Sair** apaga essa sessão; caminhões, descontos e pagamentos continuam somente no servidor.
-
-Quem já estava conectado antes desta atualização precisa entrar novamente uma vez para iniciar a sessão temporária da aba.
 
 ## Cálculo e operação
 
