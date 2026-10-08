@@ -1,11 +1,11 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=50';
-import {createReport,reportMarkup} from './reports.js?v=50';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=50';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=51';
+import {createReport,reportMarkup} from './reports.js?v=51';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=51';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let portalRequests=[],portalPeriod='',portalFarm='',portalSearch='';
-let cteDocuments=[],cteTrucks=[],cteFarms=[],cteFarmFilter='',cteSearch='',cteLoading=false;
+let cteDocuments=[],cteTrucks=[],cteFarms=[],cteFarmFilter='',cteFilterField='all',cteSearch='',cteLoading=false;
 const isCarrier=()=>currentUser?.party==='carrier';
 const canOperate=()=>['admin','operator'].includes(currentUser?.role);
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',view='overview',toastTimer;
@@ -239,10 +239,18 @@ function render() {
 
 function ctesView(){
  const farms=isCarrier()?cteFarms:state.farms;
- const records=cteDocuments.filter(doc=>(!cteFarmFilter||doc.farmId===cteFarmFilter)&&(!cteSearch||(doc.plate+' '+doc.issuer+' '+doc.shipper+' '+doc.recipient+' '+doc.serviceTaker+' '+(doc.number||'')).toLocaleLowerCase('pt-BR').includes(cteSearch.toLocaleLowerCase('pt-BR'))));
+ const filterFields={all:'Todos os campos',shipper:'Remetente',recipient:'Destinatário',serviceTaker:'Tomador do serviço',issuer:'Transportadora',totalValue:'Valor do serviço',issuedOn:'Data de emissão',plate:'Placa'};
+ const normalizeFilter=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR'),searchText=normalizeFilter(cteSearch.trim());
+ const records=cteDocuments.filter(doc=>{
+  if(cteFarmFilter&&doc.farmId!==cteFarmFilter)return false;
+  if(!searchText)return true;
+  const values=cteFilterField==='all'?[doc.shipper,doc.recipient,doc.serviceTaker,doc.issuer,doc.totalValue,money(doc.totalValue||0),doc.issuedOn,dateLabel(doc.issuedOn),doc.plate,doc.number]:cteFilterField==='totalValue'?[doc.totalValue,money(doc.totalValue||0)]:cteFilterField==='issuedOn'?[doc.issuedOn,dateLabel(doc.issuedOn)]:[doc[cteFilterField]];
+  return values.some(value=>normalizeFilter(value).includes(searchText));
+ });
  const farmOptionsHtml=[...new Map([...farms.map(f=>[f.id,f.name]),...cteDocuments.map(d=>[d.farmId,d.farmName])]).entries()].map(([id,name])=>opt(id,name,cteFarmFilter)).join('');
+ const filterOptionsHtml=Object.entries(filterFields).map(([value,label])=>opt(value,label,cteFilterField)).join('');
  return head('CT-e','Remetente, destinatário, tomador do serviço, transportadora, valor, emissão e placa lidos automaticamente do PDF ou XML.',isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar CT-e</button>':'','DOCUMENTOS FISCAIS')+
- `<div class="toolbar"><select id="cte-farm-filter" aria-label="Filtrar CT-e por fazenda">${opt('','Todas as fazendas',cteFarmFilter)}${farmOptionsHtml}</select><input id="cte-search" type="search" value="${e(cteSearch)}" placeholder="Buscar remetente, destinatário ou placa" aria-label="Buscar CT-e"><button class="btn small" data-action="cte-refresh">Atualizar</button><span class="period-caption">${records.length} documento(s)</span></div><section class="card"><div class="card-header"><div><h2>Documentos enviados</h2><p>${isCarrier()?'CT-es lidos e enviados pela transportadora para o grupo.':'CT-es enviados pela transportadora para consulta e download.'}</p></div></div>${records.length?`<div class="table-wrap"><table><thead><tr><th>REMETENTE</th><th>DESTINATÁRIO</th><th>TOMADOR DO SERVIÇO</th><th>TRANSPORTADORA</th><th>VALOR DO SERVIÇO</th><th>DATA DE EMISSÃO</th><th>PLACA</th><th>AÇÃO</th></tr></thead><tbody>${records.map(doc=>`<tr><td>${e(doc.shipper||'—')}</td><td>${e(doc.recipient||'—')}</td><td>${e(doc.serviceTaker||'—')}</td><td>${e(doc.issuer||'—')}</td><td><strong>${money(doc.totalValue||0)}</strong></td><td>${dateLabel(doc.issuedOn)}</td><td><strong class="plate">${e(doc.plate)}</strong></td><td><button class="btn small" data-action="cte-download" data-id="${e(doc.id)}">Baixar</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty"><h3>${cteDocuments.length?'Nenhum CT-e nesta seleção':'Ainda não há CT-es enviados'}</h3><p>${isCarrier()?'Envie o PDF do DACTE para o sistema preencher os dados e disponibilizar o documento ao grupo.':'Os CT-es enviados pela transportadora aparecerão aqui para consulta e download.'}</p>${isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar primeiro CT-e</button>':''}</div>`}<div class="card-footer"><span>${records.length} documento(s) nesta seleção</span><span>Arquivos privados da empresa</span></div></section>`;
+ `<div class="toolbar"><select id="cte-farm-filter" aria-label="Filtrar CT-e por fazenda">${opt('','Todas as fazendas',cteFarmFilter)}${farmOptionsHtml}</select><select id="cte-filter-field" aria-label="Campo para filtrar CT-e">${filterOptionsHtml}</select><input id="cte-search" type="search" value="${e(cteSearch)}" placeholder="Buscar em ${e(filterFields[cteFilterField]||'todos os campos').toLocaleLowerCase('pt-BR')}" aria-label="Buscar CT-e"><button class="btn small" data-action="cte-refresh">Atualizar</button><span class="period-caption">${records.length} documento(s)</span></div><section class="card"><div class="card-header"><div><h2>Documentos enviados</h2><p>${isCarrier()?'CT-es lidos e enviados pela transportadora para o grupo.':'CT-es enviados pela transportadora para consulta e download.'}</p></div></div>${records.length?`<div class="table-wrap"><table><thead><tr><th>REMETENTE</th><th>DESTINATÁRIO</th><th>TOMADOR DO SERVIÇO</th><th>TRANSPORTADORA</th><th>VALOR DO SERVIÇO</th><th>DATA DE EMISSÃO</th><th>PLACA</th><th>AÇÃO</th></tr></thead><tbody>${records.map(doc=>`<tr><td>${e(doc.shipper||'—')}</td><td>${e(doc.recipient||'—')}</td><td>${e(doc.serviceTaker||'—')}</td><td>${e(doc.issuer||'—')}</td><td><strong>${money(doc.totalValue||0)}</strong></td><td>${dateLabel(doc.issuedOn)}</td><td><strong class="plate">${e(doc.plate)}</strong></td><td><button class="btn small" data-action="cte-download" data-id="${e(doc.id)}">Baixar</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty"><h3>${cteDocuments.length?'Nenhum CT-e nesta seleção':'Ainda não há CT-es enviados'}</h3><p>${isCarrier()?'Envie o PDF do DACTE para o sistema preencher os dados e disponibilizar o documento ao grupo.':'Os CT-es enviados pela transportadora aparecerão aqui para consulta e download.'}</p>${isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar primeiro CT-e</button>':''}</div>`}<div class="card-footer"><span>${records.length} documento(s) nesta seleção</span><span>Arquivos privados da empresa</span></div></section>`;
 }
 
 async function loadCteData(){
@@ -615,6 +623,7 @@ document.addEventListener('change',async ev=>{
   if(el.id==='request-period'){portalPeriod=el.value;render();return;}
   if(el.id==='request-farm'){portalFarm=el.value;render();return;}
   if(el.id==='cte-farm-filter'){cteFarmFilter=el.value;render();return;}
+  if(el.id==='cte-filter-field'){cteFilterField=el.value;render();return;}
   if(['report-month','report-half','report-farm','report-scope','report-plate'].includes(el.id)){updateReportPeriod();return;}
   if(el.id==='period-month'){if(/^\d{4}-\d{2}$/.test(el.value)){currentMonth=el.value;render();}}
   else if(el.id==='farm-filter'){farmFilter=el.value;render();}
