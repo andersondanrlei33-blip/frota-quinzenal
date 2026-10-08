@@ -15,13 +15,13 @@ OBSERVAÇÕES
 Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
-const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-01-01',end:''}]};
-function setup({party='carrier',role='operator'}={}){
+const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
+function setup({party='carrier',role='operator',trucks=state.trucks}={}){
  const calls={};
  const backend={
   actor:async()=>({userId,email:'user@example.com',companyId,party,role}),
   responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}}),
-  repository:{load:async()=>({state})},
+  repository:{load:async()=>({state:{...state,trucks}})},
   ctes:{
    list:async()=>[{id:documentId,farmId:'farm-a',farmName:'Fazenda A',truckId:'truck-a',plate:'ABC1D23',driver:'João',number:'123',issuedOn:'2026-10-08',uploadedAt:'2026-10-08T12:00:00Z',name:'cte.xml',mime:'application/xml',size:xml.length,objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}],
    upload:async(actor,metadata,bytes,details,snapshot)=>{calls.upload={actor,metadata,bytes,details,snapshot};return {id:documentId,name:details.name,mime:details.mime,size:details.size};},
@@ -59,12 +59,17 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
  const denied=await setup({party:'group'}).api(formRequest());assert.equal(denied.status,403);
  const viewer=await setup({role:'viewer'}).api(formRequest());assert.equal(viewer.status,403);
  const noMatchApi=createCteApi({backend:{actor:async()=>({userId,email:'user@example.com',companyId,party:'carrier',role:'operator'}),responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status}),repository:{load:async()=>({state:{farms:state.farms,trucks:[]}})},ctes:{upload:async()=>{throw Error('unexpected');}}}});
- await assert.rejects(()=>noMatchApi(formRequest()),/Não encontrei essa placa/);
+ await assert.rejects(()=>noMatchApi(formRequest()),/Não encontrei a placa ABC1D23/);
 });
 
-test('transportadora envia PDF do DACTE e dados lidos são vinculados à placa e fazenda',async()=>{
+test('transportadora envia PDF do DACTE e associa pela placa mesmo quando emissão antecede início cadastrado',async()=>{
  const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
  assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.details.mime,'application/pdf');
+});
+
+test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros sem correspondência de período',async()=>{
+ const duplicate={...state.trucks[1],id:'truck-c',farmId:'farm-b'},trucks=[...state.trucks,duplicate],{api}=setup({trucks});
+ await assert.rejects(()=>api(formRequest({fileName:'cte.pdf',bytes:pdf})),/mais de um cadastro para a placa BCD5C56/);
 });
 
 test('portal lista os documentos da empresa e fornece download privado por tempo limitado',async()=>{

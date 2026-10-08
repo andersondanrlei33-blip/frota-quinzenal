@@ -79,9 +79,11 @@ export function createCteApi({backend,readPdf}){
    const data=await boundedFormData(request),file=data.get('file');
    if(!file||typeof file.arrayBuffer!=='function'||file.size>CTE_LIMIT)throw Error('Anexe o PDF ou XML do CT-e, de até 20 MB.');
    const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectCte(bytes,file.name),cte=details.extension==='xml'?parseCteXml(bytes):parseCtePdfText(await readPdf(bytes));
-   const current=await backend.repository.load(actor.companyId),normalizePlate=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,''),truckMatches=(current.state.trucks||[]).filter(t=>normalizePlate(t.plate)===cte.plate&&(!t.start||t.start<=cte.issuedOn)&&(!t.end||t.end>=cte.issuedOn));
-   if(truckMatches.length!==1)throw Error(truckMatches.length?'Encontrei mais de um cadastro para essa placa nesta data. Corrija o cadastro do caminhão antes de enviar.':'Não encontrei essa placa cadastrada na data de emissão do CT-e. Cadastre ou transfira o caminhão com a data correta e tente novamente.');
-   const truck=truckMatches[0],farm=current.state.farms?.find(f=>f.id===truck.farmId);if(!farm)throw Error('A fazenda vinculada à placa não foi encontrada.');
+   const current=await backend.repository.load(actor.companyId),normalizePlate=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,''),plateMatches=(current.state.trucks||[]).filter(t=>normalizePlate(t.plate)===cte.plate),dateMatches=plateMatches.filter(t=>(!t.start||t.start<=cte.issuedOn)&&(!t.end||t.end>=cte.issuedOn));
+   const truck=dateMatches.length===1?dateMatches[0]:dateMatches.length===0&&plateMatches.length===1?plateMatches[0]:null;
+   if(!plateMatches.length)throw Error('Não encontrei a placa '+cte.plate+' cadastrada. Confira a placa no cadastro do caminhão e tente novamente.');
+   if(!truck)throw Error('Encontrei mais de um cadastro para a placa '+cte.plate+' e não consigo identificar a fazenda com segurança. Confira os períodos e as transferências desse caminhão.');
+   const farm=current.state.farms?.find(f=>f.id===truck.farmId);if(!farm)throw Error('A fazenda vinculada à placa não foi encontrada.');
    const metadata={truckId:truck.id,farmId:farm.id,...cte};
    const saved=await backend.ctes.upload(actor,metadata,bytes,details,{plate:cte.plate,driver:truck.driver,farmName:farm.name});
    return backend.responseJson(saved,201);
