@@ -40,6 +40,12 @@ test('carrier receives new requests automatically without closing an open paymen
   app.get('#modal').open=false;
   await app.poll();assert.match(app.get('#main').innerHTML,/BBB2B22/);
 });
+test('payment requests are separated into pending payments and a paid or cancelled history',async()=>{
+  const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
+  const make=(id,status,plate,net)=>({id,period:period('2026-10',1),requestedAt:'2026-10-07T10:00:00.000Z',status,snapshot:{plate,driver:'Motorista '+plate,farmId:'farm1',farmName:'Fazenda 1',net,gross:net,discount:0,payableDays:15,carrier:'Transportadora',paymentDetails:{method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'}},payment:status==='paid'?{date:'2026-10-15',receipt:{id:'proof-'+id,name:'pagamento.pdf'}}:null,paymentHistory:[],...(status==='cancelled'?{cancelledAt:'2026-10-08T10:00:00.000Z',cancelReason:'Solicitação refeita'}:{})});
+  app.mutateState(state=>state.paymentRequests.push(make('req-pending','pending','AAA1A11',12000),make('req-paid','paid','BBB2B22',14000),make('req-cancelled','cancelled','CCC3C33',8000)));
+  await app.poll();const html=app.get('#main').innerHTML;assert.match(html,/Aguardando pagamento/);assert.match(html,/Histórico de solicitações/);assert.match(html,/AAA1A11/);assert.match(html,/BBB2B22/);assert.match(html,/CCC3C33/);assert.match(html,/Pago em 15\/10\/2026/);assert.match(html,/Solicitação cancelada/);assert.match(html,/Total pago: R\$\s?14\.000,00/);
+});
 test('payment details display CPF and CNPJ with punctuation',async()=>{
   const app=await boot();
   assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
