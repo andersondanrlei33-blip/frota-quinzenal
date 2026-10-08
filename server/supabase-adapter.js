@@ -2,8 +2,8 @@ const responseJson=(data,status=200)=>new Response(JSON.stringify(data),{status,
 export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch}){
   if(!url||!publicKey||!secretKey)throw Error('Configure o banco e a autenticação do servidor.');
   const serviceHeaders={apikey:secretKey,...(secretKey.startsWith('ey')?{Authorization:'Bearer '+secretKey}:{}),'Content-Type':'application/json'};
-  async function service(path,{method='GET',body}={}){
-    const response=await fetchImpl(url+path,{method,headers:serviceHeaders,body:body===undefined?undefined:JSON.stringify(body)});
+  async function service(path,{method='GET',body,prefer}={}){
+    const response=await fetchImpl(url+path,{method,headers:{...serviceHeaders,...(prefer?{Prefer:prefer}:{})},body:body===undefined?undefined:JSON.stringify(body)});
     const raw=await response.text();let data;try{data=raw?JSON.parse(raw):null;}catch{data=null;}
     if(!response.ok){const error=Error(data?.message||data?.msg||'Não foi possível acessar o banco.');error.code=data?.code||data?.error_code;error.status=response.status;throw error;}
     return data;
@@ -53,15 +53,17 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     },
     sign:receipts.sign
   };
-  const mapCte=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,number:r.cte_number,issuer:r.issuer,recipient:r.recipient,shipper:r.shipper||'Não identificado',serviceTaker:r.service_taker||'Não identificado',totalValue:Number(r.total_value),issuedOn:r.issued_on,uploadedBy:r.uploaded_by,uploadedAt:r.created_at,name:r.file_name,mime:r.content_type,size:r.size_bytes,objectKey:r.object_key}:null;
+  const mapCte=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,number:r.cte_number,issuer:r.issuer,recipient:r.recipient,shipper:r.shipper||'Não identificado',serviceTaker:r.service_taker||'Não identificado',participantDetails:r.participant_details||{},totalValue:Number(r.total_value),issuedOn:r.issued_on,uploadedBy:r.uploaded_by,uploadedAt:r.created_at,name:r.file_name,mime:r.content_type,size:r.size_bytes,objectKey:r.object_key}:null;
   const ctes={
+    async getPreferences(userId,companyId){const rows=await service('/rest/v1/fleet_cte_report_preferences?'+new URLSearchParams({user_id:'eq.'+userId,company_id:'eq.'+companyId,select:'visible_columns,column_order'}));const row=rows?.[0];return row?{visibleColumns:row.visible_columns,columnOrder:row.column_order}:null;},
+    async savePreferences(userId,companyId,preferences){await service('/rest/v1/fleet_cte_report_preferences?on_conflict=user_id%2Ccompany_id',{method:'POST',prefer:'resolution=merge-duplicates',body:{user_id:userId,company_id:companyId,visible_columns:preferences.visibleColumns,column_order:preferences.columnOrder} });return preferences;},
     async list(companyId){const rows=await service('/rest/v1/fleet_cte_documents?'+new URLSearchParams({company_id:'eq.'+companyId,select:'*',order:'issued_on.desc,created_at.desc'}));return (rows||[]).map(mapCte);},
     async find(companyId,id){if(!/^[0-9a-f-]{36}$/i.test(id||''))return null;const rows=await service('/rest/v1/fleet_cte_documents?'+new URLSearchParams({id:'eq.'+id,company_id:'eq.'+companyId,select:'*'}));return mapCte(rows?.[0]);},
     async upload(who,metadata,bytes,details,snapshot){
       const id=crypto.randomUUID(),key=who.companyId+'/ctes/'+id+'/cte.'+details.extension;
       const response=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(key),{method:'POST',headers:{...serviceHeaders,'Content-Type':details.mime,'x-upsert':'false','Cache-Control':'no-store'},body:bytes});
       if(!response.ok)throw Error('Não foi possível guardar o CT-e. Tente novamente.');
-      try{await service('/rest/v1/fleet_cte_documents',{method:'POST',body:{id,company_id:who.companyId,farm_id:metadata.farmId,farm_name:snapshot.farmName,truck_id:metadata.truckId,plate:snapshot.plate,driver:snapshot.driver,cte_number:metadata.number||null,issuer:metadata.issuer,recipient:metadata.recipient,shipper:metadata.shipper,service_taker:metadata.serviceTaker,total_value:metadata.totalValue,issued_on:metadata.issuedOn,uploaded_by:who.userId,object_key:key,file_name:details.name,content_type:details.mime,size_bytes:details.size}});}
+      try{await service('/rest/v1/fleet_cte_documents',{method:'POST',body:{id,company_id:who.companyId,farm_id:metadata.farmId,farm_name:snapshot.farmName,truck_id:metadata.truckId,plate:snapshot.plate,driver:snapshot.driver,cte_number:metadata.number||null,issuer:metadata.issuer,recipient:metadata.recipient,shipper:metadata.shipper,service_taker:metadata.serviceTaker,participant_details:metadata.participantDetails||{},total_value:metadata.totalValue,issued_on:metadata.issuedOn,uploaded_by:who.userId,object_key:key,file_name:details.name,content_type:details.mime,size_bytes:details.size}});}
       catch(error){await service('/storage/v1/object/'+bucket,{method:'DELETE',body:{prefixes:[key]}}).catch(()=>{});if(error.code==='23505')throw Error('Já existe um CT-e com este número nesta empresa. Confira o documento.');throw error;}
       return {id,name:details.name,mime:details.mime,size:details.size};
     },

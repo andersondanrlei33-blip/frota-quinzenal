@@ -48,6 +48,7 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
     async ctes(){return api('/api/ctes');},
+    async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
     async uploadCte({file}){const body=new FormData();body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async cteLink(id){return api('/api/ctes/'+encodeURIComponent(id));},
     hasSession(){return !!session;}
