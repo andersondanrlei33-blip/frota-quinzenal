@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {createCteApi,inspectCte,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
-const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
+const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
+const xmlToma4=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<toma3><toma>3</toma></toma3>','<toma4><xNome>Tomador Contratante Ltda</xNome></toma4>'));
 const pdf=new TextEncoder().encode('%PDF-1.7 fake');
 const pdfText=`BARROS TRANSPORTES RODOVIARIOS LTDA DACTE Modal
 Data Emissão
 22/09/2026
 Remetente: MORENA SEMENTES LTDA Destinatário: JOSE ALTAIR LAZAROTTO
+Tomador Serviço: JOSE ALTAIR LAZAROTTO Município: LUCAS DO RIO VERDE CEP: 78450-000
 VALOR TOTAL DO SERVIÇO
 FRETE FRETE 46.875,32
 OBSERVAÇÕES
@@ -36,12 +38,13 @@ const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
  return new Request('https://example.test/api/ctes',{method:'POST',body:form});
 };
 
-test('extrai automaticamente emitente, destinatário, valor, data e placa do XML do CT-e',()=>{
- assert.deepEqual(parseCteXml(xml),{issuer:'Transportadora Exemplo Ltda',recipient:'Fazenda Exemplo SA',totalValue:1250.75,issuedOn:'2026-10-08',plate:'ABC1D23',number:'123'});
+test('extrai automaticamente participantes, valor, data e placa do XML do CT-e',()=>{
+ assert.deepEqual(parseCteXml(xml),{issuer:'Transportadora Exemplo Ltda',recipient:'Fazenda Exemplo SA',shipper:'Remetente Exemplo Ltda',serviceTaker:'Fazenda Exemplo SA',totalValue:1250.75,issuedOn:'2026-10-08',plate:'ABC1D23',number:'123'});
+ assert.equal(parseCteXml(xmlToma4).serviceTaker,'Tomador Contratante Ltda');
 });
 
 test('extrai automaticamente os campos importantes do texto do DACTE em PDF',()=>{
- assert.deepEqual(parseCtePdfText(pdfText),{issuer:'BARROS TRANSPORTES RODOVIARIOS LTDA',recipient:'JOSE ALTAIR LAZAROTTO',totalValue:46875.32,issuedOn:'2026-09-22',plate:'BCD5C56',number:''});
+ assert.deepEqual(parseCtePdfText(pdfText),{issuer:'BARROS TRANSPORTES RODOVIARIOS LTDA',recipient:'JOSE ALTAIR LAZAROTTO',shipper:'MORENA SEMENTES LTDA',serviceTaker:'JOSE ALTAIR LAZAROTTO',totalValue:46875.32,issuedOn:'2026-09-22',plate:'BCD5C56',number:''});
 });
 
 test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',()=>{
@@ -55,7 +58,7 @@ test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',(
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
  const {api,calls}=setup();const response=await api(formRequest());
- assert.equal(response.status,201);assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.issuer,'Transportadora Exemplo Ltda');assert.equal(calls.upload.metadata.recipient,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.totalValue,1250.75);assert.equal(calls.upload.snapshot.plate,'ABC1D23');assert.equal(calls.upload.details.mime,'application/xml');
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.issuer,'Transportadora Exemplo Ltda');assert.equal(calls.upload.metadata.recipient,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.shipper,'Remetente Exemplo Ltda');assert.equal(calls.upload.metadata.serviceTaker,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.totalValue,1250.75);assert.equal(calls.upload.snapshot.plate,'ABC1D23');assert.equal(calls.upload.details.mime,'application/xml');
  const denied=await setup({party:'group'}).api(formRequest());assert.equal(denied.status,403);
  const viewer=await setup({role:'viewer'}).api(formRequest());assert.equal(viewer.status,403);
  const noMatchApi=createCteApi({backend:{actor:async()=>({userId,email:'user@example.com',companyId,party:'carrier',role:'operator'}),responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status}),repository:{load:async()=>({state:{farms:state.farms,trucks:[]}})},ctes:{upload:async()=>{throw Error('unexpected');}}}});
@@ -64,7 +67,7 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
 
 test('transportadora envia PDF do DACTE e associa pela placa mesmo quando emissão antecede início cadastrado',async()=>{
  const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
- assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.details.mime,'application/pdf');
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.details.mime,'application/pdf');
 });
 
 test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros sem correspondência de período',async()=>{
