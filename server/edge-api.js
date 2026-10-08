@@ -1,12 +1,13 @@
 import {createFleetApi} from './api.js';
 import {createReceiptApi} from './receipts.js';
 import {createCteApi} from './ctes.js';
+import {extractCtePdfText} from './cte-pdf.js';
 import {createSupabaseBackend,corsResponse,emailAddress,randomTicket,sha256} from './supabase-adapter.js';
 const envKey=(modern,legacy)=>{try{const key=JSON.parse(Deno.env.get(modern)||'{}').default;if(key)return key;}catch{}return Deno.env.get(legacy);};
 const backend=createSupabaseBackend({url:Deno.env.get('SUPABASE_URL'),publicKey:envKey('SUPABASE_PUBLISHABLE_KEYS','SUPABASE_ANON_KEY'),secretKey:envKey('SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY')});
 const dataApi=createFleetApi({repository:backend.repository,authenticate:backend.actor});
 const receiptApi=createReceiptApi({backend});
-const cteApi=createCteApi({backend});
+const cteApi=createCteApi({backend,readPdf:extractCtePdfText});
 const escapeHtml=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 async function sendAccessInvite(email,ticket){
   const apiKey=Deno.env.get('RESEND_API_KEY'),from=Deno.env.get('FLEET_EMAIL_FROM');

@@ -1,11 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,inspectCte,parseCteXml} from '../server/ctes.js';
+import {createCteApi,inspectCte,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
 const pdf=new TextEncoder().encode('%PDF-1.7 fake');
-const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''}]};
+const pdfText=`BARROS TRANSPORTES RODOVIARIOS LTDA DACTE Modal
+Data Emissão
+22/09/2026
+Remetente: MORENA SEMENTES LTDA Destinatário: JOSE ALTAIR LAZAROTTO
+VALOR TOTAL DO SERVIÇO
+FRETE FRETE 46.875,32
+OBSERVAÇÕES
+Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
+SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
+Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
+const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-01-01',end:''}]};
 function setup({party='carrier',role='operator'}={}){
  const calls={};
  const backend={
@@ -19,7 +29,7 @@ function setup({party='carrier',role='operator'}={}){
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
   }
  };
- return {api:createCteApi({backend}),calls};
+ return {api:createCteApi({backend,readPdf:async()=>pdfText}),calls};
 }
 const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
  const form=new FormData();form.append('file',new Blob([bytes],{type:fileName.endsWith('.xml')?'application/xml':'application/pdf'}),fileName);
@@ -30,12 +40,17 @@ test('extrai automaticamente emitente, destinatário, valor, data e placa do XML
  assert.deepEqual(parseCteXml(xml),{issuer:'Transportadora Exemplo Ltda',recipient:'Fazenda Exemplo SA',totalValue:1250.75,issuedOn:'2026-10-08',plate:'ABC1D23',number:'123'});
 });
 
-test('valida o XML e rejeita PDF, outros formatos e XMLs inválidos',()=>{
+test('extrai automaticamente os campos importantes do texto do DACTE em PDF',()=>{
+ assert.deepEqual(parseCtePdfText(pdfText),{issuer:'BARROS TRANSPORTES RODOVIARIOS LTDA',recipient:'JOSE ALTAIR LAZAROTTO',totalValue:46875.32,issuedOn:'2026-09-22',plate:'BCD5C56',number:''});
+});
+
+test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',()=>{
  assert.equal(inspectCte(xml,'documento.xml').mime,'application/xml');
  assert.throws(()=>inspectCte(pdf,'documento.xml'),/XML de CT-e válido/);
  assert.throws(()=>inspectCte(new TextEncoder().encode('texto'),'documento.xml'),/XML de CT-e válido/);
- assert.throws(()=>inspectCte(pdf,'documento.pdf'),/leitura automática/);
- assert.throws(()=>inspectCte(new Uint8Array([0]),'documento.exe'),/leitura automática/);
+ assert.equal(inspectCte(pdf,'documento.pdf').mime,'application/pdf');
+ assert.throws(()=>inspectCte(new TextEncoder().encode('texto'),'documento.pdf'),/Envie o PDF/);
+ assert.throws(()=>inspectCte(new Uint8Array([0]),'documento.exe'),/Envie o PDF/);
 });
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
@@ -45,6 +60,11 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
  const viewer=await setup({role:'viewer'}).api(formRequest());assert.equal(viewer.status,403);
  const noMatchApi=createCteApi({backend:{actor:async()=>({userId,email:'user@example.com',companyId,party:'carrier',role:'operator'}),responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status}),repository:{load:async()=>({state:{farms:state.farms,trucks:[]}})},ctes:{upload:async()=>{throw Error('unexpected');}}}});
  await assert.rejects(()=>noMatchApi(formRequest()),/Não encontrei essa placa/);
+});
+
+test('transportadora envia PDF do DACTE e dados lidos são vinculados à placa e fazenda',async()=>{
+ const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.details.mime,'application/pdf');
 });
 
 test('portal lista os documentos da empresa e fornece download privado por tempo limitado',async()=>{
