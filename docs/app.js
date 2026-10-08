@@ -1,10 +1,11 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=46';
-import {createReport,reportMarkup} from './reports.js?v=43';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=43';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=47';
+import {createReport,reportMarkup} from './reports.js?v=47';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=47';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let portalRequests=[],portalPeriod='',portalFarm='',portalSearch='';
+let cteDocuments=[],cteTrucks=[],cteFarms=[],cteFarmFilter='',cteSearch='',cteLoading=false;
 const isCarrier=()=>currentUser?.party==='carrier';
 const canOperate=()=>['admin','operator'].includes(currentUser?.role);
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',view='overview',toastTimer;
@@ -175,7 +176,7 @@ function overview() {
   return head('Visão geral','O resumo da sua frota e dos pagamentos da quinzena.','<a class="btn" href="#trucks">Ver caminhões</a><button class="btn primary" data-action="new-truck">+ Cadastrar caminhão</button>','RESUMO DA FROTA')+
     periodBar(true,'Mês da visão geral')+recovery+
     `<div class="metric-grid overview-metrics">${metrics.map(([label,value,note],index)=>`<div class="metric ${index===0?'featured':''}"><div class="metric-label">${index===0?'<span class="dot"></span>':''}${e(label)}</div><div class="metric-value">${value}</div><div class="metric-note">${e(note)}</div></div>`).join('')}</div>`+
-    `<section class="card"><div class="card-header"><div><h2>Resumo financeiro da quinzena</h2><p>Prévia dos valores em aberto e fechamentos salvos nesta quinzena.</p></div><a class="btn small" href="#closings">Ir para Fechamentos →</a></div><div class="overview-finance"><div class="overview-finance-total"><span class="finance-dot spacer" aria-hidden="true"></span><span>Total bruto</span><strong>${money(d.gross)}</strong></div><div class="overview-finance-item overview-finance-net"><span class="finance-dot spacer" aria-hidden="true"></span><span>Líquido após descontos</span><strong>${money(d.total)}</strong></div><div class="overview-finance-item"><span class="finance-dot paid"></span><span>Pago</span><strong>${money(d.paid)}</strong></div><div class="overview-finance-item"><span class="finance-dot waiting"></span><span>Fechado, aguardando pagamento</span><strong>${money(d.waiting)}</strong></div><div class="overview-finance-item"><span class="finance-dot open"></span><span>Em aberto</span><strong>${money(d.open)}</strong></div><a class="overview-finance-item overview-discounts-link" href="#discounts" aria-label="Ver descontos totais da quinzena: ${e(money(d.discounts))}"><span class="finance-dot discount"></span><span>Descontos totais</span><strong>${money(d.discounts)}</strong><small>Ver descontos →</small></a></div></div></section>`+
+    `<section class="card"><div class="card-header"><div><h2>Resumo financeiro da quinzena</h2><p>Prévia dos valores em aberto e fechamentos salvos nesta quinzena.</p></div><a class="btn small" href="#closings">Ir para Fechamentos →</a></div><div class="overview-finance"><div class="overview-finance-total"><span class="finance-dot spacer" aria-hidden="true"></span><span>Total bruto</span><strong>${money(d.gross)}</strong></div><div class="overview-finance-item overview-finance-net"><span class="finance-dot spacer" aria-hidden="true"></span><span>Líquido após descontos</span><strong>${money(d.total)}</strong></div><div class="overview-finance-item"><span class="finance-dot paid"></span><span>Pago</span><strong>${money(d.paid)}</strong></div><div class="overview-finance-item"><span class="finance-dot waiting"></span><span>Fechado, aguardando pagamento</span><strong>${money(d.waiting)}</strong></div><div class="overview-finance-item"><span class="finance-dot open"></span><span>Em aberto</span><strong>${money(d.open)}</strong></div><a class="overview-finance-item overview-discounts-link" href="#discounts" aria-label="Ver descontos totais da quinzena: ${e(money(d.discounts))}"><span class="finance-dot discount"></span><span>Descontos totais</span><strong>${money(d.discounts)}</strong><small>Ver descontos →</small></a></div></section>`+
     `<div class="overview-columns"><section class="card"><div class="card-header"><div><h2>Caminhões por fazenda</h2><p>Situação em ${dateLabel(d.reference)} · ${d.activeTrucks} caminhão(ões) em atividade</p></div></div><div class="overview-farms">${d.farms.length?d.farms.map(f=>`<div class="overview-farm-row"><div class="overview-farm-label"><strong>${e(f.name)}${f.active===false?' <span class="badge gray">Inativa</span>':''}</strong><span>${f.activeTrucks} em atividade</span></div><div class="overview-bar" aria-hidden="true"><span style="width:${d.activeTrucks?Math.round(f.activeTrucks/d.activeTrucks*100):0}%"></span></div><p>${f.periodTrucks} placa(s) com passagem nesta quinzena</p></div>`).join(''):'<div class="overview-no-events">Nenhuma fazenda nesta seleção.</div>'}</div></section><section class="card"><div class="card-header"><div><h2>Perfil dos caminhões</h2><p>Uma contagem por placa na quinzena selecionada.</p></div></div><div class="overview-profile">${Object.entries(d.types).map(([type,count])=>`<div class="overview-type"><span>${e(type)}</span><strong>${count}</strong></div>`).join('')}<div class="overview-axles"><strong>Quantidade de eixos</strong><div><span>7 eixos <b>${d.axles[7]}</b></span><span>9 eixos <b>${d.axles[9]}</b></span><span>Outros / a informar <b>${d.axles.other}</b></span></div></div></div></section></div>`+
     `<section class="card"><div class="card-header"><div><h2>Movimentações na quinzena <span class="count-pill">${d.events.length}</span></h2><p>Entradas, transferências e encerramentos${d.events.length>8?' · mostrando '+eventList.length+' de '+d.events.length:''}.</p></div><a class="btn small" href="#trucks">Ver cadastros</a></div>${eventList.length?`<div class="overview-events">${eventList.map(event=>`<div class="overview-event"><div class="overview-event-date">${dateLabel(event.date).slice(0,5)}</div><div><strong>${e(event.plate)}</strong><p>${e(event.text)}</p></div><span class="badge ${event.label==='Encerramento'?'gray':event.label==='Transferência'?'amber':'green'}">${event.label}${event.date>today()?' · agendado':''}</span></div>`).join('')}</div>`:`<div class="overview-no-events"><h3>${state.trucks.length?'Nenhuma movimentação nesta quinzena':'Comece cadastrando sua frota'}</h3><p>${state.trucks.length?'Os caminhões que continuam trabalhando aparecem no resumo acima.':'Cadastre os caminhões ou use os exemplos para conhecer o controle.'}</p>${!state.trucks.length?'<button class="btn" data-action="demo">Testar com exemplos</button>':''}</div>`}</section>`;
 }
@@ -224,16 +225,43 @@ function settingsView() {
 }
 function render() {
   if(!currentUser){renderAccess();return;}document.body.classList.remove('logged-out');
-  view=location.hash.replace('#','') || 'overview';if(!['overview','trucks','discounts','closings','settings','requests'].includes(view))view='overview';if(isCarrier())view='requests';
-  const labels={overview:'Visão geral',trucks:'Caminhões',discounts:'Descontos',closings:'Fechamentos',settings:'Configurações',requests:'Solicitações de pagamento'};
-  document.querySelector('#breadcrumb-current').textContent=labels[view];document.querySelectorAll('[data-nav]').forEach(a=>{a.hidden=isCarrier()&&a.dataset.nav!=='requests';a.classList.toggle('active',a.dataset.nav===view);a.setAttribute('aria-current',a.dataset.nav===view?'page':'false');});
-  main.innerHTML=({overview,trucks:trucksView,discounts:discountsView,closings:closingsView,settings:settingsView,requests:requestsView}[view])();
+  view=location.hash.replace('#','') || 'overview';if(!['overview','trucks','discounts','closings','settings','requests','ctes'].includes(view))view='overview';if(isCarrier()&&!['requests','ctes'].includes(view))view='requests';
+  const labels={overview:'Visão geral',trucks:'Caminhões',discounts:'Descontos',closings:'Fechamentos',settings:'Configurações',requests:'Solicitações de pagamento',ctes:'CT-e'};
+  document.querySelector('#breadcrumb-current').textContent=labels[view];document.querySelectorAll('[data-nav]').forEach(a=>{a.hidden=isCarrier()&&!['requests','ctes'].includes(a.dataset.nav);a.classList.toggle('active',a.dataset.nav===view);a.setAttribute('aria-current',a.dataset.nav===view?'page':'false');});
+  main.innerHTML=({overview,trucks:trucksView,discounts:discountsView,closings:closingsView,settings:settingsView,requests:requestsView,ctes:ctesView}[view])();
+  if(view==='ctes')loadCteData();
   if(view==='settings'){main.insertAdjacentHTML('beforeend',teamSettings());loadTeam();}
   const writeActions=new Set(['new-truck','edit-truck','transfer-truck','end-activities','new-discount','edit-discount','delete-discount','close-period','reopen-period','reopen-batch','history-reopen-truck','history-reopen-closing','confirm-history-reopen-truck','confirm-history-reopen-closing','pay','undo-payment','demo','remove-demo','import-backup','request-payments','request-one','cancel-request','legacy-undo','pay-request']);
   document.querySelectorAll('[data-action]').forEach(button=>{if(currentUser.role==='viewer'&&writeActions.has(button.dataset.action))button.disabled=true;if(currentUser.role!=='admin'&&['add-farm','remove-farm','inactivate-farm','reactivate-farm','import-backup','demo','remove-demo'].includes(button.dataset.action))button.disabled=true;});
   if(currentUser.role!=='admin')document.querySelectorAll('#farms-form input,#farms-form button').forEach(element=>element.disabled=true);
   updateCloudStatus();
 }
+
+function ctesView(){
+ const farms=isCarrier()?cteFarms:state.farms;
+ const source=isCarrier()?cteTrucks:state.trucks;
+ const records=cteDocuments.filter(doc=>(!cteFarmFilter||doc.farmId===cteFarmFilter)&&(!cteSearch||(doc.plate+' '+doc.driver+' '+doc.farmName+' '+(doc.number||'')+' '+doc.name).toLocaleLowerCase('pt-BR').includes(cteSearch.toLocaleLowerCase('pt-BR'))));
+ const farmOptionsHtml=[...new Map([...farms.map(f=>[f.id,f.name]),...cteDocuments.map(d=>[d.farmId,d.farmName])]).entries()].map(([id,name])=>opt(id,name,cteFarmFilter)).join('');
+ return head('CT-e','Documentos de transporte organizados por fazenda e placa, sem vínculo com a quinzena.',isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar CT-e</button>':'','DOCUMENTOS FISCAIS')+
+ `<div class="toolbar"><select id="cte-farm-filter" aria-label="Filtrar CT-e por fazenda">${opt('','Todas as fazendas',cteFarmFilter)}${farmOptionsHtml}</select><input id="cte-search" type="search" value="${e(cteSearch)}" placeholder="Buscar placa, motorista ou número do CT-e" aria-label="Buscar CT-e"><button class="btn small" data-action="cte-refresh">Atualizar</button><span class="period-caption">${records.length} documento(s)</span></div><section class="card"><div class="card-header"><div><h2>Documentos enviados</h2><p>${isCarrier()?'CT-es que sua transportadora enviou para o grupo.':'CT-es enviados pela transportadora para consulta e download.'}</p></div></div>${records.length?`<div class="table-wrap"><table><thead><tr><th>CT-e / ARQUIVO</th><th>PLACA / MOTORISTA</th><th>FAZENDA</th><th>EMISSÃO</th><th>ENVIO</th><th>AÇÃO</th></tr></thead><tbody>${records.map(doc=>`<tr><td><strong>${e(doc.number?'CT-e '+doc.number:'CT-e')}</strong><span class="secondary">${e(doc.name)}</span></td><td><strong class="plate">${e(doc.plate)}</strong><span class="secondary">${e(doc.driver)}</span></td><td>${e(doc.farmName)}</td><td>${dateLabel(doc.issuedOn)}</td><td>${dateLabel(String(doc.uploadedAt||'').slice(0,10))}</td><td><button class="btn small" data-action="cte-download" data-id="${e(doc.id)}">Baixar</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty"><h3>${cteDocuments.length?'Nenhum CT-e nesta seleção':'Ainda não há CT-es enviados'}</h3><p>${isCarrier()?'Envie um CT-e em PDF ou XML para que o grupo possa consultá-lo.':'Os CT-es enviados pela transportadora aparecerão aqui para consulta e download.'}</p>${isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar primeiro CT-e</button>':''}</div>`}<div class="card-footer"><span>${records.length} documento(s) nesta seleção</span><span>Arquivos privados da empresa</span></div></section>`;
+}
+
+async function loadCteData(){
+ if(cteLoading)return;cteLoading=true;
+ try{const data=await cloud.ctes();cteDocuments=data.documents||[];cteTrucks=data.trucks||[];cteFarms=data.farms||[];if(view==='ctes')main.innerHTML=ctesView();}
+ catch(error){if(view==='ctes'){main.innerHTML=head('CT-e','Não foi possível carregar os documentos.','<button class="btn" data-action="cte-refresh">Tentar novamente</button>','DOCUMENTOS FISCAIS')+`<section class="card empty"><p>${e(authErrorMessage(error))}</p></section>`;}}
+ finally{cteLoading=false;}
+}
+
+function cteUploadForm(){
+ if(!isCarrier()||!canOperate())throw Error('Somente a transportadora pode enviar CT-es.');
+ const farms=cteFarms.filter(f=>cteTrucks.some(t=>t.farmId===f.id)),trucks=cteTrucks;
+ if(!farms.length||!trucks.length)throw Error('Cadastre ao menos uma fazenda e uma placa antes de enviar CT-es.');
+ const firstFarm=farms.find(f=>trucks.some(t=>t.farmId===f.id))||farms[0],farmTrucks=trucks.filter(t=>t.farmId===firstFarm.id);
+ openModal('Enviar CT-e','O grupo poderá consultar e baixar este documento a qualquer momento.',`<form id="cte-upload-form">${errBox()}<div class="field"><label for="cte-farm">Fazenda *</label><select id="cte-farm" name="farmId" required>${farms.map(f=>opt(f.id,f.name,firstFarm.id)).join('')}</select></div><div class="field"><label for="cte-truck">Placa do caminhão *</label><select id="cte-truck" name="truckId" required>${farmTrucks.map(t=>opt(t.id,t.plate+' · '+t.driver,'')).join('')}</select></div><div class="fields-two"><div class="field"><label for="cte-number">Número do CT-e</label><input id="cte-number" name="number" maxlength="40" placeholder="Opcional"></div><div class="field"><label for="cte-issued">Data de emissão *</label><input id="cte-issued" name="issuedOn" type="date" value="${today()}" required></div></div><div class="field"><label for="cte-file">Arquivo do CT-e *</label><input id="cte-file" name="file" type="file" accept=".pdf,.xml,application/pdf,application/xml,text/xml" required><small>PDF ou XML, até 20 MB. O original fica guardado em área privada.</small></div><div class="form-note">A fazenda e a placa ficam registradas neste documento como estavam no envio. O CT-e não altera fechamentos ou pagamentos.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Enviar CT-e</button></div></form>`);
+}
+
+async function showCteDownload(id){const doc=await cloud.cteLink(id);openModal('Baixar CT-e',doc.name,`<div class="form-note">O arquivo fica disponível em um link privado por até 2 minutos.</div><div class="form-actions"><a class="btn primary" href="${e(doc.signedUrl)}" target="_blank" rel="noopener noreferrer">Baixar arquivo</a><button class="btn" data-action="close-modal">Fechar</button></div>`);}
 function truckForm(id) {
   const saved=state.trucks.find(t=>t.id===id),activeFarm=state.farms.find(f=>f.active!==false);
   if(!saved&&!activeFarm)throw Error('Cadastre ou reative uma fazenda antes de cadastrar o caminhão.');
@@ -478,6 +506,9 @@ document.addEventListener('click',async ev=>{
     else if(a==='request-payments')requestPaymentsForm();
     else if(a==='request-one')requestPaymentsForm(id);
     else if(a==='request-detail')requestDetail(id);
+    else if(a==='cte-upload')cteUploadForm();
+    else if(a==='cte-refresh')await loadCteData();
+    else if(a==='cte-download')await showCteDownload(id);
     else if(a==='pay-request')paymentForm(id);
     else if(a==='cancel-request')requestReasonForm(id,'cancel');
         else if(a==='legacy-undo')requestReasonForm(id,'legacy');
@@ -550,6 +581,11 @@ document.addEventListener('submit',async ev=>{
     try{const profile=String(values.get('profile')||'group:'+String(values.get('role')||'operator')).split(':'),result=await cloud.invite(String(values.get('email')),profile[1],profile[0]),link=location.origin+location.pathname+'#activate='+result.ticket;document.querySelector('#invite-result').innerHTML=`<div class="form-note" style="margin-top:15px"><strong>${result.emailSent ? 'Convite enviado para ' + e(result.email) : 'Convite criado para ' + e(result.email)}</strong><p>${result.emailSent ? 'O e-mail foi enviado. O funcionário pode criar a própria senha pelo convite.' : e(result.emailMessage)}</p><p>O link individual também fica disponível para copiar. Validade: 72 horas.</p><input aria-label="Link de acesso" readonly value="${e(link)}" style="margin-top:10px" onclick="this.select()"></div>`;}
     catch(error){formError(f,authErrorMessage(error));}finally{button.disabled=false;}return;
   }
+  if(f.id==='cte-upload-form'){
+    ev.preventDefault();const values=new FormData(f),file=values.get('file'),button=f.querySelector('[type="submit"]');button.disabled=true;
+    try{if(!file||!file.size||file.size>20*1024*1024)throw Error('Anexe um CT-e PDF ou XML de até 20 MB.');await cloud.uploadCte({farmId:String(values.get('farmId')),truckId:String(values.get('truckId')),number:String(values.get('number')||'').trim(),issuedOn:String(values.get('issuedOn')),file});modal.close();await loadCteData();notify('CT-e enviado e disponível para o grupo.');}
+    catch(error){formError(f,authErrorMessage(error));}finally{button.disabled=false;}return;
+  }
   if(['request-payments-form','request-reason-form'].includes(f.id)){
     ev.preventDefault();const data=new FormData(f),button=f.querySelector('[type="submit"]');button.disabled=true;
     try{if(f.id==='request-payments-form'){await remoteCommand('payment.request',{month:currentMonth,half:currentHalf,farmId:farmFilter,truckId:f.dataset.truckId||''});portalPeriod=currentPeriod().key;portalFarm=farmFilter;modal.close();location.hash='#requests';render();notify('Solicitações enviadas à transportadora.');}
@@ -582,6 +618,8 @@ document.addEventListener('change',async ev=>{
   if(el.matches?.('[data-member-profile]')){try{const [party,role]=el.value.split(':');await cloud.updateMember(el.dataset.id,role,el.dataset.active==='true',party);await loadTeam();notify('Perfil de acesso atualizado.');}catch(error){notify(error.message);await loadTeam();}return;}
   if(el.id==='request-period'){portalPeriod=el.value;render();return;}
   if(el.id==='request-farm'){portalFarm=el.value;render();return;}
+  if(el.id==='cte-farm'){const select=document.querySelector('#cte-truck'),trucks=cteTrucks.filter(t=>t.farmId===el.value);if(select){select.innerHTML=trucks.map(t=>opt(t.id,t.plate+' · '+t.driver,'')).join('');select.disabled=!trucks.length;}return;}
+  if(el.id==='cte-farm-filter'){cteFarmFilter=el.value;render();return;}
   if(['report-month','report-half','report-farm','report-scope','report-plate'].includes(el.id)){updateReportPeriod();return;}
   if(el.id==='period-month'){if(/^\d{4}-\d{2}$/.test(el.value)){currentMonth=el.value;render();}}
   else if(el.id==='farm-filter'){farmFilter=el.value;render();}
@@ -641,7 +679,7 @@ document.addEventListener('focusout',ev=>{
   else if(ev.target.value.trim())ev.target.setCustomValidity('Informe um valor válido. Exemplo: 40.000,00.');
 });
 
-document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;});
+document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;if(event.target.id==='cte-search'){cteSearch=event.target.value;const start=event.target.selectionStart;render();const searchBox=document.querySelector('#cte-search');searchBox?.focus();searchBox?.setSelectionRange(start,start);}});
 window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
 async function restoreSession(){
   if(!cloud.hasSession()){render();return;}
@@ -655,9 +693,10 @@ async function restoreSession(){
 }
 if(inviteTicket)render();else restoreSession();
 if(inviteTicket){cloud.inspectInvite(inviteTicket).then(info=>{inviteInfo=info;renderAccess();}).catch(error=>{const message=document.querySelector('#invite-message');if(message)message.textContent=authErrorMessage(error);});}
-let checkingUpdates=false,nextGroupCheck=0;
+let checkingUpdates=false,nextGroupCheck=0,nextCteCheck=0;
 async function checkForUpdates(force=false){
   if(!currentUser||saving||checkingUpdates||document.visibilityState==='hidden')return;
+  if(view==='ctes'&&!modal.open&&Date.now()>=nextCteCheck&&document.activeElement?.id!=='cte-search'){nextCteCheck=Date.now()+30000;await loadCteData();}
   if(!force&&!isCarrier()&&Date.now()<nextGroupCheck)return;
   if(!isCarrier())nextGroupCheck=Date.now()+60000;
   const userId=currentUser.id;checkingUpdates=true;
@@ -718,4 +757,3 @@ function requestsView(){
   const paymentActions=request.status==='pending'&&canOperate()?(isCarrier()?(paymentDetailsMissing(row.paymentDetails).length?'':`<button class="btn primary" data-action="pay-request" data-id="${e(id)}">Registrar pagamento com comprovante</button>`):`<button class="btn danger" data-action="cancel-request" data-id="${e(id)}">Cancelar solicitação</button>`):'';
   openModal(row.plate+' · '+row.driver,row.farmName+' · '+periodLabel(request.period),`<div class="form-note"><strong>${requestStatus(request)}</strong><br>Valor solicitado: <strong>${money(row.net)}</strong><br>Solicitado em ${e(timeLabel(request.requestedAt))}${request.requestedEmail?' por '+e(request.requestedEmail):''}</div><div class="detail-grid"><div><small>Valor bruto</small><strong>${money(row.gross)}</strong></div><div><small>Descontos</small><strong>${money(row.discount)}</strong></div><div><small>Dias a pagar</small><strong>${row.payableDays}</strong></div><div><small>Transportador contratado</small><strong>${e(row.carrier)}</strong></div></div>${paymentDetailsMarkup(row.paymentDetails,request.status)}${request.payment?`<div class="form-note">Pago em ${dateLabel(request.payment.date)}${request.payment.recordedEmail?' por '+e(request.payment.recordedEmail):''}<br>${e(request.payment.receipt.name)}<br><button class="btn small" data-action="receipt-view" data-id="${e(request.payment.receipt.id)}">Abrir comprovante</button></div>`:''}${request.status==='cancelled'?`<div class="form-note">Cancelada em ${e(timeLabel(request.cancelledAt))}<br>Motivo: ${e(request.cancelReason)}</div>`:''}${request.paymentHistory.length?`<div class="event-list"><h3>Correções anteriores</h3>${request.paymentHistory.map(item=>`<p>${e(timeLabel(item.at))} · ${e(item.reason)}<br>Pagamento anterior em ${dateLabel(item.payment.date)} · <button class="btn small" data-action="receipt-view" data-id="${e(item.payment.receipt.id)}">Comprovante anterior</button></p>`).join('')}</div>`:''}<div class="form-actions">${paymentActions}<button class="btn" data-action="close-modal">Fechar</button></div>`);
 }async function showReceipt(id){const receipt=await cloud.receiptLink(id);openModal('Documento anexado',receipt.name,`<div class="form-note">Arquivo privado. O link de acesso vale por um minuto.</div><div class="form-actions"><a class="btn primary" href="${e(receipt.signedUrl)}" target="_blank" rel="noopener noreferrer">Abrir documento</a><button class="btn" data-action="close-modal">Fechar</button></div>`);}
-

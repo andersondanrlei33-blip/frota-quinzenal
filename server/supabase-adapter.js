@@ -53,9 +53,23 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     },
     sign:receipts.sign
   };
+  const mapCte=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,number:r.cte_number,issuedOn:r.issued_on,uploadedBy:r.uploaded_by,uploadedAt:r.created_at,name:r.file_name,mime:r.content_type,size:r.size_bytes,objectKey:r.object_key}:null;
+  const ctes={
+    async list(companyId){const rows=await service('/rest/v1/fleet_cte_documents?'+new URLSearchParams({company_id:'eq.'+companyId,select:'*',order:'issued_on.desc,created_at.desc'}));return (rows||[]).map(mapCte);},
+    async find(companyId,id){if(!/^[0-9a-f-]{36}$/i.test(id||''))return null;const rows=await service('/rest/v1/fleet_cte_documents?'+new URLSearchParams({id:'eq.'+id,company_id:'eq.'+companyId,select:'*'}));return mapCte(rows?.[0]);},
+    async upload(who,metadata,bytes,details,snapshot){
+      const id=crypto.randomUUID(),key=who.companyId+'/ctes/'+id+'/cte.'+details.extension;
+      const response=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(key),{method:'POST',headers:{...serviceHeaders,'Content-Type':details.mime,'x-upsert':'false','Cache-Control':'no-store'},body:bytes});
+      if(!response.ok)throw Error('Não foi possível guardar o CT-e. Tente novamente.');
+      try{await service('/rest/v1/fleet_cte_documents',{method:'POST',body:{id,company_id:who.companyId,farm_id:metadata.farmId,farm_name:snapshot.farmName,truck_id:metadata.truckId,plate:snapshot.plate,driver:snapshot.driver,cte_number:metadata.number||null,issued_on:metadata.issuedOn,uploaded_by:who.userId,object_key:key,file_name:details.name,content_type:details.mime,size_bytes:details.size}});}
+      catch(error){await service('/storage/v1/object/'+bucket,{method:'DELETE',body:{prefixes:[key]}}).catch(()=>{});if(error.code==='23505')throw Error('Já existe um CT-e com este número nesta empresa. Confira o documento.');throw error;}
+      return {id,name:details.name,mime:details.mime,size:details.size};
+    },
+    async sign(document){const result=await service('/storage/v1/object/sign/'+bucket+'/'+objectPath(document.objectKey),{method:'POST',body:{expiresIn:120,download:document.name}});const returned=result?.signedURL||result?.signedUrl;if(!returned)throw Error('Não foi possível baixar o CT-e.');const signed=new URL(returned.startsWith('/storage/')?returned:'/storage/v1'+returned,url);if(signed.origin!==new URL(url).origin||!signed.pathname.startsWith('/storage/v1/object/sign/'+bucket+'/'))throw Error('Endereço de CT-e inválido.');return signed.href;}
+  };
   repository.verifyReceipt=async(who,id,requestId)=>{const receipt=await receipts.find(who.companyId,id);if(!receipt||receipt.requestId!==requestId||receipt.uploadedBy!==who.userId)throw Error('Anexe um comprovante válido para esta solicitação.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do comprovante não está disponível. Anexe novamente.');return receipt;};
   repository.verifyFundingReceipt=async(who,id,transferId)=>{const receipt=await fundingReceipts.find(who.companyId,id);if(!receipt||receipt.transferId!==transferId||receipt.uploadedBy!==who.userId)throw Error('Anexe o recibo assinado da transportadora para esta transferência.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do recibo não está disponível. Anexe novamente.');return receipt;};
-  return {service,rpc,user,actor,repository,receipts,fundingReceipts,responseJson};
+  return {service,rpc,user,actor,repository,receipts,fundingReceipts,ctes,responseJson};
 }
 export async function sha256(value){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
 export function randomTicket(){return [...crypto.getRandomValues(new Uint8Array(32))].map(byte=>byte.toString(16).padStart(2,'0')).join('');}

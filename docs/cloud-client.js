@@ -47,6 +47,9 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async updateMember(userId,role,active,party=null){return api('/api/team/status',{userId,role,active,party});},
     async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
+    async ctes(){return api('/api/ctes');},
+    async uploadCte({farmId,truckId,number,issuedOn,file}){const body=new FormData();body.append('farmId',farmId);body.append('truckId',truckId);body.append('number',number);body.append('issuedOn',issuedOn);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async cteLink(id){return api('/api/ctes/'+encodeURIComponent(id));},
     hasSession(){return !!session;}
   };
 }
