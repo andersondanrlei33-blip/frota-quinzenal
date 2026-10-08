@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
@@ -39,6 +39,7 @@ export function executeCommand(input,command,actor,context={}){
     }
     case 'period.close':saveClosing(state,period(p.month,p.half),p.farmId||'');break;
     case 'period.reopen':reopenClosing(state,period(p.month,p.half),p.farmId||'',p.closingId||'');break;
+    case 'period.reopen-truck':reopenTruckClosing(state,period(p.month,p.half),p.closingId,text(p.truckId,100));break;
     case 'receipt.settings.save':{
       const fields={groupName:120,carrierLegalName:160,carrierDocument:24,carrierAddress:240,bankName:100,bankAgency:40,bankAccount:60,recipientName:160,recipientDocument:24,recipientRegistration:40,recipientAddress:240,cityState:100,logisticsSigner:120,authorizationSigner:120};
       const source=p.profile;if(!source||typeof source!=='object'||Array.isArray(source))throw Error('Confira os dados do recibo padrão.');
@@ -83,3 +84,4 @@ export function executeCommand(input,command,actor,context={}){
   applyFixedMonthlyRule(state);state.updatedAt=new Date().toISOString();validateState(state);
   return {state,audit:{action:command.type,actorId:actor.userId,at:state.updatedAt}};
 }
+

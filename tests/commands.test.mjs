@@ -15,6 +15,13 @@ test('server permissions deny anonymous, viewers and operator administrative wri
   assert.throws(()=>executeCommand(initialState(),command,{userId:'viewer',role:'viewer'}),/permissão/);
   assert.throws(()=>executeCommand(initialState(),command,{userId:'operator',role:'operator'}),/administrador/);
 });
+test('server command can reopen one truck in a multi-truck closing only',()=>{
+  let state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
+  const closing=saveClosing(state,period('2026-10',1),'','reopen-single','2026-10-15');
+  const result=executeCommand(state,{type:'period.reopen-truck',payload:{month:'2026-10',half:1,closingId:closing.id,truckId:'a'}},actor);
+  assert.deepEqual(result.state.closings[0].rows.map(row=>row.truckId),['b']);
+  assert.deepEqual(state.closings[0].rows.map(row=>row.truckId),['a','b']);
+});
 test('server commands preserve paid snapshots and reject discounts in closed periods',()=>{
   const state=initialState();state.trucks=[truck];const c=saveClosing(state,period('2026-10',1),'','paid','2026-10-06');c.rows[0].paid={date:'2026-10-06',note:'Original'};const before=structuredClone(state);
   assert.throws(()=>executeCommand(state,{type:'discount.save',payload:{truckId:'a',start:'2026-10-07',end:'2026-10-07',reason:'Falta',note:''}},actor),/fechad/);
@@ -32,3 +39,4 @@ test('server records and reverses the payment for the selected truck row',()=>{
   const undone=executeCommand(paid,{type:'payment.undo',payload:{requestId,note:'Corrigir referência'}},carrier).state;
   assert.equal(undone.closings[0].rows[0].paid,null);assert.equal(undone.closings[0].rows[0].net,15000);
 });
+

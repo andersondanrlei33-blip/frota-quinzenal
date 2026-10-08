@@ -199,6 +199,19 @@ export function reopenClosing(state,p,farmId='',closingId='') {
     return remaining.length?[{...c,farmIds:remaining,rows:c.rows.filter(r=>r.farmId!==farmId)}]:[];
   });
 }
+export function reopenTruckClosing(state,p,closingId,truckId) {
+  const closing=periodClosings(state,p).find(item=>item.id===closingId);
+  if(!closing)throw Error('Este fechamento não está mais disponível.');
+  const row=closing.rows.find(item=>item.truckId===truckId);
+  if(!row)throw Error('Este caminhão não faz parte do fechamento selecionado.');
+  if(state.fundingTransfers?.some(t=>t.period.key===p.key&&t.farmId===row.farmId&&t.status!=='cancelled'))throw Error('Cancele a solicitação de recibo desta fazenda antes de reabrir. Transferências já efetuadas não podem ser reabertas.');
+  if(row.paid)throw Error('Este caminhão já tem pagamento registrado. Corrija o pagamento antes de reabrir.');
+  if(row.requestId||state.paymentRequests?.some(request=>request.period.key===p.key&&request.snapshot.truckId===truckId&&request.snapshot.farmId===row.farmId&&['pending','paid'].includes(request.status)))throw Error('Cancele a solicitação de pagamento desta placa antes de reabrir.');
+  const remainingRows=closing.rows.filter(item=>item.truckId!==truckId);
+  if(!remainingRows.length){state.closings=state.closings.filter(item=>item.id!==closingId);return;}
+  const remainingFarmIds=closing.farmIds.filter(id=>remainingRows.some(item=>item.farmId===id));
+  state.closings=state.closings.map(item=>item.id===closingId?{...item,rows:remainingRows,farmIds:remainingFarmIds}:item);
+}
 export function discountLocked(d,state) {
   return state.closings.some(c=>c.rows.some(r=>r.truckId===d.truckId)&&overlaps(c.period.start,c.period.end,d.start,d.end));
 }
@@ -443,3 +456,4 @@ export function validateState(input) {
   }
   return s;
 }
+

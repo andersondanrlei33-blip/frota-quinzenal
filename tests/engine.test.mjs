@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
+import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
 
 const truck={id:'a',plate:'ABC1D23',driver:'João',carrier:'Transportes',farmId:'farm1',monthly:40000,start:'2026-10-06',end:'2026-11-10'};
 const settings={mode:'daily30',includeStart:true,includeEnd:true,confirmed:true};
@@ -12,6 +12,22 @@ test('only farms without truck or closing links can be removed and at least one 
 test('an empty farm included in a saved closing remains linked and cannot be physically removed',()=>{
   const s=initialState();s.trucks=[{...truck,end:''}];saveClosing(s,period('2026-10',1),'','closed','2026-10-15');
   const before=structuredClone(s);assert.equal(farmHasLinks(s,'farm3'),true);assert.throws(()=>removeFarm(s,'farm3'),/Inativar/);assert.deepEqual(s,before);
+});
+test('reopening one truck removes only its snapshot and keeps the rest of the closing',()=>{
+  const s=initialState(),p=period('2026-10',1);s.trucks=[{...truck,end:''},{...truck,id:'b',plate:'DEF1G23',farmId:'farm1',end:''},{...truck,id:'c',plate:'XYZ1H23',farmId:'farm2',end:''}];
+  const c=saveClosing(s,p,'','truck-reopen','2026-10-15');reopenTruckClosing(s,p,c.id,'a');
+  assert.deepEqual(s.closings[0].rows.map(row=>row.truckId),['b','c']);assert.deepEqual(s.closings[0].farmIds,['farm1','farm2']);
+  assert.deepEqual(periodRows(s,p).filter(row=>!row.closed).map(row=>row.truckId),['a']);assert.deepEqual(validateState(s),s);
+});
+test('reopening a sole truck deletes its now-empty closing and preserves any other closing',()=>{
+  const s=initialState(),p=period('2026-10',1);s.trucks=[{...truck,end:''}];const c=saveClosing(s,p,'farm1','truck-only','2026-10-15');
+  reopenTruckClosing(s,p,c.id,'a');assert.equal(s.closings.length,0);assert.equal(periodRows(s,p)[0].closed,false);
+});
+test('reopening one truck rejects payments, active requests and funding transfers',()=>{
+  const p=period('2026-10',1),make=()=>{const s=initialState();s.trucks=[{...truck,end:''}];const c=saveClosing(s,p,'farm1','truck-blocked','2026-10-15');return {s,c};};
+  let {s,c}=make();c.rows[0].paid={date:'2026-10-15'};assert.throws(()=>reopenTruckClosing(s,p,c.id,'a'),/pagamento/);
+  ({s,c}=make());c.rows[0].requestId='request-a';assert.throws(()=>reopenTruckClosing(s,p,c.id,'a'),/solicitação/);
+  ({s,c}=make());s.fundingTransfers=[{id:'transfer-a',farmId:'farm1',period:p,status:'pending'}];assert.throws(()=>reopenTruckClosing(s,p,c.id,'a'),/Transferências/);
 });
 test('farm inactivation preserves contracts, discounts and paid snapshots while blocking new assignments',()=>{
   const s=initialState();s.trucks=[{...truck,end:''}];s.discounts=[{id:'d',truckId:'a',start:'2026-10-07',end:'2026-10-08',reason:'Falta',note:''}];
@@ -344,3 +360,4 @@ test('a zero-day ending remains explicitly closed and repeated confirmation does
   const before=structuredClone(s);endActivities(s,'a','2026-10-01','Nota','again','2026-10-06');assert.deepEqual(s,before);assert.deepEqual(validateState(s),s);
   assert.throws(()=>previewEndActivities(s,'a','2026-09-30'),/posterior/);
 });
+
