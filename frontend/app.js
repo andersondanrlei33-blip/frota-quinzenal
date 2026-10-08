@@ -1,11 +1,12 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=51';
-import {createReport,reportMarkup} from './reports.js?v=51';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=51';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=52';
+import {createReport,reportMarkup} from './reports.js?v=52';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=52';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let portalRequests=[],portalPeriod='',portalFarm='',portalSearch='';
-let cteDocuments=[],cteTrucks=[],cteFarms=[],cteFarmFilter='',cteFilterField='all',cteSearch='',cteLoading=false;
+let cteDocuments=[],cteTrucks=[],cteFarms=[],cteFarmFilter='',cteColumnFilters={},cteFilterFieldOpen='',cteFilterDraft=[],cteFilterOptions=[],cteFilterSearch='',cteFilterAnchor={top:0,left:0},cteLoading=false;
+const CTE_FILTER_FIELDS={shipper:{label:'Remetente',get:doc=>doc.shipper||'—'},recipient:{label:'Destinatário',get:doc=>doc.recipient||'—'},serviceTaker:{label:'Tomador do serviço',get:doc=>doc.serviceTaker||'—'},issuer:{label:'Transportadora',get:doc=>doc.issuer||'—'},totalValue:{label:'Valor do serviço',get:doc=>money(doc.totalValue||0)},issuedOn:{label:'Data de emissão',get:doc=>dateLabel(doc.issuedOn)},plate:{label:'Placa',get:doc=>doc.plate||'—'}};
 const isCarrier=()=>currentUser?.party==='carrier';
 const canOperate=()=>['admin','operator'].includes(currentUser?.role);
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',view='overview',toastTimer;
@@ -237,20 +238,23 @@ function render() {
   updateCloudStatus();
 }
 
+function cteFieldOptions(field){return [...new Set(cteDocuments.filter(doc=>!cteFarmFilter||doc.farmId===cteFarmFilter).map(doc=>CTE_FILTER_FIELDS[field]?.get(doc)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));}
+function closeCteFilter(){cteFilterFieldOpen='';cteFilterDraft=[];cteFilterOptions=[];cteFilterSearch='';}
 function ctesView(){
  const farms=isCarrier()?cteFarms:state.farms;
- const filterFields={all:'Todos os campos',shipper:'Remetente',recipient:'Destinatário',serviceTaker:'Tomador do serviço',issuer:'Transportadora',totalValue:'Valor do serviço',issuedOn:'Data de emissão',plate:'Placa'};
- const normalizeFilter=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR'),searchText=normalizeFilter(cteSearch.trim());
  const records=cteDocuments.filter(doc=>{
   if(cteFarmFilter&&doc.farmId!==cteFarmFilter)return false;
-  if(!searchText)return true;
-  const values=cteFilterField==='all'?[doc.shipper,doc.recipient,doc.serviceTaker,doc.issuer,doc.totalValue,money(doc.totalValue||0),doc.issuedOn,dateLabel(doc.issuedOn),doc.plate,doc.number]:cteFilterField==='totalValue'?[doc.totalValue,money(doc.totalValue||0)]:cteFilterField==='issuedOn'?[doc.issuedOn,dateLabel(doc.issuedOn)]:[doc[cteFilterField]];
-  return values.some(value=>normalizeFilter(value).includes(searchText));
+  return Object.entries(cteColumnFilters).every(([field,selected])=>!selected||selected.includes(CTE_FILTER_FIELDS[field]?.get(doc)));
  });
  const farmOptionsHtml=[...new Map([...farms.map(f=>[f.id,f.name]),...cteDocuments.map(d=>[d.farmId,d.farmName])]).entries()].map(([id,name])=>opt(id,name,cteFarmFilter)).join('');
- const filterOptionsHtml=Object.entries(filterFields).map(([value,label])=>opt(value,label,cteFilterField)).join('');
- return head('CT-e','Remetente, destinatário, tomador do serviço, transportadora, valor, emissão e placa lidos automaticamente do PDF ou XML.',isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar CT-e</button>':'','DOCUMENTOS FISCAIS')+
- `<div class="toolbar"><select id="cte-farm-filter" aria-label="Filtrar CT-e por fazenda">${opt('','Todas as fazendas',cteFarmFilter)}${farmOptionsHtml}</select><select id="cte-filter-field" aria-label="Campo para filtrar CT-e">${filterOptionsHtml}</select><input id="cte-search" type="search" value="${e(cteSearch)}" placeholder="Buscar em ${e(filterFields[cteFilterField]||'todos os campos').toLocaleLowerCase('pt-BR')}" aria-label="Buscar CT-e"><button class="btn small" data-action="cte-refresh">Atualizar</button><span class="period-caption">${records.length} documento(s)</span></div><section class="card"><div class="card-header"><div><h2>Documentos enviados</h2><p>${isCarrier()?'CT-es lidos e enviados pela transportadora para o grupo.':'CT-es enviados pela transportadora para consulta e download.'}</p></div></div>${records.length?`<div class="table-wrap"><table><thead><tr><th>REMETENTE</th><th>DESTINATÁRIO</th><th>TOMADOR DO SERVIÇO</th><th>TRANSPORTADORA</th><th>VALOR DO SERVIÇO</th><th>DATA DE EMISSÃO</th><th>PLACA</th><th>AÇÃO</th></tr></thead><tbody>${records.map(doc=>`<tr><td>${e(doc.shipper||'—')}</td><td>${e(doc.recipient||'—')}</td><td>${e(doc.serviceTaker||'—')}</td><td>${e(doc.issuer||'—')}</td><td><strong>${money(doc.totalValue||0)}</strong></td><td>${dateLabel(doc.issuedOn)}</td><td><strong class="plate">${e(doc.plate)}</strong></td><td><button class="btn small" data-action="cte-download" data-id="${e(doc.id)}">Baixar</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="empty"><h3>${cteDocuments.length?'Nenhum CT-e nesta seleção':'Ainda não há CT-es enviados'}</h3><p>${isCarrier()?'Envie o PDF do DACTE para o sistema preencher os dados e disponibilizar o documento ao grupo.':'Os CT-es enviados pela transportadora aparecerão aqui para consulta e download.'}</p>${isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar primeiro CT-e</button>':''}</div>`}<div class="card-footer"><span>${records.length} documento(s) nesta seleção</span><span>Arquivos privados da empresa</span></div></section>`;
+ const filterOptions=cteFilterFieldOpen?cteFieldOptions(cteFilterFieldOpen):[];
+ cteFilterOptions=filterOptions;
+ const tableHeaders=Object.entries(CTE_FILTER_FIELDS).map(([field,{label}])=>`<th class="cte-filter-heading"><span>${e(label.toLocaleUpperCase('pt-BR'))}</span><button class="cte-filter-button ${cteColumnFilters[field]?'active':''}" data-action="cte-column-filter" data-field="${field}" aria-label="Filtrar por ${e(label)}" aria-expanded="${cteFilterFieldOpen===field}">▾</button></th>`).join('');
+ const anchorLeft=Math.max(8,Math.min(cteFilterAnchor.left,window.innerWidth-300)),anchorTop=Math.max(8,Math.min(cteFilterAnchor.top,window.innerHeight-360));
+ const popover=cteFilterFieldOpen?`<div class="cte-filter-popover" role="dialog" aria-label="Filtrar por ${e(CTE_FILTER_FIELDS[cteFilterFieldOpen]?.label||'campo')}" style="top:${anchorTop}px;left:${anchorLeft}px"><strong>Filtrar por ${e(CTE_FILTER_FIELDS[cteFilterFieldOpen]?.label||'campo')}</strong><input id="cte-filter-search" type="search" value="${e(cteFilterSearch)}" placeholder="Pesquisar valores"><div class="cte-filter-tools"><button type="button" data-action="cte-filter-select-all">Selecionar todos</button><button type="button" data-action="cte-filter-clear-all">Desmarcar todos</button></div><div class="cte-filter-options">${filterOptions.map(value=>`<label data-cte-option-row><input type="checkbox" data-cte-filter-option value="${e(value)}" ${cteFilterDraft.includes(value)?'checked':''}><span>${e(value)}</span></label>`).join('')||'<small>Nenhum valor nesta seleção.</small>'}</div><div class="cte-filter-actions">${cteColumnFilters[cteFilterFieldOpen]?'<button class="btn small" data-action="cte-filter-reset">Limpar filtro</button>':''}<button class="btn small" data-action="cte-filter-cancel">Cancelar</button><button class="btn primary small" data-action="cte-filter-apply">Aplicar</button></div></div>`:'';
+ const tableMarkup=cteDocuments.length?`<div class="table-wrap"><table><thead><tr>${tableHeaders}<th>AÇÃO</th></tr></thead><tbody>${records.length?records.map(doc=>`<tr><td>${e(doc.shipper||'—')}</td><td>${e(doc.recipient||'—')}</td><td>${e(doc.serviceTaker||'—')}</td><td>${e(doc.issuer||'—')}</td><td><strong>${money(doc.totalValue||0)}</strong></td><td>${dateLabel(doc.issuedOn)}</td><td><strong class="plate">${e(doc.plate)}</strong></td><td><button class="btn small" data-action="cte-download" data-id="${e(doc.id)}">Baixar</button></td></tr>`).join(''):`<tr><td colspan="8" class="cte-filter-empty">Nenhum CT-e corresponde aos filtros selecionados.</td></tr>`}</tbody></table></div>`:`<div class="empty"><h3>Ainda não há CT-es enviados</h3><p>${isCarrier()?'Envie o PDF do DACTE para o sistema preencher os dados e disponibilizar o documento ao grupo.':'Os CT-es enviados pela transportadora aparecerão aqui para consulta e download.'}</p>${isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar primeiro CT-e</button>':''}</div>`;
+ return head('CT-e','Use os filtros nos títulos das colunas para localizar documentos.',isCarrier()&&canOperate()?'<button class="btn primary" data-action="cte-upload">+ Enviar CT-e</button>':'','DOCUMENTOS FISCAIS')+
+ `<div class="toolbar"><select id="cte-farm-filter" aria-label="Filtrar CT-e por fazenda">${opt('','Todas as fazendas',cteFarmFilter)}${farmOptionsHtml}</select><button class="btn small" data-action="cte-refresh">Atualizar</button><span class="period-caption">${records.length} documento(s)</span></div><section class="card"><div class="card-header"><div><h2>Documentos enviados</h2><p>${isCarrier()?'CT-es lidos e enviados pela transportadora para o grupo.':'CT-es enviados pela transportadora para consulta e download.'}</p></div></div>${tableMarkup}<div class="card-footer"><span>${records.length} documento(s) nesta seleção</span><span>Arquivos privados da empresa</span></div></section>${popover}`;
 }
 
 async function loadCteData(){
@@ -510,6 +514,12 @@ document.addEventListener('click',async ev=>{
     else if(a==='request-payments')requestPaymentsForm();
     else if(a==='request-one')requestPaymentsForm(id);
     else if(a==='request-detail')requestDetail(id);
+    else if(a==='cte-column-filter'){const field=b.dataset.field;if(!CTE_FILTER_FIELDS[field])return;const rect=b.getBoundingClientRect();cteFilterFieldOpen=field;cteFilterSearch='';cteFilterAnchor={top:rect.bottom+4,left:rect.left};cteFilterOptions=cteFieldOptions(field);cteFilterDraft=cteColumnFilters[field]?[...cteColumnFilters[field]].filter(value=>cteFilterOptions.includes(value)):[...cteFilterOptions];render();document.querySelector('#cte-filter-search')?.focus();}
+    else if(a==='cte-filter-select-all'){cteFilterDraft=[...cteFilterOptions];render();document.querySelector('#cte-filter-search')?.focus();}
+    else if(a==='cte-filter-clear-all'){cteFilterDraft=[];render();document.querySelector('#cte-filter-search')?.focus();}
+    else if(a==='cte-filter-cancel'){closeCteFilter();render();}
+    else if(a==='cte-filter-reset'){delete cteColumnFilters[cteFilterFieldOpen];closeCteFilter();render();}
+    else if(a==='cte-filter-apply'){if(cteFilterDraft.length===cteFilterOptions.length)delete cteColumnFilters[cteFilterFieldOpen];else cteColumnFilters[cteFilterFieldOpen]=[...cteFilterDraft];closeCteFilter();render();}
     else if(a==='cte-upload')cteUploadForm();
     else if(a==='cte-refresh')await loadCteData();
     else if(a==='cte-download')await showCteDownload(id);
@@ -623,7 +633,7 @@ document.addEventListener('change',async ev=>{
   if(el.id==='request-period'){portalPeriod=el.value;render();return;}
   if(el.id==='request-farm'){portalFarm=el.value;render();return;}
   if(el.id==='cte-farm-filter'){cteFarmFilter=el.value;render();return;}
-  if(el.id==='cte-filter-field'){cteFilterField=el.value;render();return;}
+  if(el.matches?.('[data-cte-filter-option]')){const value=el.value;cteFilterDraft=el.checked?[...new Set([...cteFilterDraft,value])]:cteFilterDraft.filter(item=>item!==value);return;}
   if(['report-month','report-half','report-farm','report-scope','report-plate'].includes(el.id)){updateReportPeriod();return;}
   if(el.id==='period-month'){if(/^\d{4}-\d{2}$/.test(el.value)){currentMonth=el.value;render();}}
   else if(el.id==='farm-filter'){farmFilter=el.value;render();}
@@ -661,6 +671,7 @@ document.addEventListener('input',ev=>{
   if(ev.target.id==='activity-end-date')updateActivityEndPreview();
 });
 document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&cteFilterFieldOpen){closeCteFilter();render();return;}
   const input=ev.target;
   if(input.id!=='truck-payment-document'||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
   const position=input.selectionStart,backward=ev.key==='Backspace',separator=input.value[position-(backward?1:0)];
@@ -683,7 +694,7 @@ document.addEventListener('focusout',ev=>{
   else if(ev.target.value.trim())ev.target.setCustomValidity('Informe um valor válido. Exemplo: 40.000,00.');
 });
 
-document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;if(event.target.id==='cte-search'){cteSearch=event.target.value;const start=event.target.selectionStart;render();const searchBox=document.querySelector('#cte-search');searchBox?.focus();searchBox?.setSelectionRange(start,start);}});
+document.addEventListener('input',event=>{if(event.target.matches?.('[data-farm-id]'))farmDraftDirty=true;if(event.target.id==='cte-filter-search'){cteFilterSearch=event.target.value;const query=cteFilterSearch.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');document.querySelectorAll('[data-cte-option-row]').forEach(row=>row.hidden=!row.textContent.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR').includes(query));}});
 window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
 async function restoreSession(){
   if(!cloud.hasSession()){render();return;}
@@ -700,7 +711,7 @@ if(inviteTicket){cloud.inspectInvite(inviteTicket).then(info=>{inviteInfo=info;r
 let checkingUpdates=false,nextGroupCheck=0,nextCteCheck=0;
 async function checkForUpdates(force=false){
   if(!currentUser||saving||checkingUpdates||document.visibilityState==='hidden')return;
-  if(view==='ctes'&&!modal.open&&Date.now()>=nextCteCheck&&document.activeElement?.id!=='cte-search'){nextCteCheck=Date.now()+30000;await loadCteData();}
+  if(view==='ctes'&&!modal.open&&Date.now()>=nextCteCheck){nextCteCheck=Date.now()+30000;await loadCteData();}
   if(!force&&!isCarrier()&&Date.now()<nextGroupCheck)return;
   if(!isCarrier())nextGroupCheck=Date.now()+60000;
   const userId=currentUser.id;checkingUpdates=true;
