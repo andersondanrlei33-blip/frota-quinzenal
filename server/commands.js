@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
@@ -37,7 +37,13 @@ export function executeCommand(input,command,actor,context={}){
       for(const scope of scopes)reopenClosing(state,scope.period,scope.farmId,scope.id);
       if(p.operation==='delete')state.discounts=state.discounts.filter(item=>item.id!==p.id);break;
     }
-    case 'period.close':saveClosing(state,period(p.month,p.half),p.farmId||'');break;
+    case 'period.close':{
+      const selectedPeriod=period(p.month,p.half);
+      if(p.farmId)saveClosing(state,selectedPeriod,p.farmId);
+      else{const preview=closingPreview(state,selectedPeriod),farmIds=[...new Set(preview.rows.map(row=>row.farmId))];if(!farmIds.length)throw Error('Não há caminhões pendentes para fechar nesta quinzena.');for(const farmId of farmIds)saveClosing(state,selectedPeriod,farmId);}
+      break;
+    }
+    case 'invoice.split-by-farm':splitClosingsByFarm(state);break;
     case 'period.close-complementary':{const selectedPeriod=period(p.month,p.half),farmId=text(p.farmId,100);reopenForInvoice(state,selectedPeriod,farmId);saveClosing(state,selectedPeriod,farmId);break;}
     case 'period.reopen':reopenClosing(state,period(p.month,p.half),p.farmId||'',p.closingId||'');break;
     case 'period.reopen-invoice':reopenForInvoice(state,period(p.month,p.half),p.farmId||'');break;

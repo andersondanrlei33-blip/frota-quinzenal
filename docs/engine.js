@@ -187,6 +187,18 @@ export function saveClosing(state,p,farmId='',id=uid(),closedDate=today()) {
   const c={id,period:{...p},farmIds:[...preview.farmIds],kind:preview.complementFarmIds.length?'complement':'initial',settings:structuredClone(state.settings),closedDate,rows:structuredClone(preview.rows)};
   state.closings.push(c);state.invoiceReopens=(state.invoiceReopens||[]).filter(key=>!preview.farmIds.some(farmId=>key===invoiceReopenKey(p.key,farmId)));return c;
 }
+export function splitClosingsByFarm(state,p=null) {
+  let changed=0;
+  state.closings=state.closings.flatMap(closing=>{
+    if(p&&closing.period.key!==p.key||!closing.rows.length)return [closing];
+    const rowsByFarm=new Map();for(const row of closing.rows){if(!rowsByFarm.has(row.farmId))rowsByFarm.set(row.farmId,[]);rowsByFarm.get(row.farmId).push(row);}
+    if(rowsByFarm.size<=1&&closing.farmIds.length<=1)return [closing];
+    const invoices=[...rowsByFarm].sort(([a],[b])=>a.localeCompare(b)).map(([farmId,rows],index)=>({...structuredClone(closing),id:index===0?closing.id:uid(),farmIds:[farmId],rows:structuredClone(rows)}));
+    for(const request of state.paymentRequests||[]){if(request.closingId!==closing.id)continue;const farmId=request.snapshot?.farmId||[...rowsByFarm].find(([,rows])=>rows.some(row=>row.truckId===request.truckId))?.[0],invoice=invoices.find(item=>item.farmIds[0]===farmId);if(!invoice)throw Error('Não foi possível identificar a fazenda de uma solicitação vinculada à fatura.');request.closingId=invoice.id;}
+    changed++;return invoices;
+  });
+  return changed;
+}
 export function reopenForInvoice(state,p,farmId='') {
   const pendingFarms=new Set(pendingRows(state,p).map(row=>row.farmId));
   const farmIds=[...new Set(periodClosings(state,p).flatMap(c=>c.farmIds).filter(id=>(!farmId||id===farmId)&&pendingFarms.has(id)))];
@@ -338,12 +350,16 @@ export function endActivities(state,id,date,note='',closingId=uid(),closedDate=t
   if(plan.alreadyEnded){state.trucks.find(t=>t.id===plan.truckId).serviceEnded.note=String(note).trim().slice(0,300);return state.closings.find(c=>c.id===plan.existingId);}
   if(state.closings.some(c=>c.id===closingId))throw Error('O fechamento de encerramento já existe.');
   const next=plan.next,t=next.trucks.find(t=>t.id===plan.truckId),previous=state.trucks.find(t=>t.id===plan.truckId)?.serviceEnded||{};
-  let c;
+  let c,closingIds=[];
   if(plan.pending.length){
-    c={id:closingId,period:plan.period,farmIds:[...new Set(plan.pending.map(r=>r.farmId))],kind:'activity-end',activityEndDate:date,settings:structuredClone(next.settings),closedDate,rows:structuredClone(plan.pending)};
-    next.closings.push(c);
+    const rowsByFarm=new Map();for(const row of plan.pending){if(!rowsByFarm.has(row.farmId))rowsByFarm.set(row.farmId,[]);rowsByFarm.get(row.farmId).push(row);}
+    for(const [index,[farmId,rows]] of [...rowsByFarm].sort(([a],[b])=>a.localeCompare(b)).entries()){
+      const invoice={id:index===0?closingId:uid(),period:plan.period,farmIds:[farmId],kind:'activity-end',activityEndDate:date,settings:structuredClone(next.settings),closedDate,rows:structuredClone(rows)};
+      next.closings.push(invoice);closingIds.push(invoice.id);
+    }
+    c=next.closings.find(item=>item.id===closingIds[0]);
   } else c=periodClosings(next,plan.period).find(c=>c.rows.some(r=>r.truckId===t.id));
-  t.serviceEnded={date,periodKey:plan.period.key,closingId:c?.id||'',closedDate,note:String(note).trim().slice(0,300),revisions:[...(previous.revisions||[]),...plan.revisions],cancelledDiscounts:[...(previous.cancelledDiscounts||[]),...plan.cancelled]};
+  t.serviceEnded={date,periodKey:plan.period.key,closingId:c?.id||'',...(closingIds.length>1?{closingIds}:{}),closedDate,note:String(note).trim().slice(0,300),revisions:[...(previous.revisions||[]),...plan.revisions],cancelledDiscounts:[...(previous.cancelledDiscounts||[]),...plan.cancelled]};
   validateState(next);
   state.trucks=next.trucks;state.discounts=next.discounts;state.closings=next.closings;
   return c;

@@ -9,6 +9,22 @@ test('server commands calculate amounts themselves and reject client supplied pa
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);
   assert.equal(closed.state.closings[0].rows[0].net,15000);assert.equal(closed.state.closings[0].rows[0].paid,null);assert.deepEqual(state,before);assert.equal(closed.audit.actorId,actor.userId);
 });
+test('closing every farm creates an exclusive invoice per farm',()=>{
+  const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
+  const result=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor).state;
+  assert.equal(result.closings.length,2);assert.deepEqual(result.closings.map(closing=>closing.farmIds.length),[1,1]);
+  assert.ok(result.closings.every(closing=>closing.rows.every(row=>row.farmId===closing.farmIds[0])));assert.deepEqual(validateState(result),result);
+});
+test('splitting a legacy mixed invoice keeps payments and remaps active requests to their farm invoice',()=>{
+  const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
+  const closing=saveClosing(state,period('2026-10',1),'','mixed','2026-10-06');closing.rows.find(row=>row.farmId==='farm1').paid={date:'2026-10-06',note:'Pago preservado'};
+  const requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1}},actor).state;
+  const before=structuredClone(requested.closings[0]);const result=executeCommand(requested,{type:'invoice.split-by-farm',payload:{}},actor).state;
+  assert.equal(result.closings.length,2);assert.ok(result.closings.every(item=>item.farmIds.length===1&&item.rows.every(row=>row.farmId===item.farmIds[0])));
+  assert.deepEqual(result.closings.find(item=>item.farmIds[0]==='farm1').rows[0].paid,before.rows.find(row=>row.farmId==='farm1').paid);
+  const active=result.paymentRequests.find(item=>item.status==='pending');assert.equal(result.closings.find(item=>item.id===active.closingId).farmIds[0],active.snapshot.farmId);
+  assert.equal(result.closings.find(item=>item.id===active.closingId).rows[0].requestId,active.id);assert.deepEqual(validateState(result),result);
+});
 test('server permissions deny anonymous, viewers and operator administrative writes',()=>{
   const command={type:'farm.remove',payload:{id:'farm3'}};
   assert.throws(()=>executeCommand(initialState(),command,null),/permissão/);
