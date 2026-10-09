@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=82';
-import {createReport,reportMarkup} from './reports.js?v=82';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=82';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=83';
+import {createReport,reportMarkup} from './reports.js?v=83';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=83';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
 let teamMembers=[];
@@ -30,6 +30,7 @@ function formatPaymentDocumentInput(value){
   if(digits.length<=11)return digits.replace(/^(\d{3})(\d)/,'$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/,'$1.$2.$3').replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/,'$1.$2.$3-$4');
   return digits.replace(/^(\d{2})(\d)/,'$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/,'$1.$2.$3').replace(/^(\d{2})\.(\d{3})\.(\d{3})(\d)/,'$1.$2.$3/$4').replace(/^(\d{2})\.(\d{3})\.(\d{3})\/(\d{4})(\d)/,'$1.$2.$3/$4-$5');
 }
+function formatFarmCpfInput(value){return formatPaymentDocumentInput(String(value||'').replace(/\D/g,'').slice(0,11));}
 function documentCaret(value,digitCount){
   let position=0,seen=0;
   while(position<value.length&&seen<digitCount){if(/\d/.test(value[position]))seen++;position++;}
@@ -41,6 +42,14 @@ function maskPaymentDocumentInput(input){
   if(input.value===formatted)return;
   input.value=formatted;
   const position=documentCaret(formatted,Math.min(digitCount,14));
+  input.setSelectionRange?.(position,position);
+}
+function maskFarmCpfInput(input){
+  const digitCount=String(input.value).slice(0,input.selectionStart??input.value.length).replace(/\D/g,'').length;
+  const formatted=formatFarmCpfInput(input.value);
+  if(input.value===formatted)return;
+  input.value=formatted;
+  const position=documentCaret(formatted,Math.min(digitCount,11));
   input.setSelectionRange?.(position,position);
 }
 // Números-código do Banco Central: https://www.bcb.gov.br/content/estabilidadefinanceira/str1/ParticipantesSTR.pdf
@@ -57,11 +66,12 @@ const farmOptions=(selected,activeOnly=false)=>state.farms.filter(f=>!activeOnly
 const farmField=(farm,index)=>{
  const saved=state.farms.find(item=>item.id===farm.id),inactive=saved?.active===false,action=inactive?'reactivate-farm':saved&&farmHasLinks(state,farm.id)?'inactivate-farm':'remove-farm',label=inactive?'Reativar':action==='inactivate-farm'?'Inativar':'Remover';
  const truckCount=state.trucks.filter(truck=>truck.farmId===farm.id&&truck.start<=today()&&(!truck.end||truck.end>=today())).length,closings=state.closings.filter(closing=>(closing.farmIds||[]).includes(farm.id)),openRows=closings.flatMap(closing=>closing.rows.filter(row=>row.farmId===farm.id&&!row.paid)),openAmount=round(openRows.reduce((total,row)=>total+row.net,0)),requests=cteRequests.filter(request=>request.farmId===farm.id),pendingCte=requests.filter(request=>request.status==='pending').length,receivedCte=requests.filter(request=>request.status==='issued').length,staffCount=teamMembers.filter(member=>member.party==='farm'&&member.farm_id===farm.id&&member.active).length;
- return `<article class="farm-profile-card"><div class="farm-profile-heading"><div><span class="farm-index">FAZENDA ${String(index+1).padStart(2,'0')}</span><h2>${e(farm.name)}</h2><p>${e(farm.legalName||'Dados fiscais ainda não cadastrados')}${farm.cnpj?' · '+e(farm.cnpj):''}</p>${inactive?'<span class="badge gray">Inativa</span>':''}</div><div class="farm-actions">${currentUser?.role==='admin'?`<button class="btn small" type="button" data-action="edit-farm" data-id="${e(farm.id)}">Editar cadastro</button><button class="btn small" type="button" data-action="${action}" data-id="${e(farm.id)}">${label}</button>`:''}</div></div><div class="farm-profile-summary"><span><strong>${truckCount}</strong> placas ativas</span><span><strong>${closings.length}</strong> faturas no histórico</span><span><strong>${money(openAmount)}</strong> em faturas a pagar</span><span><strong>${pendingCte}</strong> CT-e aguardando · <strong>${receivedCte}</strong> recebidos</span>${currentUser?.role==='admin'?`<span><strong>${staffCount}</strong> funcionário(s) ativo(s)</span>`:''}</div><div class="farm-profile-links"><button class="btn small" type="button" data-action="farm-open-trucks" data-id="${e(farm.id)}">Ver placas</button><button class="btn small" type="button" data-action="farm-open-finance" data-id="${e(farm.id)}">Ver faturas</button><button class="btn small" type="button" data-action="farm-open-ctes" data-id="${e(farm.id)}">Ver CT-es</button>${currentUser?.role==='admin'?'<button class="btn small" type="button" data-action="farm-open-team">Equipe</button>':''}</div></article>`;
+ const farmCpf=farm.cpf||(/^\d{11}$/.test(String(farm.cnpj||'').replace(/\D/g,''))?farm.cnpj:'');
+ return `<article class="farm-profile-card"><div class="farm-profile-heading"><div><span class="farm-index">FAZENDA ${String(index+1).padStart(2,'0')}</span><h2>${e(farm.name)}</h2><p>${e(farm.legalName||'Dados do titular ainda não cadastrados')}${farmCpf?' · CPF '+e(formatCteDocument(farmCpf,'cpf')):''}</p>${inactive?'<span class="badge gray">Inativa</span>':''}</div><div class="farm-actions">${currentUser?.role==='admin'?`<button class="btn small" type="button" data-action="edit-farm" data-id="${e(farm.id)}">Editar cadastro</button><button class="btn small" type="button" data-action="${action}" data-id="${e(farm.id)}">${label}</button>`:''}</div></div><div class="farm-profile-summary"><span><strong>${truckCount}</strong> placas ativas</span><span><strong>${closings.length}</strong> faturas no histórico</span><span><strong>${money(openAmount)}</strong> em faturas a pagar</span><span><strong>${pendingCte}</strong> CT-e aguardando · <strong>${receivedCte}</strong> recebidos</span>${currentUser?.role==='admin'?`<span><strong>${staffCount}</strong> funcionário(s) ativo(s)</span>`:''}</div><div class="farm-profile-links"><button class="btn small" type="button" data-action="farm-open-trucks" data-id="${e(farm.id)}">Ver placas</button><button class="btn small" type="button" data-action="farm-open-finance" data-id="${e(farm.id)}">Ver faturas</button><button class="btn small" type="button" data-action="farm-open-ctes" data-id="${e(farm.id)}">Ver CT-es</button>${currentUser?.role==='admin'?'<button class="btn small" type="button" data-action="farm-open-team">Equipe</button>':''}</div></article>`;
 };
 function farmForm(id='') {
- const saved=state.farms.find(farm=>farm.id===id),farm=saved||{id:uid(),name:''},profile=(key,label,type='text',placeholder='',max=120)=>`<div class="field"><label for="farm-${key}">${label}</label><input id="farm-${key}" name="${key}" type="${type}" value="${e(farm[key]||'')}" maxlength="${max}" placeholder="${placeholder}" ${key==='cnpj'?'inputmode="numeric"':''}></div>`;
- openModal(saved?'Editar fazenda':'Cadastrar fazenda','Informe os dados desta unidade.',`<form id="farm-form" data-id="${e(farm.id)}">${errBox()}<div class="field"><label for="farm-name">Nome para identificar *</label><input id="farm-name" name="name" value="${e(farm.name)}" maxlength="80" placeholder="Ex.: Fazenda Santa Clara" required></div><div class="farm-profile-fields">${profile('legalName','Razão social','text','Razão social da fazenda')}${profile('cnpj','CNPJ','text','00.000.000/0000-00',24)}${profile('stateRegistration','Inscrição estadual','text','Inscrição estadual',30)}${profile('address','Endereço','text','Endereço da unidade',180)}${profile('contactName','Pessoa de contato','text','Nome do responsável',100)}${profile('contactEmail','E-mail de contato','email','contato@fazenda.com.br',160)}${profile('contactPhone','Telefone de contato','tel','(00) 00000-0000',30)}</div><div class="form-note">Os caminhões, faturas, funcionários e pedidos de CT-e serão vinculados a esta fazenda.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar fazenda</button></div></form>`,{wide:true});
+ const saved=state.farms.find(farm=>farm.id===id),farm=saved||{id:uid(),name:''},farmCpf=farm.cpf||(/^\d{11}$/.test(String(farm.cnpj||'').replace(/\D/g,''))?farm.cnpj:''),profile=(key,label,type='text',placeholder='',max=120,value=farm[key]||'')=>`<div class="field"><label for="farm-${key}">${label}</label><input id="farm-${key}" name="${key}" type="${type}" value="${e(value)}" maxlength="${max}" placeholder="${placeholder}" ${key==='cpf'?'inputmode="numeric" autocomplete="off"':''}></div>`;
+ openModal(saved?'Editar fazenda':'Cadastrar fazenda','Informe os dados desta unidade.',`<form id="farm-form" data-id="${e(farm.id)}">${errBox()}<div class="field"><label for="farm-name">Nome para identificar *</label><input id="farm-name" name="name" value="${e(farm.name)}" maxlength="80" placeholder="Ex.: Fazenda Santa Clara" required></div><div class="farm-profile-fields">${profile('legalName','Nome do titular','text','Nome completo do titular')}${profile('cpf','CPF do titular','text','000.000.000-00',14,farmCpf?formatFarmCpfInput(farmCpf):'')}${profile('stateRegistration','Inscrição estadual','text','Inscrição estadual',30)}${profile('address','Endereço','text','Endereço da unidade',180)}${profile('contactName','Pessoa de contato','text','Nome do responsável',100)}${profile('contactEmail','E-mail de contato','email','contato@fazenda.com.br',160)}${profile('contactPhone','Telefone de contato','tel','(00) 00000-0000',30)}</div><div class="form-note">Os caminhões, faturas, funcionários e pedidos de CT-e serão vinculados a esta fazenda.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar fazenda</button></div></form>`,{wide:true});
  document.querySelector('#farm-name')?.focus();
 }
 function addFarmInput(){farmForm();}
@@ -761,7 +771,7 @@ document.addEventListener('submit',async ev=>{
       if(!file||!file.size||file.size>10*1024*1024)throw Error('Anexe um comprovante em PDF, JPG ou PNG de até 10 MB.');
       const button=f.querySelector('[type="submit"]');button.disabled=true;try{const receipt=await cloud.uploadReceipt(requestId,file);await remoteCommand('payment.record',{requestId,date,note:String(data.get('note')||'').trim(),receiptId:receipt.id});modal.close();render();notify('Pagamento registrado com comprovante.');}finally{button.disabled=false;}
     }
-    else if(f.id==='farm-form'){const id=f.dataset.id||uid(),editing=state.farms.some(saved=>saved.id===id),name=String(data.get('name')||'').trim(),farm={...(state.farms.find(saved=>saved.id===id)||{}),id,name,legalName:String(data.get('legalName')||'').trim(),cnpj:String(data.get('cnpj')||'').trim(),stateRegistration:String(data.get('stateRegistration')||'').trim(),address:String(data.get('address')||'').trim(),contactName:String(data.get('contactName')||'').trim(),contactEmail:String(data.get('contactEmail')||'').trim(),contactPhone:String(data.get('contactPhone')||'').trim()};if(!name)throw Error('Informe o nome para identificar a fazenda.');if(state.farms.some(saved=>saved.id!==id&&saved.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')))throw Error('Já existe uma fazenda com esse nome.');const digits=farm.cnpj.replace(/\D/g,'');if(digits&&digits.length!==14)throw Error('O CNPJ deve ter 14 dígitos.');if(farm.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(farm.contactEmail))throw Error('Confira o e-mail de contato da fazenda.');const farms=editing?state.farms.map(saved=>saved.id===id?farm:saved):[...state.farms,farm];await remoteCommand('farms.save',{farms});modal.close();render();notify(editing?'Cadastro da fazenda atualizado.':'Fazenda cadastrada.');}
+    else if(f.id==='farm-form'){const id=f.dataset.id||uid(),editing=state.farms.some(saved=>saved.id===id),name=String(data.get('name')||'').trim(),farm={...(state.farms.find(saved=>saved.id===id)||{}),id,name,legalName:String(data.get('legalName')||'').trim(),cpf:String(data.get('cpf')||'').trim(),stateRegistration:String(data.get('stateRegistration')||'').trim(),address:String(data.get('address')||'').trim(),contactName:String(data.get('contactName')||'').trim(),contactEmail:String(data.get('contactEmail')||'').trim(),contactPhone:String(data.get('contactPhone')||'').trim()};if(!name)throw Error('Informe o nome para identificar a fazenda.');if(state.farms.some(saved=>saved.id!==id&&saved.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')))throw Error('Já existe uma fazenda com esse nome.');const digits=farm.cpf.replace(/\D/g,'');if(digits&&digits.length!==11)throw Error('O CPF do titular deve ter 11 dígitos.');if(farm.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(farm.contactEmail))throw Error('Confira o e-mail de contato da fazenda.');const farms=editing?state.farms.map(saved=>saved.id===id?farm:saved):[...state.farms,farm];await remoteCommand('farms.save',{farms});modal.close();render();notify(editing?'Cadastro da fazenda atualizado.':'Fazenda cadastrada.');}
   }catch(err){formError(f,err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.');}
 });
 document.addEventListener('change',async ev=>{
@@ -811,6 +821,7 @@ function updateDateRange(form) {
 }
 document.addEventListener('input',ev=>{
   if(['truck-payment-document','payment-account-document'].includes(ev.target.id))maskPaymentDocumentInput(ev.target);
+  if(ev.target.id==='farm-cpf')maskFarmCpfInput(ev.target);
   if(['discount-start','discount-end','truck-start','truck-end'].includes(ev.target.id))updateDateRange(ev.target.form);
   if(['truck-monthly','discount-amount'].includes(ev.target.id))ev.target.setCustomValidity('');
   if(ev.target.id==='transfer-date')updateTransferPreview();
@@ -819,7 +830,7 @@ document.addEventListener('input',ev=>{
 document.addEventListener('keydown',ev=>{
   if(ev.key==='Escape'&&cteFilterFieldOpen){closeCteFilter();render();return;}
   const input=ev.target;
-  if(!['truck-payment-document','payment-account-document'].includes(input.id)||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
+  if(!['truck-payment-document','payment-account-document','farm-cpf'].includes(input.id)||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
   const position=input.selectionStart,backward=ev.key==='Backspace',separator=input.value[position-(backward?1:0)];
   if(!separator||/\d/.test(separator))return;
   ev.preventDefault();
@@ -827,13 +838,14 @@ document.addEventListener('keydown',ev=>{
   const digits=input.value.replace(/\D/g,'');
   const removedIndex=backward?digitCount-1:digitCount;
   if(removedIndex<0||removedIndex>=digits.length)return;
-  const formatted=formatPaymentDocumentInput(digits.slice(0,removedIndex)+digits.slice(removedIndex+1));
+  const nextDigits=digits.slice(0,removedIndex)+digits.slice(removedIndex+1),formatted=input.id==='farm-cpf'?formatFarmCpfInput(nextDigits):formatPaymentDocumentInput(nextDigits);
   input.value=formatted;
   const nextPosition=documentCaret(formatted,backward?removedIndex:digitCount);
   input.setSelectionRange?.(nextPosition,nextPosition);
 });
 document.addEventListener('focusout',ev=>{
   if(['truck-payment-document','payment-account-document'].includes(ev.target.id)){ev.target.value=formatPaymentDocumentInput(ev.target.value);return;}
+  if(ev.target.id==='farm-cpf'){ev.target.value=formatFarmCpfInput(ev.target.value);return;}
   if(!['truck-monthly','discount-amount'].includes(ev.target.id))return;
   const n=parseAmount(ev.target.value);
   if(Number.isFinite(n)&&n>0){ev.target.value=amountLabel(n);ev.target.setCustomValidity('');}
