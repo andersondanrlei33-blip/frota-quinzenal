@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=64';
-import {createReport,reportMarkup} from './reports.js?v=64';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=64';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=65';
+import {createReport,reportMarkup} from './reports.js?v=65';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=65';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -749,7 +749,7 @@ function updateDateRange(form) {
   }
 }
 document.addEventListener('input',ev=>{
-  if(ev.target.id==='truck-payment-document')maskPaymentDocumentInput(ev.target);
+  if(['truck-payment-document','payment-account-document'].includes(ev.target.id))maskPaymentDocumentInput(ev.target);
   if(['discount-start','discount-end','truck-start','truck-end'].includes(ev.target.id))updateDateRange(ev.target.form);
   if(['truck-monthly','discount-amount'].includes(ev.target.id))ev.target.setCustomValidity('');
   if(ev.target.id==='transfer-date')updateTransferPreview();
@@ -758,7 +758,7 @@ document.addEventListener('input',ev=>{
 document.addEventListener('keydown',ev=>{
   if(ev.key==='Escape'&&cteFilterFieldOpen){closeCteFilter();render();return;}
   const input=ev.target;
-  if(input.id!=='truck-payment-document'||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
+  if(!['truck-payment-document','payment-account-document'].includes(input.id)||!['Backspace','Delete'].includes(ev.key)||input.selectionStart!==input.selectionEnd)return;
   const position=input.selectionStart,backward=ev.key==='Backspace',separator=input.value[position-(backward?1:0)];
   if(!separator||/\d/.test(separator))return;
   ev.preventDefault();
@@ -772,7 +772,7 @@ document.addEventListener('keydown',ev=>{
   input.setSelectionRange?.(nextPosition,nextPosition);
 });
 document.addEventListener('focusout',ev=>{
-  if(ev.target.id==='truck-payment-document'){ev.target.value=formatPaymentDocumentInput(ev.target.value);return;}
+  if(['truck-payment-document','payment-account-document'].includes(ev.target.id)){ev.target.value=formatPaymentDocumentInput(ev.target.value);return;}
   if(!['truck-monthly','discount-amount'].includes(ev.target.id))return;
   const n=parseAmount(ev.target.value);
   if(Number.isFinite(n)&&n>0){ev.target.value=amountLabel(n);ev.target.setCustomValidity('');}

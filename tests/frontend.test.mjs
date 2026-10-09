@@ -121,16 +121,18 @@ test('basic workflow hides the farm-to-carrier receipt panel and receipt setting
   assert.match(app.get('#main').innerHTML,/Pagamentos da transportadora/);assert.doesNotMatch(app.get('#main').innerHTML,/Repasses da fazenda|Gerar recibo padrão|Anexar recibo assinado/);
 });test('CPF and CNPJ are masked as entered or pasted, with editable separators',async()=>{
   const app=await boot();
-  const field={id:'truck-payment-document',value:'0555',selectionStart:4,selectionEnd:4,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
-  await app.input(field);assert.equal(field.value,'055.5');assert.equal(field.selectionStart,5);
-  field.value='05556110190';field.selectionStart=11;field.selectionEnd=11;
-  await app.input(field);assert.equal(field.value,'055.561.101-90');assert.equal(field.selectionStart,14);
-  field.selectionStart=4;field.selectionEnd=4;
-  await app.keydown(field,'Backspace');assert.equal(field.value,'055.611.019-0');assert.equal(field.selectionStart,2);
-  field.value='12345678000199';field.selectionStart=14;field.selectionEnd=14;
-  await app.input(field);assert.equal(field.value,'12.345.678/0001-99');assert.equal(field.selectionStart,18);
-  field.value='123456780001991234';field.selectionStart=18;field.selectionEnd=18;
-  await app.input(field);assert.equal(field.value,'12.345.678/0001-99');
+  for(const id of ['truck-payment-document','payment-account-document']){
+    const field={id,value:'0555',selectionStart:4,selectionEnd:4,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+    await app.input(field);assert.equal(field.value,'055.5');assert.equal(field.selectionStart,5);
+    field.value='05556110190';field.selectionStart=11;field.selectionEnd=11;
+    await app.input(field);assert.equal(field.value,'055.561.101-90');assert.equal(field.selectionStart,14);
+    field.selectionStart=4;field.selectionEnd=4;
+    await app.keydown(field,'Backspace');assert.equal(field.value,'055.611.019-0');assert.equal(field.selectionStart,2);
+    field.value='12345678000199';field.selectionStart=14;field.selectionEnd=14;
+    await app.input(field);assert.equal(field.value,'12.345.678/0001-99');assert.equal(field.selectionStart,18);
+    field.value='123456780001991234';field.selectionStart=18;field.selectionEnd=18;
+    await app.input(field);assert.equal(field.value,'12.345.678/0001-99');
+  }
 });
 test('the carrier portal returns after a page refresh and logout ends that tab session',async()=>{
   const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
