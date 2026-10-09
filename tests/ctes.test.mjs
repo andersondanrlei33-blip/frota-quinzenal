@@ -78,6 +78,7 @@ test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',(
 
 test('lê a placa do DANFE em texto selecionável, com formatos antigos e Mercosul',()=>{
  assert.equal(extractNfeVehiclePlate('TRANSPORTADOR / VOLUMES TRANSPORTADOS\nPLACA DO VEÍCULO\nBCD5C56\nUF PR'),'BCD5C56');
+ assert.equal(extractNfeVehiclePlate('PLACA DO VEÍCULO UF CNPJ / CPF\n1-Por conta do Dest\nBARROS TRANSPORTES RODOVIARIOS LTDA BCD5C56 PR 43.976.246/0002-97\nENDEREÇO MUNICÍPIO UF INSCRIÇÃO ESTADUAL'),'BCD5C56');
  assert.equal(extractNfeVehiclePlate('PLACA DO VEÍCULO: ABC-1234'),'ABC1234');
  assert.equal(extractNfeVehiclePlate('Documento sem placa'), '');
 });

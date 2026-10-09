@@ -1,6 +1,6 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=79';
-import {createReport,reportMarkup} from './reports.js?v=79';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=79';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=80';
+import {createReport,reportMarkup} from './reports.js?v=80';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=80';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,farmDraftDirty=false,inviteInfo=null,inviteSignin=false;
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
@@ -323,9 +323,10 @@ function ctePreferencesForm(){
 }
 function renderCtePreferenceRows(){const list=modalContent.querySelector('.cte-preference-list');if(!list||!ctePreferenceDraft)return;list.innerHTML=ctePreferenceDraft.columnOrder.map((field,index)=>`<div class="cte-preference-row"><label><input type="checkbox" data-cte-pref-column="${field}" ${ctePreferenceDraft.visibleColumns.includes(field)?'checked':''}><span>${e(CTE_FILTER_FIELDS[field].label)}</span></label><span><button class="btn small" type="button" data-action="cte-pref-up" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para cima" ${index===0?'disabled':''}>↑</button> <button class="btn small" type="button" data-action="cte-pref-down" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para baixo" ${index===ctePreferenceDraft.columnOrder.length-1?'disabled':''}>↓</button></span></div>`).join('');}
 
+function hasCteRequestDraft(){const form=main.querySelector('#cte-request-form');if(!form)return false;const plate=form.querySelector('[name="truckId"]'),files=form.querySelector('[name="invoicePdfs"]'),note=form.querySelector('[name="note"]');return Boolean(plate?.value||files?.files?.length||note?.value.trim());}
 async function loadCteData(){
  if(cteLoading)return;cteLoading=true;
- try{const data=await cloud.ctes();cteDocuments=data.documents||[];cteRequests=data.requests||[];cteTrucks=data.trucks||[];cteFarms=data.farms||[];ctePreferences=normalizeCtePreferences(data.preferences);if(view==='ctes')main.innerHTML=ctesView();else if(view==='reconciliation')main.innerHTML=reconciliationView();else if(view==='cte-requests')main.innerHTML=farmCteRequestsView();}
+ try{const data=await cloud.ctes();cteDocuments=data.documents||[];cteRequests=data.requests||[];cteTrucks=data.trucks||[];cteFarms=data.farms||[];ctePreferences=normalizeCtePreferences(data.preferences);if(view==='ctes')main.innerHTML=ctesView();else if(view==='reconciliation')main.innerHTML=reconciliationView();else if(view==='cte-requests'&&!hasCteRequestDraft())main.innerHTML=farmCteRequestsView();}
  catch(error){if(view==='ctes'||view==='reconciliation'||view==='cte-requests'){main.innerHTML=head(view==='ctes'?'CT-e':view==='cte-requests'?'Solicitações de CT-e':'Encontro de contas','Não foi possível carregar os documentos fiscais.','<button class="btn" data-action="cte-refresh">Tentar novamente</button>',view==='cte-requests'?'FISCAL DA FAZENDA':'DOCUMENTOS FISCAIS')+`<section class="card empty"><p>${e(authErrorMessage(error))}</p></section>`;}}
  finally{cteLoading=false;}
 }
