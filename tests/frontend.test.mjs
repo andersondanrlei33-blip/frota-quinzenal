@@ -193,9 +193,9 @@ test('the online interface requires login, saves truck and payment commands on t
 test('farm registration opens a separate form and saves one farm at a time',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
  assert.doesNotMatch(app.get('#main').innerHTML,/id="farms-form"/);assert.match(app.get('#main').innerHTML,/Cadastrar fazenda/);
- await app.action('add-farm');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/id="farm-form"/);assert.match(modal,/Salvar fazenda/);assert.match(modal,/CNPJ/);
- const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'Unidade Teste Ltda',cnpj:'12.345.678/0001-90',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'65999990000'},{id}), '');
- const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cnpj,'12.345.678/0001-90');assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
+ await app.action('add-farm');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/id="farm-form"/);assert.match(modal,/Salvar fazenda/);assert.match(modal,/CPF do titular/);assert.match(modal,/Nome do titular/);
+ const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'João da Silva',cpf:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'65999990000'},{id}), '');
+ const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cpf,'330.803.640-15');assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
 });
 test('selecting a monetary discount requires an explanation and the submitted amount reaches the closing',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});const date=app.run('today()'),month=date.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
