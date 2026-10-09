@@ -12,7 +12,7 @@ export function requestPayments(state,payload,actor){
  for(const closing of periodClosings(state,p))for(const row of closing.rows){
   if(payload.farmId&&row.farmId!==payload.farmId||payload.truckId&&row.truckId!==payload.truckId||payload.closingId&&closing.id!==payload.closingId)continue;
   if(row.paid||row.net<=0||row.requestId)continue;
-  const truck=state.trucks.find(item=>item.id===row.truckId),account=state.paymentAccounts?.find(item=>item.id===truck?.paymentAccountId&&item.farmId===row.farmId),details=account?.details||truck?.paymentDetails,missing=paymentDetailsMissing(details);
+  const truck=state.trucks.find(item=>item.id===row.truckId),account=state.paymentAccounts?.find(item=>item.id===truck?.paymentAccountId),details=account?.details||truck?.paymentDetails,missing=paymentDetailsMissing(details);
   if(missing.length)throw Error('Complete os dados de pagamento da placa '+row.plate+': '+missing.join(', ')+'.');
   const id=uid(),snapshot=structuredClone(row);delete snapshot.requestId;delete snapshot.paidHistory;
   snapshot.paymentDetails=structuredClone(validatePaymentDetails(details,true));if(account){snapshot.paymentAccountId=account.id;snapshot.paymentAccountName=account.name;}

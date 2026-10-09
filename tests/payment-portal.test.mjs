@@ -19,7 +19,7 @@ test('the group requests all four farms once and carrier receives only approved 
 });
 test('one bank account groups farm plates into one complete carrier payment',()=>{
  let state=initialState();const details={method:'pix',holder:'Titular Pix',document:'12345678901',pixKey:'conta@example.com'};state.trucks=[0,1].map(index=>({id:'joint-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details}));
- state=executeCommand(state,command('payment-account.save',{id:'pix-shared',farmId:'farm1',name:'Conta conjunta',details,truckIds:['joint-0','joint-1']}),group).state;saveClosing(state,p,'farm1','invoice-pix','2026-10-06');
+ state=executeCommand(state,command('payment-account.save',{id:'pix-shared',name:'Conta conjunta',details,truckIds:['joint-0','joint-1']}),group).state;saveClosing(state,p,'farm1','invoice-pix','2026-10-06');
  const sent=executeCommand(state,command('payment.request',{month:p.month,half:p.half,farmId:'farm1'}),group).state,[first,second]=sent.paymentRequests,proof=receipt(first);
  assert.equal(first.snapshot.paymentAccountId,'pix-shared');assert.equal(first.snapshot.paymentAccountName,'Conta conjunta');
  assert.throws(()=>executeCommand(sent,command('payment.record-batch',{requestIds:[first.id],date:'2026-10-06'}),carrier,{receipt:proof}),/Inclua todas as placas/);
