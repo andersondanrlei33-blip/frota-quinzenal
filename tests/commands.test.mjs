@@ -9,6 +9,13 @@ test('server commands calculate amounts themselves and reject client supplied pa
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);
   assert.equal(closed.state.closings[0].rows[0].net,15000);assert.equal(closed.state.closings[0].rows[0].paid,null);assert.deepEqual(state,before);assert.equal(closed.audit.actorId,actor.userId);
 });
+test('farm can save one reusable payment account and assign it to multiple trucks in that farm',()=>{
+ let state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23'},{...truck,id:'c',plate:'GHI1J23',farmId:'farm2'}];
+ const details={method:'pix',holder:'Titular compartilhado',document:'12345678901',pixKey:'pix@example.com'};
+ state=executeCommand(state,{type:'payment-account.save',payload:{id:'farm1-pix',farmId:'farm1',name:'Conta do titular',details,truckIds:['a','b']}},actor).state;
+ assert.equal(state.paymentAccounts.length,1);assert.equal(state.trucks[0].paymentAccountId,'farm1-pix');assert.equal(state.trucks[1].paymentAccountId,'farm1-pix');assert.deepEqual(validateState(state),state);
+ assert.throws(()=>executeCommand(state,{type:'payment-account.save',payload:{id:'farm1-pix',farmId:'farm1',name:'Conta do titular',details,truckIds:['a','c']}},actor),/mesma fazenda/);
+});
 test('closing every farm creates an exclusive invoice per farm',()=>{
   const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
   const result=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor).state;
