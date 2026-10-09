@@ -124,6 +124,14 @@ test('CT-e report offers all manifested invoice numbers in one customizable colu
   assert.match(app.get('#main').innerHTML,/NOTAS FISCAIS MANIFESTADAS/);assert.match(app.get('#main').innerHTML,/857, 858/);
   app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Notas fiscais manifestadas/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="manifestedNotes"/);
 });
+test('account reconciliation compares lifetime payments and CT-es across farm transfers',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ const state=initialState();state.trucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'}}];
+ state.closings=[{id:'invoice-a',period:period('2026-10',1),farmIds:['farm1'],rows:[{truckId:'truck-a',plate:'ABC1234',net:12000,paid:{date:'2026-10-15'}}]},{id:'invoice-b',period:period('2026-10',2),farmIds:['farm2'],rows:[{truckId:'truck-b',plate:'ABC1234',net:13000,paid:{date:'2026-10-31'}}]}];
+ const docs=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-10-02',totalValue:8000},{id:'cte-b',truckId:'truck-b',plate:'ABC1234',number:'101',issuedOn:'2026-10-05',totalValue:12000}];app.run(`state=JSON.parse(${JSON.stringify(JSON.stringify(state))});cteDocuments=JSON.parse(${JSON.stringify(JSON.stringify(docs))});location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
+ const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);assert.match(html,/class="num">2<span/);
+ await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/CT-es manifestados/);assert.match(detail,/Pagamentos à placa/);assert.match(detail,/TOTAL MANIFESTADO/);assert.match(detail,/R\$\s?5\.000,00/);
+});
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'group@example.test',password:'sixchars'}),'');
   app.run("location.hash='#settings';render()");assert.doesNotMatch(app.get('#main').innerHTML,/Dados do recibo padrão/);
