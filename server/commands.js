@@ -1,5 +1,5 @@
 import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails} from './engine.js';
-import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
+import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,recordRequestedPaymentBatch,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
 const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove','receipt.settings.save']);
@@ -57,6 +57,7 @@ export function executeCommand(input,command,actor,context={}){
     case 'payment.request':requestPayments(state,p,actor);break;
     case 'payment.cancel':cancelRequest(state,p.requestId,text(p.note||'',300),actor);break;
     case 'payment.record':recordRequestedPayment(state,p,actor,context.receipt);break;
+    case 'payment.record-batch':recordRequestedPaymentBatch(state,p,actor,context.receipt);break;
     case 'payment.undo':undoRequestedPayment(state,p,actor);break;
     case 'funding.create':createFunding(state,p,actor);break;
     case 'funding.receipt':attachFundingReceipt(state,p,actor,context.fundingReceipt);break;

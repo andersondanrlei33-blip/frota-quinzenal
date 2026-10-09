@@ -43,6 +43,18 @@ test('receipt identity, request, company and uploader are required before carrie
  const paid=executeCommand(state,c,carrier,{receipt:receipt(q)}).state;assert.equal(paid.paymentRequests[0].status,'paid');assert.equal(paid.closings[0].rows[0].paid.receipt.name,'comprovante.pdf');assert.deepEqual(validateState(paid),paid);assert.equal(state.closings[0].rows[0].paid,null);
  assert.throws(()=>executeCommand(paid,c,carrier,{receipt:receipt(q)}),/não está disponível/);
 });
+test('carrier can register one shared transfer across selected plates from the same invoice and Pix account',()=>{
+ const state=initialState();state.trucks=[0,1].map(index=>({id:'shared-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Contratado',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Titular do Pix',document:'12345678901',pixKey:'chave-compartilhada@example.com'}}));saveClosing(state,p,'farm1','shared-invoice','2026-10-06');const sent=executeCommand(state,command('payment.request',{month:p.month,half:p.half,farmId:'farm1'}),group).state,first=sent.paymentRequests[0],second=sent.paymentRequests[1],proof=receipt(first);
+ const saved=executeCommand(sent,command('payment.record-batch',{requestIds:[first.id,second.id],date:'2026-10-06',note:'Pix conjunto'}),carrier,{receipt:proof}).state;
+ assert.equal(saved.paymentRequests[0].status,'paid');assert.equal(saved.paymentRequests[1].status,'paid');assert.equal(saved.paymentRequests[0].payment.paymentGroupId,saved.paymentRequests[1].payment.paymentGroupId);assert.equal(saved.paymentRequests[0].payment.paymentGroupAmount,30000);assert.equal(saved.paymentRequests[1].payment.paymentGroupAmount,30000);assert.equal(saved.paymentRequests[0].payment.receipt.id,saved.paymentRequests[1].payment.receipt.id);assert.equal(saved.closings[0].rows.filter(row=>row.paid).length,2);assert.deepEqual(validateState(saved),saved);
+});
+test('a joint payment refuses mixed farms, invoices or destinations without changing payment state',()=>{
+ const state=requested(),before=structuredClone(state),proof=receipt(state.paymentRequests[0]);
+ assert.throws(()=>executeCommand(state,command('payment.record-batch',{requestIds:[state.paymentRequests[0].id,state.paymentRequests[2].id],date:'2026-10-06'}),carrier,{receipt:proof}),/mesma fatura, fazenda e conta/);
+ assert.deepEqual(state,before);
+ state.paymentRequests[1].snapshot.paymentDetails.pixKey='other@example.com';
+ assert.throws(()=>executeCommand(state,command('payment.record-batch',{requestIds:[state.paymentRequests[0].id,state.paymentRequests[1].id],date:'2026-10-06'}),carrier,{receipt:proof}),/mesma fatura, fazenda e conta/);
+});
 test('requested closings are locked until cancellation and archived requests survive reopening',()=>{
  const state=requested(),q=state.paymentRequests[0];assert.throws(()=>reopenClosing(state,p,'farm1'),/Cancele/);
  assert.throws(()=>executeCommand(state,command('payment.cancel',{requestId:q.id,note:''}),group),/motivo/);
