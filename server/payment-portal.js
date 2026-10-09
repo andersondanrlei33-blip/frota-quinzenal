@@ -1,10 +1,10 @@
-import {period,periodClosings,applyFixedMonthlyRule,uid,validDate,today,paymentDetailsMissing,validatePaymentDetails} from './engine.js';
+import {period,periodClosings,applyFixedMonthlyRule,uid,validDate,today,paymentDetailsMissing,validatePaymentDetails,round} from './engine.js';
 const fail=message=>{const error=Error(message);error.status=403;throw error;};
 export const partyOf=actor=>actor?.party||'group';
 export function authorizePortalCommand(command,actor){
- const party=partyOf(actor),payment=['payment.record','payment.undo','funding.receipt'].includes(command.type);
+ const party=partyOf(actor),payment=['payment.record','payment.record-batch','payment.undo','funding.receipt'].includes(command.type);
  if(party==='carrier'&&!payment)fail('A transportadora pode enviar recibos assinados e registrar pagamentos dos motoristas.');
- if(party==='group'&&['payment.record','funding.receipt'].includes(command.type))fail('Este documento deve ser enviado pelo acesso da transportadora.');
+ if(party==='group'&&['payment.record','payment.record-batch','funding.receipt'].includes(command.type))fail('Este documento deve ser enviado pelo acesso da transportadora.');
  if(party==='group'&&command.type==='payment.undo'&&actor.role!=='admin')fail('Somente a transportadora pode corrigir esse pagamento.');
 }
 export function requestPayments(state,payload,actor){
@@ -37,6 +37,26 @@ export function recordRequestedPayment(state,payload,actor,receipt){
  if(!receipt||receipt.requestId!==request.id||!receipt.id||receipt.companyId!==actor.companyId||receipt.uploadedBy!==actor.userId)throw Error('Anexe um comprovante válido para esta solicitação antes de registrar o pagamento.');
  const paid={date:payload.date,note:String(payload.note||'').trim().slice(0,300),recordedAt:new Date().toISOString(),recordedBy:actor.userId,recordedEmail:actor.email||'',requestId:request.id,receipt:{id:receipt.id,name:receipt.name,mime:receipt.mime,size:receipt.size}};
  row.paid=structuredClone(paid);request.payment=structuredClone(paid);request.status='paid';
+}
+export function recordRequestedPaymentBatch(state,payload,actor,receipt){
+ const ids=payload.requestIds;if(!Array.isArray(ids)||ids.length<2||ids.length>50||new Set(ids).size!==ids.length)throw Error('Selecione de 2 a 50 placas distintas para o pagamento conjunto.');
+ const targets=ids.map(id=>locateRequest(state,id)),first=targets[0],destination=JSON.stringify(first.request.snapshot.paymentDetails),farmId=first.row?.farmId;
+ if(!first.row||first.request.status!=='pending'||first.row.requestId!==first.request.id||first.row.paid)throw Error('Uma das solicitações selecionadas não está disponível para pagamento. Atualize a tela.');
+ if(!validDate(payload.date)||payload.date>today())throw Error('Informe uma data de pagamento válida, até hoje.');
+ if(paymentDetailsMissing(first.request.snapshot.paymentDetails).length)throw Error('Há placas sem dados de pagamento completos.');
+ for(const {request,row,closing} of targets){
+  if(request.status!=='pending'||!row||row.requestId!==request.id||row.paid)throw Error('Uma das solicitações selecionadas não está disponível para pagamento. Atualize a tela.');
+  if(!closing||closing.id!==first.closing.id||row.farmId!==farmId||JSON.stringify(request.snapshot.paymentDetails)!==destination)throw Error('O pagamento conjunto só pode reunir placas da mesma fatura, fazenda e conta de pagamento.');
+  if(row.net!==request.snapshot.net)throw Error('O valor fechado difere de uma solicitação. Confira com o grupo.');
+  if(paymentDetailsMissing(request.snapshot.paymentDetails).length)throw Error('Há placas sem dados de pagamento completos.');
+ }
+ const firstId=first.request.id;
+ if(!receipt||receipt.requestId!==firstId||!receipt.id||receipt.companyId!==actor.companyId||receipt.uploadedBy!==actor.userId)throw Error('Anexe um comprovante válido para o pagamento conjunto.');
+ const groupId=uid(),recordedAt=new Date().toISOString(),amount=round(targets.reduce((total,{row})=>total+row.net,0));
+ for(const {request,row} of targets){
+  const paid={date:payload.date,note:String(payload.note||'').trim().slice(0,300),recordedAt,recordedBy:actor.userId,recordedEmail:actor.email||'',requestId:request.id,paymentGroupId:groupId,paymentGroupAmount:amount,receipt:{id:receipt.id,name:receipt.name,mime:receipt.mime,size:receipt.size}};
+  row.paid=structuredClone(paid);request.payment=structuredClone(paid);request.status='paid';
+ }
 }
 export function undoRequestedPayment(state,payload,actor){
  const reason=String(payload.note||'').trim();if(!reason)throw Error('Informe o motivo da correção do pagamento.');

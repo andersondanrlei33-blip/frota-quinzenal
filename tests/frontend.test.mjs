@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 import {initialState,period,saveClosing} from '../server/engine.js';
+import {executeCommand} from '../server/commands.js';
 import {createFleetApi} from '../server/api.js';
 
 const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
@@ -56,6 +57,15 @@ test('carrier payments are grouped and filtered by fortnight and invoice',async(
   await app.action('complementary-invoice','',{month:'2026-10',half:'1'});app.get('#complementary-farm').value='farm1';app.run('updateComplementaryInvoicePreview()');const preview=app.get('#complementary-preview').innerHTML;assert.match(app.get('#modal-content').innerHTML,/Emitir fatura complementar/);assert.match(preview,/XYZ9B87/);assert.match(preview,/somente estas placas/i);
   await app.action('confirm-complementary-invoice');const saved=app.state().state;assert.equal(saved.closings.length,4);assert.equal(saved.closings[3].rows.length,1);assert.equal(saved.closings[3].rows[0].truckId,'late');assert.equal(saved.closings[0].rows[0].truckId,'a');assert.equal(saved.closings[1].rows[0].truckId,'b');assert.equal(saved.invoiceReopens.length,0);assert.match(app.get('#main').innerHTML,/<strong>Fatura 2<\/strong>/);
   await app.action('half','',{half:'2'});html=app.get('#main').innerHTML;assert.match(html,/16\/10\/2026 a 31\/10\/2026/);assert.doesNotMatch(html,/01\/10\/2026 a 15\/10\/2026/);
+});
+test('carrier can select plates sharing a Pix key and preview their joint transfer total',async()=>{
+  const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'carrier-password'}),'');
+  const seed=initialState(),details={method:'pix',holder:'Titular do Pix',document:'12345678901',pixKey:'chave-compartilhada@example.com'};seed.trucks=[0,1].map(index=>({id:'shared-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details}));saveClosing(seed,period('2026-10',1),'farm1','shared-invoice','2026-10-06');
+  const group={userId:'group-user',email:'group@example.test',role:'admin',party:'group',companyId:'company-one'},requested=executeCommand(seed,{type:'payment.request',payload:{month:'2026-10',half:1,farmId:'farm1'}},group).state;app.mutateState(state=>Object.assign(state,requested));await app.poll();
+  let html=app.get('#main').innerHTML;assert.match(html,/Conta compartilhada/);assert.match(html,/chave-compartilhada@example\.com/);assert.match(html,/Marque as placas que foram pagas juntas/);
+  const ids=app.state().state.paymentRequests.map(request=>request.id);for(const id of ids)await app.change({matches:selector=>selector==='[data-payment-group-request]',dataset:{paymentGroupRequest:id},checked:true});
+  html=app.get('#main').innerHTML;assert.match(html,/2 selecionada\(s\) · R\$\s?30\.000,00/);const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});
+  const modal=app.get('#modal-content').innerHTML;assert.match(modal,/Registrar pagamento conjunto/);assert.match(modal,/ABC1D20/);assert.match(modal,/ABC1D21/);assert.match(modal,/Total do pagamento conjunto/);assert.match(modal,/R\$\s?30\.000,00/);assert.match(modal,/Um comprovante será compartilhado/);
 });
 test('opening closings automatically separates a legacy invoice that mixed farms',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
