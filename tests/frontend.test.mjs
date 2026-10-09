@@ -190,6 +190,13 @@ test('the online interface requires login, saves truck and payment commands on t
   await app.action('cloud-logout');assert.match(app.get('#main').innerHTML,/Entrar no sistema/);assert.equal(app.run('state.trucks.length'),0);
   assert.ok(app.calls.filter(call=>call.url.includes('/api/commands')).every(call=>call.options.cache==='no-store'));
 });
+test('farm registration opens a separate form and saves one farm at a time',async()=>{
+ const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
+ assert.doesNotMatch(app.get('#main').innerHTML,/id="farms-form"/);assert.match(app.get('#main').innerHTML,/Cadastrar fazenda/);
+ await app.action('add-farm');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/id="farm-form"/);assert.match(modal,/Salvar fazenda/);assert.match(modal,/CNPJ/);
+ const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'Unidade Teste Ltda',cnpj:'12.345.678/0001-90',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'65999990000'},{id}), '');
+ const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cnpj,'12.345.678/0001-90');assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
+});
 test('selecting a monetary discount requires an explanation and the submitted amount reaches the closing',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});const date=app.run('today()'),month=date.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
  await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''});const truckId=app.state().state.trucks[0].id;
