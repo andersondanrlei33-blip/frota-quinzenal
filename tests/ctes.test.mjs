@@ -117,26 +117,25 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
 });
 
 test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{
- const {api,calls}=setup({party:'farm',role:'operator'}),key='51260956023496000173550010000008571135775140';
- const request=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key],note:'Manifestar carga da Fazenda A'})});
- const response=await api(request);assert.equal(response.status,201);assert.equal(calls.request.actor.farmId,'farm-a');assert.equal(calls.request.truck.id,'truck-a');assert.deepEqual(calls.request.invoiceKeys,[key]);
- const foreign=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-c',invoiceKeys:[key]})}),foreignApi=setup({party:'farm',trucks:[...state.trucks,{...state.trucks[1],id:'truck-c',farmId:'farm-b'}]}).api;await assert.rejects(()=>foreignApi(foreign),/não está disponível/);
- const ended=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key]})}),endedApi=setup({party:'farm',trucks:[{...state.trucks[0],end:'2026-10-07'}]}).api;await assert.rejects(()=>endedApi(ended),/não está disponível/);
- const invalid=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:['857']})});await assert.rejects(()=>api(invalid),/44 dígitos/);
+ const {api,calls}=setup({party:'farm',role:'operator'}),makeRequest=truckId=>{const form=new FormData();form.append('payload',JSON.stringify({truckId,note:'Manifestar carga da Fazenda A'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe.pdf');return new Request('https://example.test/api/cte-requests',{method:'POST',body:form});};
+ const request=makeRequest('truck-a'),response=await api(request);assert.equal(response.status,201);assert.equal(calls.request.actor.farmId,'farm-a');assert.equal(calls.request.truck.id,'truck-a');assert.deepEqual(calls.request.invoiceKeys,[]);
+ const foreignApi=setup({party:'farm',trucks:[...state.trucks,{...state.trucks[1],id:'truck-c',farmId:'farm-b'}]}).api;await assert.rejects(()=>foreignApi(makeRequest('truck-c')),/não está disponível/);
+ const endedApi=setup({party:'farm',trucks:[{...state.trucks[0],end:'2026-10-07'}]}).api;await assert.rejects(()=>endedApi(makeRequest('truck-a')),/não está disponível/);
  assert.equal((await setup({party:'farm',role:'viewer'}).api(request)).status,403);
 });
 
-test('funcionário anexa múltiplos XMLs e o servidor extrai as chaves automaticamente',async()=>{
- const {api,calls}=setup({party:'farm',role:'operator'}),key1='51260956023496000173550010000008571135775140',key2='51260956023496000173550010000008581135775140',makeXml=key=>new TextEncoder().encode(`<nfeProc><NFe><infNFe Id="NFe${key}" versao="4.00"></infNFe></NFe></nfeProc>`),form=new FormData();
- form.append('payload',JSON.stringify({truckId:'truck-a',invoiceKeys:[],note:'Enviar as notas anexas'}));form.append('invoiceFiles',new Blob([makeXml(key1)],{type:'application/xml'}),'nota-1.xml');form.append('invoiceFiles',new Blob([makeXml(key2)],{type:'application/xml'}),'nota-2.xml');
- const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.deepEqual(calls.request.invoiceKeys,[key1,key2]);assert.equal(calls.request.invoiceFiles.length,2);assert.equal(calls.request.invoiceFiles[0].details.accessKey,key1);
- const keysOnly=await api(new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key1]})}));assert.equal(keysOnly.status,201);
+test('funcionário envia uma ou mais NF-e somente em PDF, sem XML nem chave',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator'}),pdf=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a',note:'Enviar as notas anexas'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-1.pdf');form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-2.pdf');
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.deepEqual(calls.request.invoiceKeys,[]);assert.equal(calls.request.invoiceFiles.length,2);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.mime),['application/pdf','application/pdf']);
+ const withoutPdf=new FormData();withoutPdf.append('payload',JSON.stringify({truckId:'truck-a',note:'Sem anexo'}));await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:withoutPdf})),/Anexe ao menos um PDF/);
+ const xmlOnly=new FormData();xmlOnly.append('payload',JSON.stringify({truckId:'truck-a'}));xmlOnly.append('invoiceFiles',new Blob(['<nfeProc/>'],{type:'application/xml'}),'nota.xml');await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:xmlOnly})),/somente PDFs/);
 });
-test('funcionário envia XML e PDF juntos e a transportadora pode baixar o PDF',async()=>{
- const {api,calls}=setup({party:'farm',role:'operator'}),key='51260956023496000173550010000008571135775140',requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',makeXml=new TextEncoder().encode(`<nfeProc><NFe><infNFe Id="NFe${key}" versao="4.00"></infNFe></NFe></nfeProc>`),danfe=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
- form.append('payload',JSON.stringify({truckId:'truck-a',invoiceKeys:[],note:'Imprimir para contabilidade'}));form.append('invoiceFiles',new Blob([makeXml],{type:'application/xml'}),'nota.xml');form.append('invoicePdfs',new Blob([danfe],{type:'application/pdf'}),'danfe.pdf');
- const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,2);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.mime),['application/xml','application/pdf']);assert.equal(calls.request.invoiceFiles[1].details.accessKey,'');
- const saved={id:requestId,status:'pending',farmId:'farm-a',invoiceKeys:[key],invoiceFiles:[{id:fileId,name:'danfe.pdf',mime:'application/pdf',objectKey:companyId+'/'+requestId+'/file.pdf'}]},download=await setup({party:'carrier',role:'operator',request:saved}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(download.status,200);assert.equal((await download.json()).mime,'application/pdf');
+test('funcionário envia PDF e a transportadora pode baixar o anexo',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator'}),requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',danfe=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a',note:'Imprimir para contabilidade'}));form.append('invoicePdfs',new Blob([danfe],{type:'application/pdf'}),'danfe.pdf');
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,1);assert.equal(calls.request.invoiceFiles[0].details.mime,'application/pdf');assert.deepEqual(calls.request.invoiceKeys,[]);
+ const saved={id:requestId,status:'pending',farmId:'farm-a',invoiceKeys:[],invoiceFiles:[{id:fileId,name:'danfe.pdf',mime:'application/pdf',objectKey:companyId+'/'+requestId+'/file.pdf'}]},download=await setup({party:'carrier',role:'operator',request:saved}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(download.status,200);assert.equal((await download.json()).mime,'application/pdf');
 });
 
 test('XML anexado fica acessível somente à fazenda da solicitação e à equipe do grupo',async()=>{
