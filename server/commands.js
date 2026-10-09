@@ -82,7 +82,8 @@ export function executeCommand(input,command,actor,context={}){
     case 'farms.save':{
       if(!Array.isArray(p.farms)||!p.farms.length)throw Error('Cadastre pelo menos uma fazenda.');
       if(state.farms.some(farm=>!p.farms.some(item=>item.id===farm.id)))throw Error('Use Remover ou Inativar para alterar a lista de fazendas.');
-      const farms=p.farms.map(item=>({...(state.farms.find(farm=>farm.id===item.id)||{}),id:item.id||uid(),name:text(item.name,80)}));
+      const profileFields={legalName:120,cnpj:24,stateRegistration:30,address:180,contactName:100,contactEmail:160,contactPhone:30};
+      const farms=p.farms.map(item=>({...(state.farms.find(farm=>farm.id===item.id)||{}),id:item.id||uid(),name:text(item.name,80),...Object.fromEntries(Object.entries(profileFields).map(([key,max])=>[key,text(item[key]||'',max)]))}));
       if(farms.some(item=>!item.name)||new Set(farms.map(item=>item.name.toLocaleLowerCase('pt-BR'))).size!==farms.length)throw Error('Preencha nomes diferentes para cada fazenda.');state.farms=farms;break;
     }
     case 'farm.remove':removeFarm(state,p.id);break;
