@@ -43,13 +43,14 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async inspectInvite(ticket){return access({action:'inspect',ticket});},
     async register(ticket,email,password,companyName){const result=await access({action:'register',ticket,email,password,companyName});companyId=result.companyId;return result;},
     async team(){return api('/api/team');},
-    async invite(email,role,party='group'){return api('/api/team/invite',{email,role,party});},
-    async updateMember(userId,role,active,party=null){return api('/api/team/status',{userId,role,active,party});},
+    async invite(email,role,party='group',farmId=null){return api('/api/team/invite',{email,role,party,farmId});},
+    async updateMember(userId,role,active,party=null,farmId=null){return api('/api/team/status',{userId,role,active,party,farmId});},
     async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
     async ctes(){return api('/api/ctes');},
+    async requestCte(payload){return api('/api/cte-requests',payload);},
     async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
-    async uploadCte({file}){const body=new FormData();body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async uploadCte({file,requestId=''}){const body=new FormData();body.append('file',file,file.name);if(requestId)body.append('requestId',requestId);return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async cteLink(id){return api('/api/ctes/'+encodeURIComponent(id));},
     hasSession(){return !!session;}
   };

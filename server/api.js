@@ -19,6 +19,11 @@ export function createFleetApi({repository,authenticate}){
       if(!actor?.userId)return json({error:'Faça login para acessar o sistema.'},401);
       if(!actor.companyId||!['admin','operator','viewer'].includes(actor.role))return json({error:'Sua conta não tem acesso a esta empresa.'},403);
       const url=new URL(request.url),path=url.pathname.slice(url.pathname.indexOf('/api/'));
+      if(actor.party==='farm'){
+        if(request.method==='GET'&&path==='/api/state'){const current=await repository.load(actor.companyId);return json(presentState(current,actor));}
+        return json({error:'Use o portal fiscal da sua fazenda.'},403);
+      }
+      if(!['group','carrier'].includes(actor.party||'group'))return json({error:'Sua conta não tem acesso a esta empresa.'},403);
       if(request.method==='GET'&&path==='/api/state'){
         const current=await repository.load(actor.companyId);return json(presentState(current,actor));
       }

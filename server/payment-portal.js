@@ -81,6 +81,7 @@ export function protectPortalBackup(current,restored){
 }
 export function presentState(current,actor){
  const user={id:actor.userId,email:actor.email||'',role:actor.role,party:partyOf(actor)};
+ if(partyOf(actor)==='farm')return {revision:current.revision,company:current.company,user:{...user,farmId:actor.farmId||null},state:null,requests:[]};
  if(partyOf(actor)==='carrier'){
   const invoiceNumbers=new Map(),periods=new Map();
   for(const [order,closing] of current.state.closings.entries())for(const farmId of new Set(closing.rows.map(row=>row.farmId))){const key=closing.period.key+'\0'+farmId;if(!periods.has(key))periods.set(key,[]);periods.get(key).push({closing,farmId,order});}
