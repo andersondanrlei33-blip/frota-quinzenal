@@ -56,6 +56,13 @@ test('fortnight history groups multiple farm invoices and unlocks a separate inv
   await app.action('complementary-invoice','',{month:'2026-10',half:'1'});app.get('#complementary-farm').value='farm1';app.run('updateComplementaryInvoicePreview()');const preview=app.get('#complementary-preview').innerHTML;assert.match(app.get('#modal-content').innerHTML,/Emitir fatura complementar/);assert.match(preview,/XYZ9B87/);assert.match(preview,/somente estas placas/i);
   await app.action('confirm-complementary-invoice');const saved=app.state().state;assert.equal(saved.closings.length,3);assert.equal(saved.closings[2].rows.length,1);assert.equal(saved.closings[2].rows[0].truckId,'late');assert.equal(saved.closings[0].rows[0].truckId,'a');assert.equal(saved.closings[1].rows[0].truckId,'b');assert.equal(saved.invoiceReopens.length,0);
 });
+test('second fortnight reminds about a truck started in the first and links to its pending invoice',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  const seed=initialState();seed.trucks=[{id:'oct8',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-08',end:''}];
+  app.mutateState(state=>Object.assign(state,seed));await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='';location.hash='#closings';render()");
+  let html=app.get('#main').innerHTML;assert.match(html,/começaram na 1ª quinzena e ainda não foram faturados nela/);assert.match(html,/data-action="view-period" data-month="2026-10" data-half="1"/);
+  await app.action('view-period','',{month:'2026-10',half:1});html=app.get('#main').innerHTML;assert.match(html,/01\/10\/2026 a 15\/10\/2026/);assert.match(html,/ABC1D23/);
+});
 test('payment details display CPF and CNPJ with punctuation',async()=>{
   const app=await boot();
   assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');

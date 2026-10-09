@@ -110,6 +110,11 @@ test('including or excluding entry and exit dates is configurable',()=>{
   assert.equal(calculate(t,period('2026-10',1),settings,[]).eligibleDays,5);
   assert.equal(calculate(t,period('2026-10',1),{...settings,includeStart:false,includeEnd:false},[]).eligibleDays,3);
 });
+test('a truck started in the first fortnight is billed there proportionally and again in the second while active',()=>{
+  const s=initialState();s.trucks=[{...truck,start:'2026-10-08',end:''}];
+  const first=draft(s,period('2026-10',1))[0],second=draft(s,period('2026-10',2))[0];
+  assert.equal(first.eligibleDays,8);assert.equal(first.net,10666.67);assert.equal(second.eligibleDays,16);assert.equal(second.net,20000);
+});
 test('invalid dates, overlapping plate contracts and duplicate discount dates are rejected',()=>{
   const s=initialState();s.trucks=[truck];
   assert.throws(()=>validateTruck({...truck,id:'b'},s),/sobrepostas/);
