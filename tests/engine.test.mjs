@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
+import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,reopenForInvoice,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
 
 const truck={id:'a',plate:'ABC1D23',driver:'João',carrier:'Transportes',farmId:'farm1',monthly:40000,start:'2026-10-06',end:'2026-11-10'};
 const settings={mode:'daily30',includeStart:true,includeEnd:true,confirmed:true};
@@ -223,6 +223,8 @@ test('a late truck gets a complementary closing without changing original paid r
   let rr=periodRows(s,p);assert.equal(rr.length,3);assert.equal(rr.find(r=>r.truckId==='late').closed,false);assert.equal(rr.find(r=>r.truckId==='late').complementary,true);
   const d={id:'late-discount',truckId:'late',start:'2026-10-08',end:'2026-10-08',reason:'Oficina',note:''};
   validateDiscount(d,s);s.discounts.push(d);assert.equal(discountLocked(d,s),false);
+  assert.throws(()=>saveClosing(s,p,'farm1','supplement'),/Reabra a quinzena/);
+  assert.deepEqual(reopenForInvoice(s,p,'farm1'),['farm1']);
   const complement=saveClosing(s,p,'farm1','supplement','2026-10-06');
   assert.equal(complement.kind,'complement');assert.equal(complement.rows.length,1);assert.equal(complement.rows[0].net,10500);assert.deepEqual(old,original);
   assert.equal(discountLocked(d,s),true);assert.throws(()=>saveClosing(s,p,'farm1','duplicate'),/não tem novas placas/);
