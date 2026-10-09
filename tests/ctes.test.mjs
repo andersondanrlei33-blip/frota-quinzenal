@@ -129,6 +129,12 @@ test('carrier receives only per-plate accrual totals for the selected fortnight'
  assert.equal(response.status,200);assert.equal(data.accrualRows.length,1);assert.equal(data.accrualRows[0].plate,truck.plate);assert.equal(data.accrualRows[0].eligibleDays,days(p.start,today()));assert.ok(data.accrualRows[0].net>0);assert.equal('monthly' in data.accrualRows[0],false);assert.equal('events' in data.accrualRows[0],false);
 });
 
+test('farm portal receives accrual rows only for its assigned farm',async()=>{
+ const p=period(today().slice(0,7),Number(today().slice(8))<=15?1:2),trucks=[{...state.trucks[0],monthly:40000,start:p.start,end:''},{...state.trucks[1],monthly:40000,start:p.start,end:'',farmId:'farm-b'}],repositoryState={...state,trucks,settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true},discounts:[],closings:[]};
+ const {api}=setup({party:'farm',farmId:'farm-a',trucks,repositoryState}),response=await api(new Request(`https://example.test/api/ctes?month=${p.month}&half=${p.half}`)),data=await response.json();
+ assert.equal(response.status,200);assert.equal(data.accrualRows.length,1);assert.equal(data.accrualRows[0].farmId,'farm-a');assert.equal(data.accrualRows[0].plate,trucks[0].plate);assert.equal('monthly' in data.accrualRows[0],false);
+});
+
 test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{
  const {api,calls}=setup({party:'farm',role:'operator'}),makeRequest=truckId=>{const form=new FormData();form.append('payload',JSON.stringify({truckId,note:'Manifestar carga da Fazenda A'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe.pdf');return new Request('https://example.test/api/cte-requests',{method:'POST',body:form});};
  const request=makeRequest('truck-a'),response=await api(request);assert.equal(response.status,201);assert.equal(calls.request.actor.farmId,'farm-a');assert.equal(calls.request.truck.id,'truck-a');assert.deepEqual(calls.request.invoiceKeys,[]);
