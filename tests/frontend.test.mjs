@@ -197,6 +197,13 @@ test('farm registration opens a separate form and saves one farm at a time',asyn
  const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'João da Silva',cpf:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'65999990000'},{id}), '');
  const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cpf,'330.803.640-15');assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
 });
+test('farm contact phone formats DDD and landline or mobile numbers while typing',async()=>{
+ const app=await boot();
+ const field={id:'farm-contactPhone',value:'66999995976',selectionStart:11,selectionEnd:11,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
+ await app.input(field);assert.equal(field.value,'(66) 99999-5976');assert.equal(field.selectionStart,15);
+ field.value='6533331234';field.selectionStart=10;field.selectionEnd=10;await app.input(field);assert.equal(field.value,'(65) 3333-1234');
+ field.value='659999959768123';field.selectionStart=15;field.selectionEnd=15;await app.input(field);assert.equal(field.value,'(65) 99999-5976');
+});
 test('selecting a monetary discount requires an explanation and the submitted amount reaches the closing',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});const date=app.run('today()'),month=date.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
  await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''});const truckId=app.state().state.trucks[0].id;
