@@ -16,21 +16,19 @@ export function executeCommand(input,command,actor,context={}){
   switch(command.type){
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id),farmId=text(p.farmId),paymentAccountId=text(p.paymentAccountId||'',100),account=paymentAccountId?requireRecord(state.paymentAccounts,paymentAccountId,'Conta de pagamento'):null;
-      if(account&&account.farmId!==farmId)throw Error('A conta de pagamento deve pertencer à mesma fazenda do caminhão.');
       const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId,bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',paymentAccountId,paymentDetails:account?structuredClone(account.details):p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
       validateTruck(truck,state,true);const index=state.trucks.findIndex(item=>item.id===id);if(index<0)state.trucks.push(truck);else state.trucks[index]=truck;break;
     }
     case 'payment-account.save':{
-      const id=text(p.id||uid(),100),farmId=text(p.farmId,100),name=text(p.name,80),details=normalizePaymentDetails(p.details),truckIds=[...new Set(p.truckIds||[])];
-      if(!state.farms.some(farm=>farm.id===farmId))throw Error('Selecione uma fazenda válida para a conta.');
+      const id=text(p.id||uid(),100),name=text(p.name,80),details=normalizePaymentDetails(p.details),truckIds=[...new Set(p.truckIds||[])];
       if(!details||!name)throw Error('Informe um nome e os dados da conta de pagamento.');validatePaymentDetails(details,true);
       if(!Array.isArray(p.truckIds)||p.truckIds.length>500)throw Error('Confira as placas selecionadas para esta conta.');
-      const trucks=truckIds.map(truckId=>requireRecord(state.trucks,truckId,'Caminhão'));if(trucks.some(truck=>truck.farmId!==farmId))throw Error('A conta só pode agrupar placas da mesma fazenda.');
-      const existing=state.paymentAccounts.find(account=>account.id===id),account={id,farmId,name,details};if(existing&&existing.farmId!==farmId)throw Error('Para mudar uma conta de fazenda, cadastre uma nova conta nessa fazenda.');if(existing)Object.assign(existing,account);else state.paymentAccounts.push(account);
-      for(const truck of state.trucks)if(truck.paymentAccountId===id&&!truckIds.includes(truck.id))truck.paymentAccountId='';for(const truck of trucks){truck.paymentAccountId=id;truck.paymentDetails=structuredClone(details);}break;
+      const trucks=truckIds.map(truckId=>requireRecord(state.trucks,truckId,'Caminhão'));if(trucks.some(truck=>truck.transferOut))throw Error('Selecione o cadastro atual de cada placa, após a transferência.');
+      const existing=state.paymentAccounts.find(account=>account.id===id),account={id,name,details};if(existing){Object.assign(existing,account);delete existing.farmId;}else state.paymentAccounts.push(account);
+      for(const truck of state.trucks)if(truck.paymentAccountId===id&&!truckIds.includes(truck.id)&&!truck.transferOut)truck.paymentAccountId='';for(const truck of trucks){truck.paymentAccountId=id;truck.paymentDetails=structuredClone(details);}break;
     }
     case 'payment-account.remove':{
-      const account=requireRecord(state.paymentAccounts,p.id,'Conta de pagamento');if(state.trucks.some(truck=>truck.paymentAccountId===account.id))throw Error('Desvincule as placas desta conta antes de excluí-la.');state.paymentAccounts=state.paymentAccounts.filter(item=>item.id!==account.id);break;
+      const account=requireRecord(state.paymentAccounts,p.id,'Conta de pagamento');if(state.trucks.some(truck=>truck.paymentAccountId===account.id&&!truck.transferOut))throw Error('Desvincule as placas atuais desta conta antes de excluí-la.');for(const truck of state.trucks)if(truck.paymentAccountId===account.id)truck.paymentAccountId='';state.paymentAccounts=state.paymentAccounts.filter(item=>item.id!==account.id);break;
     }
     case 'discount.save':{
       const discount={id:p.id||uid(),truckId:text(p.truckId),start:p.start,end:p.end,reason:p.reason,note:text(p.note||'',300),...(p.kind===undefined?{}:{kind:p.kind}),...(p.amount===undefined?{}:{amount:p.amount})};

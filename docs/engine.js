@@ -91,7 +91,7 @@ export function initialState() {
   return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],paymentAccounts:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
 }
 export function farmHasLinks(state,id) {
-  return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.fundingTransfers?.some(r=>r.farmId===id)||state.paymentAccounts?.some(account=>account.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
+  return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.fundingTransfers?.some(r=>r.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
 }
 export function removeFarm(state,id) {
   if(!state.farms.some(f=>f.id===id))throw Error('Esta fazenda não está cadastrada.');
@@ -245,7 +245,7 @@ export function validateTruck(t,state,requireDetails=false) {
   if(farm.active===false&&(!existing||existing.farmId!==t.farmId))throw Error('Reative esta fazenda antes de cadastrar ou alocar um caminhão nela.');
   if (!Number.isFinite(t.monthly) || t.monthly<=0 || t.monthly>10000000) throw Error('Informe um valor mensal maior que zero.');
   validatePaymentDetails(t.paymentDetails);
-  if(t.paymentAccountId){const account=state.paymentAccounts?.find(item=>item.id===t.paymentAccountId);if(!account||account.farmId!==t.farmId)throw Error('Selecione uma conta de pagamento cadastrada para esta fazenda.');}
+  if(t.paymentAccountId&&!state.paymentAccounts?.some(item=>item.id===t.paymentAccountId))throw Error('Selecione uma conta de pagamento cadastrada.');
   if((requireDetails||t.bodyType) && !BODY_TYPES.includes(t.bodyType))throw Error('Selecione caçamba ou graneleiro.');
   if((requireDetails||t.axles!=null) && (!Number.isInteger(t.axles)||t.axles<1||t.axles>99))throw Error('Informe uma quantidade inteira de eixos, de 1 a 99.');
   if (!validDate(t.start) || (t.end && (!validDate(t.end) || t.end<t.start))) throw Error('O encerramento precisa ser igual ou posterior ao início.');
@@ -280,7 +280,6 @@ export function transferTruck(state,truckId,toFarmId,date,note='',newId=uid()) {
   if(state.trucks.some(t=>t.id===newId))throw Error('O cadastro de destino já existe.');
   const next=structuredClone(state),from=next.trucks.find(t=>t.id===truckId),oldEnd=from.end||'';
   const to={...from,id:newId,farmId:toFarmId,start:date,end:oldEnd,transferIn:{fromTruckId:truckId,fromFarmId:from.farmId,fromFarmName:plan.fromFarmName,date,note:String(note).trim().slice(0,300)}};
-  delete to.paymentAccountId;
   delete to.transferOut;
   from.end=plan.lastOldDay;
   delete from.serviceEnded;
@@ -441,7 +440,7 @@ export function applyFixedMonthlyRule(state) {
 }
 export function migrateState(s) {
   if(!s || ![1,SCHEMA].includes(s.schema))throw Error('Este arquivo não é um backup válido do Frota.');
-  const result=structuredClone(s);result.paymentRequests??=[];result.fundingTransfers??=[];result.invoiceReopens??=[];result.paymentAccounts??=[];
+  const result=structuredClone(s);result.paymentRequests??=[];result.fundingTransfers??=[];result.invoiceReopens??=[];result.paymentAccounts??=[];for(const account of result.paymentAccounts)delete account.farmId;
   if(s.schema===1){
     result.schema=SCHEMA;
     result.trucks=result.trucks?.map(t=>({...t,bodyType:t.bodyType||'',axles:t.axles??null}));
@@ -455,7 +454,7 @@ export function validateState(input) {
   if(!Array.isArray(s.invoiceReopens)||s.invoiceReopens.length>10000||new Set(s.invoiceReopens).size!==s.invoiceReopens.length||s.invoiceReopens.some(key=>typeof key!=='string'||!/^\d{4}-\d{2}-[12]\|[^|]+$/.test(key)))throw Error('Autorizações de nova fatura inválidas no backup.');
   for(const list of [s.farms,s.trucks,s.paymentAccounts,s.discounts,s.closings,s.paymentRequests,s.fundingTransfers]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
-  for(const account of s.paymentAccounts){if(!s.farms.some(farm=>farm.id===account.farmId)||typeof account.name!=='string'||!account.name.trim()||account.name.length>80)throw Error('Confira as contas de pagamento do backup.');validatePaymentDetails(account.details,true);}
+  for(const account of s.paymentAccounts){if(typeof account.name!=='string'||!account.name.trim()||account.name.length>80)throw Error('Confira as contas de pagamento do backup.');validatePaymentDetails(account.details,true);}
   for(const t of s.trucks) { if(typeof t.driver!=='string'||typeof t.carrier!=='string'||typeof t.plate!=='string')throw Error('Cadastro inválido no backup.'); validateTruck(t,s); }
   for(const d of s.discounts) { if(typeof d.note!=='string') throw Error('Desconto inválido no backup.'); validateDiscount(d,{...s,closings:[]},false); }
   const amountPeriods=new Set();for(const d of s.discounts.filter(isAmountDiscount)){const p=period(d.start.slice(0,7),Number(d.start.slice(8))<=15?1:2),key=d.truckId+'|'+p.key;if(!discountLocked(d,s)&&!amountPeriods.has(key)){calculate(s.trucks.find(t=>t.id===d.truckId),p,s.settings,s.discounts,s.farms);amountPeriods.add(key);}}
