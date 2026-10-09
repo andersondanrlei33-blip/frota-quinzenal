@@ -89,8 +89,9 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
 });
 
 test('cada usuário salva sua seleção e ordem de colunas no portal da própria empresa',async()=>{
- const {api,calls}=setup({party:'group',role:'viewer'}),visibleColumns=['plate','shipperCity'],columnOrder=['plate','shipperCity',...CTE_REPORT_COLUMNS.filter(field=>!['plate','shipperCity'].includes(field))];
+ const {api,calls}=setup({party:'group',role:'viewer'}),mergedDocuments=['shipperDocument','recipientDocument','serviceTakerDocument','issuerDocument'],visibleColumns=['plate','shipperCity',...mergedDocuments],columnOrder=['plate','shipperCity',...mergedDocuments,...CTE_REPORT_COLUMNS.filter(field=>!['plate','shipperCity',...mergedDocuments].includes(field))];
  const response=await api(new Request('https://example.test/api/ctes/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visibleColumns,columnOrder})}));
  assert.equal(response.status,200);assert.deepEqual(calls.preferences.visibleColumns,visibleColumns);
+ assert.deepEqual(mergedDocuments.filter(field=>CTE_REPORT_COLUMNS.includes(field)),mergedDocuments);assert.equal(CTE_REPORT_COLUMNS.filter(field=>/^(shipper|recipient|serviceTaker|issuer)(Cnpj|Cpf)$/.test(field)).length,0);
  const invalid=await api(new Request('https://example.test/api/ctes/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visibleColumns:['unknown'],columnOrder:['unknown']})}));assert.equal(invalid.status,400);
 });

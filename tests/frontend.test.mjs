@@ -61,6 +61,15 @@ test('CT-e print uses the selected farm, visible columns and applied column filt
   const css=fs.readFileSync(new URL('../frontend/styles.css',import.meta.url),'utf8');assert.match(css,/main:has\(\.cte-report-card\)>:not\(\.cte-report-card\)\{display:none!important\}/);assert.match(css,/@page cte-report\{size:A4 landscape;margin:0\}/);
   await app.action('cte-print');assert.equal(app.printCount(),1);
 });
+test('CPF and CNPJ share one CT-e report field per participant without losing saved preferences',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  const parties=['shipper','recipient','serviceTaker','issuer'],oldColumns=parties.flatMap(party=>[party+'Cnpj',party+'Cpf']),mergedColumns=parties.map(party=>party+'Document');
+  const prior=JSON.stringify({visibleColumns:oldColumns,columnOrder:[...oldColumns,'plate']}),saved=JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(prior)})))`));
+  assert.deepEqual(saved.visibleColumns,mergedColumns);assert.deepEqual(saved.columnOrder.slice(0,4),mergedColumns);assert.equal(saved.columnOrder.length,app.run('ALL_CTE_COLUMNS.length'));
+  assert.equal(app.run("CTE_FILTER_FIELDS.shipperDocument.get({participantDetails:{shipper:{cnpj:'06338525000118',cpf:''}}})"),'06.338.525/0001-18');
+  assert.equal(app.run("CTE_FILTER_FIELDS.recipientDocument.get({participantDetails:{recipient:{cnpj:'',cpf:'12345678901'}}})"),'123.456.789-01');
+  app.run(`ctePreferences=JSON.parse(${JSON.stringify(JSON.stringify(saved))});ctePreferencesForm()`);const html=app.get('#modal-content').innerHTML;assert.equal((html.match(/<span>CPF\/CNPJ d[oa] [^<]+<\/span>/g)||[]).length,4);const checkboxFields=[...html.matchAll(/data-cte-pref-column="([^"]+)"/g)].map(match=>match[1]);assert.deepEqual(checkboxFields.filter(field=>field.endsWith('Document')),mergedColumns);assert.equal(checkboxFields.filter(field=>/(?:Cnpj|Cpf)$/.test(field)).length,0);
+});
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'group@example.test',password:'sixchars'}),'');
   app.run("location.hash='#settings';render()");assert.doesNotMatch(app.get('#main').innerHTML,/Dados do recibo padrão/);
