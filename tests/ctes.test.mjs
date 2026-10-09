@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCteApi,CTE_REPORT_COLUMNS,extractNfeVehiclePlate,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {days,period,today} from '../server/engine.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -24,12 +25,12 @@ Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
 const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
-function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,request=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
+function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,repositoryState=null,request=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
  const calls={};
  const backend={
   actor:async()=>({userId,email:'user@example.com',companyId,party,role,farmId}),
   responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}}),
-  repository:{load:async()=>({state:{...state,trucks}})},
+  repository:{load:async()=>({state:repositoryState||{...state,trucks}})},
   ctes:{
    getPreferences:async()=>null,
    savePreferences:async(_user,_company,prefs)=>{calls.preferences=prefs;return prefs;},
@@ -121,6 +122,11 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
  assert.equal(listed.status,200);const data=await listed.json();assert.equal(data.documents[0].plate,'ABC1D23');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').start,'2026-10-01');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').transferIn,null);
  const downloaded=await api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(downloaded.status,200);assert.match((await downloaded.json()).signedUrl,/download=cte\.xml/);
  const unknown=await api(new Request('https://example.test/api/ctes/44444444-4444-4444-8444-444444444444'));assert.equal(unknown.status,404);
+});
+test('carrier receives only per-plate accrual totals for the selected fortnight',async()=>{
+ const p=period(today().slice(0,7),Number(today().slice(8))<=15?1:2),truck={...state.trucks[0],monthly:40000,start:p.start,end:''},repositoryState={...state,trucks:[truck],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true},discounts:[],closings:[]};
+ const {api}=setup({party:'carrier',trucks:[truck],repositoryState}),response=await api(new Request(`https://example.test/api/ctes?month=${p.month}&half=${p.half}`)),data=await response.json();
+ assert.equal(response.status,200);assert.equal(data.accrualRows.length,1);assert.equal(data.accrualRows[0].plate,truck.plate);assert.equal(data.accrualRows[0].eligibleDays,days(p.start,today()));assert.ok(data.accrualRows[0].net>0);assert.equal('monthly' in data.accrualRows[0],false);assert.equal('events' in data.accrualRows[0],false);
 });
 
 test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{
