@@ -114,20 +114,25 @@ export function eligibleRange(truck,p,settings) {
 }
 export const isAmountDiscount=d=>d?.kind==='amount';
 export const amountDiscountTotal=row=>round((row.events||[]).filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0));
-export function calculate(truck,p,settings,discounts,farms=[],allowOverLimit=false) {
+export function calculate(truck,p,settings,discounts,farms=[],allowOverLimit=false,ratePeriod=p) {
   const r=eligibleRange(truck,p,settings);
   const dates=new Set(dateList(r.start,r.end));
   const events=discounts.filter(d=>d.truckId===truck.id && d.start<=r.end && d.end>=r.start);
   const deducted=new Set();
   for (const e of events.filter(e=>!isAmountDiscount(e))) for (const d of dateList(e.start,e.end)) if (dates.has(d)) deducted.add(d);
-  const periodDays=days(p.start,p.end);
+  const periodDays=days(ratePeriod.start,ratePeriod.end);
   const mode=settings.fixedMonthlyVersion?'half':settings.mode;
-  const rate=settings.fixedMonthlyVersion?fixedPeriodAmount(truck.monthly,p)/periodDays:truck.monthly/(mode==='half'?2*periodDays:mode==='calendar'?p.monthDays:30);
+  const rate=settings.fixedMonthlyVersion?fixedPeriodAmount(truck.monthly,ratePeriod)/periodDays:truck.monthly/(mode==='half'?2*periodDays:mode==='calendar'?ratePeriod.monthDays:30);
   const payableDays=Math.max(0,r.count-deducted.size);
   const amount=round(events.filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0)),gross=round(rate*r.count),beforeAmount=round(rate*payableDays);
   if(amount>beforeAmount&&!allowOverLimit)throw Error('Os descontos por valor excedem o saldo desta placa na quinzena. Confira o valor e os descontos por dias.');
   const net=round(Math.max(0,beforeAmount-amount)),discount=round(gross-net);
   return {truckId:truck.id,plate:truck.plate,driver:truck.driver,carrier:truck.carrier,bodyType:truck.bodyType||'',axles:truck.axles??null,farmId:truck.farmId,farmName:farms.find(f=>f.id===truck.farmId)?.name || 'Fazenda não encontrada',monthly:truck.monthly,contractStart:truck.start,contractEnd:truck.end || '',start:r.count?r.start:'',end:r.count?r.end:'',eligibleDays:r.count,discountDays:deducted.size,payableDays,rate,gross,discount,net,events:events.map(e=>({...e,count:isAmountDiscount(e)?0:dateList(e.start,e.end).filter(d=>dates.has(d)).length})).filter(e=>isAmountDiscount(e)||e.count),paid:null};
+}
+export function accruedRows(state,p,asOf=today()) {
+  if(asOf<p.start)return [];
+  const elapsed={...p,end:asOf<p.end?asOf:p.end};
+  return state.trucks.map(truck=>calculate(truck,elapsed,state.settings,state.discounts,state.farms,true,p)).filter(row=>row.eligibleDays>0);
 }
 export function draft(state,p) {
   const booked=new Map(periodClosings(state,p).flatMap(c=>c.rows.map(r=>[r.truckId,r]))),groups=new Map();
