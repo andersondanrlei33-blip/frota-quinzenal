@@ -88,7 +88,7 @@ export function period(month,half) {
 export const dateLabel = s => validDate(s) ? s.split('-').reverse().join('/') : '—';
 export const periodLabel = p => `${dateLabel(p.start)} a ${dateLabel(p.end)}`;
 export function initialState() {
-  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],paymentRequests:[],fundingTransfers:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
 }
 export function farmHasLinks(state,id) {
   return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.fundingTransfers?.some(r=>r.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
@@ -158,6 +158,8 @@ export function draft(state,p) {
 export function overlaps(a,b,c,d) { return a<=d && c<=b; }
 export function periodClosings(state,p) {return state.closings.filter(c=>c.period.key===p.key);}
 export function farmClosing(state,p,farmId) {return periodClosings(state,p).find(c=>(c.farmIds||state.farms.map(f=>f.id)).includes(farmId));}
+const invoiceReopenKey=(periodKey,farmId)=>`${periodKey}|${farmId}`;
+export function invoiceReopened(state,p,farmId) {return (state.invoiceReopens||[]).includes(invoiceReopenKey(p.key,farmId));}
 export function pendingRows(state,p) {
   const closedTrucks=new Set(periodClosings(state,p).flatMap(c=>c.rows.map(r=>r.truckId)));
   return draft(state,p).filter(r=>!closedTrucks.has(r.truckId));
@@ -174,7 +176,7 @@ export function closingPreview(state,p,farmId='') {
   const farmIds=farmId?[farmId]:openFarmIds(state,p);
   if(!farmIds.length)throw Error('Todas as fazendas já estão fechadas nesta quinzena.');
   const pending=pendingRows(state,p);
-  for(const id of farmIds){const farm=state.farms.find(f=>f.id===id);if(!farm)throw Error('Selecione uma fazenda válida.');if(farm.active===false&&!pending.some(r=>r.farmId===id))throw Error('Esta fazenda está inativa e não tem caminhões pendentes nesta quinzena.');if(farmClosing(state,p,id)&&!pending.some(r=>r.farmId===id))throw Error('Esta fazenda já está fechada e não tem novas placas pendentes nesta quinzena.');}
+  for(const id of farmIds){const farm=state.farms.find(f=>f.id===id);if(!farm)throw Error('Selecione uma fazenda válida.');if(farm.active===false&&!pending.some(r=>r.farmId===id))throw Error('Esta fazenda está inativa e não tem caminhões pendentes nesta quinzena.');if(farmClosing(state,p,id)&&!pending.some(r=>r.farmId===id))throw Error('Esta fazenda já está fechada e não tem novas placas pendentes nesta quinzena.');if(farmClosing(state,p,id)&&pending.some(r=>r.farmId===id)&&!invoiceReopened(state,p,id))throw Error('Reabra a quinzena para emitir uma nova fatura antes de fechar estas placas.');}
   const rows=pending.filter(r=>farmIds.includes(r.farmId));
   if(!rows.length&&!draft(state,p).length&&!periodClosings(state,p).length)throw Error('Não há caminhões no período para as fazendas selecionadas.');
   return {farmIds,rows,complementFarmIds:farmIds.filter(id=>!!farmClosing(state,p,id))};
@@ -183,7 +185,14 @@ export function saveClosing(state,p,farmId='',id=uid(),closedDate=today()) {
   if(!state.settings.confirmed)throw Error('Defina a regra de cálculo primeiro.');
   const preview=closingPreview(state,p,farmId);
   const c={id,period:{...p},farmIds:[...preview.farmIds],kind:preview.complementFarmIds.length?'complement':'initial',settings:structuredClone(state.settings),closedDate,rows:structuredClone(preview.rows)};
-  state.closings.push(c);return c;
+  state.closings.push(c);state.invoiceReopens=(state.invoiceReopens||[]).filter(key=>!preview.farmIds.some(farmId=>key===invoiceReopenKey(p.key,farmId)));return c;
+}
+export function reopenForInvoice(state,p,farmId='') {
+  const pendingFarms=new Set(pendingRows(state,p).map(row=>row.farmId));
+  const farmIds=[...new Set(periodClosings(state,p).flatMap(c=>c.farmIds).filter(id=>(!farmId||id===farmId)&&pendingFarms.has(id)))];
+  if(!farmIds.length)throw Error(farmId?'Cadastre primeiro uma nova placa pendente nesta fazenda para emitir outra fatura.':'Não há novas placas pendentes nas fazendas fechadas desta quinzena.');
+  state.invoiceReopens=[...new Set([...(state.invoiceReopens||[]),...farmIds.map(id=>invoiceReopenKey(p.key,id))])];
+  return farmIds;
 }
 export function reopenClosing(state,p,farmId='',closingId='') {
   const matching=periodClosings(state,p).filter(c=>(!farmId||c.farmIds.includes(farmId))&&(!closingId||c.id===closingId));
@@ -198,6 +207,7 @@ export function reopenClosing(state,p,farmId='',closingId='') {
     const remaining=c.farmIds.filter(id=>id!==farmId);
     return remaining.length?[{...c,farmIds:remaining,rows:c.rows.filter(r=>r.farmId!==farmId)}]:[];
   });
+  state.invoiceReopens=(state.invoiceReopens||[]).filter(key=>!key.startsWith(`${p.key}|`)||farmId&&key!==invoiceReopenKey(p.key,farmId));
 }
 export function reopenTruckClosing(state,p,closingId,truckId) {
   const closing=periodClosings(state,p).find(item=>item.id===closingId);
@@ -413,7 +423,7 @@ export function applyFixedMonthlyRule(state) {
 }
 export function migrateState(s) {
   if(!s || ![1,SCHEMA].includes(s.schema))throw Error('Este arquivo não é um backup válido do Frota.');
-  const result=structuredClone(s);result.paymentRequests??=[];result.fundingTransfers??=[];
+  const result=structuredClone(s);result.paymentRequests??=[];result.fundingTransfers??=[];result.invoiceReopens??=[];
   if(s.schema===1){
     result.schema=SCHEMA;
     result.trucks=result.trucks?.map(t=>({...t,bodyType:t.bodyType||'',axles:t.axles??null}));
@@ -424,6 +434,7 @@ export function migrateState(s) {
 export function validateState(input) {
   const s=migrateState(input);
   if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !Array.isArray(s.fundingTransfers) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
+  if(!Array.isArray(s.invoiceReopens)||s.invoiceReopens.length>10000||new Set(s.invoiceReopens).size!==s.invoiceReopens.length||s.invoiceReopens.some(key=>typeof key!=='string'||!/^\d{4}-\d{2}-[12]\|[^|]+$/.test(key)))throw Error('Autorizações de nova fatura inválidas no backup.');
   for(const list of [s.farms,s.trucks,s.discounts,s.closings,s.paymentRequests,s.fundingTransfers]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
   for(const t of s.trucks) { if(typeof t.driver!=='string'||typeof t.carrier!=='string'||typeof t.plate!=='string')throw Error('Cadastro inválido no backup.'); validateTruck(t,s); }

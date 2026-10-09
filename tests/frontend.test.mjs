@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
-import {initialState,period} from '../server/engine.js';
+import {initialState,period,saveClosing} from '../server/engine.js';
 import {createFleetApi} from '../server/api.js';
 
 const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
@@ -47,6 +47,14 @@ test('payment requests are separated into pending payments and a paid or cancell
   app.mutateState(state=>state.paymentRequests.push(make('req-pending','pending','AAA1A11',12000),make('req-paid','paid','BBB2B22',14000),make('req-cancelled','cancelled','CCC3C33',8000)));
   await app.poll();const html=app.get('#main').innerHTML;assert.match(html,/Aguardando pagamento/);assert.match(html,/Histórico de solicitações/);assert.match(html,/AAA1A11/);assert.match(html,/BBB2B22/);assert.match(html,/CCC3C33/);assert.match(html,/Pago em 15\/10\/2026/);assert.match(html,/Solicitação cancelada/);assert.match(html,/Total pago: R\$\s?14\.000,00/);
   await app.action('request-detail','req-paid');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Abrir comprovante/);assert.doesNotMatch(detail,/Corrigir registro|correct-request/);
+});
+test('fortnight history groups multiple farm invoices and unlocks a separate invoice for a late truck',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  const seed=initialState();seed.trucks=[{id:'a',plate:'ABC1D23',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''},{id:'b',plate:'DEF1G23',driver:'Motorista B',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''}];saveClosing(seed,period('2026-10',1),'farm1','f1','2026-10-06');saveClosing(seed,period('2026-10',1),'farm2','f2','2026-10-06');seed.trucks.push({...seed.trucks[0],id:'late',plate:'XYZ9B87',start:'2026-10-08'});app.mutateState(state=>Object.assign(state,seed));await app.poll();app.run(`currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()`);
+  let html=app.get('#main').innerHTML;assert.equal((html.match(/class="card fortnight-history"/g)||[]).length,1);assert.match(html,/Fatura 1/);assert.match(html,/Fatura 2/);assert.match(html,/Reabrir para nova fatura/);
+  await app.action('reopen-period','',{month:'2026-10',half:'1'});assert.match(app.get('#reopening-preview').innerHTML,/1<\/strong>/);await app.action('confirm-reopen');
+  assert.deepEqual(app.state().state.closings.map(c=>c.id),['f1','f2']);assert.deepEqual(app.state().state.invoiceReopens,['2026-10-1|farm1']);
+  await app.action('close-period');await app.action('confirm-close');const saved=app.state().state;assert.equal(saved.closings.length,3);assert.equal(saved.closings[2].rows[0].truckId,'late');assert.equal(saved.closings[0].rows[0].truckId,'a');assert.equal(saved.closings[1].rows[0].truckId,'b');
 });
 test('payment details display CPF and CNPJ with punctuation',async()=>{
   const app=await boot();
