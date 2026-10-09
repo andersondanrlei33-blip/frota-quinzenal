@@ -99,7 +99,7 @@ export function createCteApi({backend,readPdf}){
   if(request.method==='GET'&&path.endsWith('/api/ctes')){
    const [rows,current,preferences]=await Promise.all([backend.ctes.list(actor.companyId),backend.repository.load(actor.companyId),backend.ctes.getPreferences?.(actor.userId,actor.companyId)??null]);
    const state=current.state||{};
-   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),trucks:(state.trucks||[]).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId})),farms:(state.farms||[]).map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
+   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),trucks:(state.trucks||[]).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:(state.farms||[]).map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
   }
   if(request.method==='POST'&&path.endsWith('/api/ctes/preferences')){
    const text=await request.text();if(text.length>8192)return backend.responseJson({error:'Personalização muito grande.'},413);const body=JSON.parse(text),visibleColumns=body.visibleColumns,order=body.columnOrder;

@@ -132,6 +132,12 @@ test('account reconciliation compares lifetime payments and CT-es across farm tr
  const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);assert.match(html,/class="num">2<span/);
  await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/CT-es manifestados/);assert.match(detail,/Pagamentos à placa/);assert.match(detail,/TOTAL MANIFESTADO/);assert.match(detail,/R\$\s?5\.000,00/);
 });
+test('carrier portal can reconcile its paid requests with CT-es across transfers',async()=>{
+ const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
+ app.run(`cteTrucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a'}}];cteDocuments=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-10-02',totalValue:20000}];portalRequests=[{id:'request-a',truckId:'truck-a',snapshot:{truckId:'truck-a',plate:'ABC1234',net:12000},status:'paid',payment:{date:'2026-10-15',receipt:{id:'receipt-a'}}},{id:'request-b',truckId:'truck-b',snapshot:{truckId:'truck-b',plate:'ABC1234',net:13000},status:'paid',payment:{date:'2026-10-31',receipt:{id:'receipt-b'}}}];location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
+ const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);
+ await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Comprovante/);assert.match(detail,/Pagamentos à placa/);
+});
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'group@example.test',password:'sixchars'}),'');
   app.run("location.hash='#settings';render()");assert.doesNotMatch(app.get('#main').innerHTML,/Dados do recibo padrão/);
@@ -206,5 +212,4 @@ test('first access collects company credentials and an administrator can generat
   app.run("location.hash='#settings';render();");assert.match(app.get('#main').innerHTML,/Equipe e acesso/);
   assert.equal(await app.submit('invite-form',{email:'staff@example.test',role:'viewer'}),'');assert.match(app.get('#invite-result').innerHTML,/staff@example.test/);assert.match(app.get('#invite-result').innerHTML,/#activate=/);
 });
-
 
