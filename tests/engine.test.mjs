@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,reopenForInvoice,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
+import {period,calculate,accruedRows,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,reopenForInvoice,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
 
 const truck={id:'a',plate:'ABC1D23',driver:'João',carrier:'Transportes',farmId:'farm1',monthly:40000,start:'2026-10-06',end:'2026-11-10'};
 const settings={mode:'daily30',includeStart:true,includeEnd:true,confirmed:true};
@@ -114,6 +114,22 @@ test('a truck started in the first fortnight is billed there proportionally and 
   const s=initialState();s.trucks=[{...truck,start:'2026-10-08',end:''}];
   const first=draft(s,period('2026-10',1))[0],second=draft(s,period('2026-10',2))[0];
   assert.equal(first.eligibleDays,8);assert.equal(first.net,10666.67);assert.equal(second.eligibleDays,16);assert.equal(second.net,20000);
+});
+test('accrued preview counts only service days through the selected date at the full-period daily rate',()=>{
+  const s=initialState(),p=period('2026-10',1);s.trucks=[{...truck,start:'2026-10-05',end:'',monthly:30000}];
+  const accrued=accruedRows(s,p,'2026-10-09')[0],forecast=draft(s,p)[0];
+  assert.equal(accrued.eligibleDays,5);assert.equal(accrued.net,5000);assert.equal(forecast.net,11000);
+  s.discounts=[{id:'d',truckId:'a',start:'2026-10-07',end:'2026-10-07',reason:'Oficina',note:''}];
+  const withDiscount=accruedRows(s,p,'2026-10-09')[0];assert.equal(withDiscount.discountDays,1);assert.equal(withDiscount.net,4000);
+});
+test('accrued preview counts two daily amounts from Oct 8 through Oct 9 and restarts on Oct 16',()=>{
+  const s=initialState(),first=period('2026-10',1),second=period('2026-10',2);
+  s.trucks=Array.from({length:10},(_,index)=>({...truck,id:`truck-${index}`,plate:`ABC${index}D${index}`,start:'2026-10-08',end:'',monthly:40000}));
+  const firstRows=accruedRows(s,first,'2026-10-09'),secondRows=accruedRows(s,second,'2026-10-16');
+  assert.ok(firstRows.every(row=>row.eligibleDays===2&&row.net===2666.67));
+  assert.equal(Math.round(firstRows.reduce((total,row)=>total+row.net,0)*100)/100,26666.7);
+  assert.ok(secondRows.every(row=>row.eligibleDays===1&&row.net===1250));
+  assert.equal(Math.round(secondRows.reduce((total,row)=>total+row.net,0)*100)/100,12500);
 });
 test('invalid dates, overlapping plate contracts and duplicate discount dates are rejected',()=>{
   const s=initialState();s.trucks=[truck];
