@@ -27,15 +27,15 @@ test('server commands preserve paid snapshots and reject discounts in closed per
   assert.throws(()=>executeCommand(state,{type:'discount.save',payload:{truckId:'a',start:'2026-10-07',end:'2026-10-07',reason:'Falta',note:''}},actor),/fechad/);
   const result=executeCommand(state,{type:'farm.status',payload:{id:'farm1',active:false}},actor);assert.deepEqual(result.state.closings,state.closings);assert.deepEqual(state,before);
 });
-test('a new invoice is explicitly unlocked while the paid invoice snapshot remains immutable',()=>{
+test('one command issues a complementary invoice and keeps the paid invoice snapshot immutable',()=>{
   const state=initialState();state.trucks=[truck];
   const first=saveClosing(state,period('2026-10',1),'farm1','first','2026-10-06');first.rows[0].paid={date:'2026-10-06',note:'Pagamento confirmado'};
   const original=structuredClone(first);state.trucks.push({...truck,id:'late',plate:'XYZ9B87',start:'2026-10-08'});
   assert.throws(()=>executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor),/Reabra a quinzena/);
-  const unlocked=executeCommand(state,{type:'period.reopen-invoice',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;
-  assert.deepEqual(unlocked.closings[0],original);
-  const next=executeCommand(unlocked,{type:'period.close',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;
+  const next=executeCommand(state,{type:'period.close-complementary',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;
   assert.deepEqual(next.closings[0],original);assert.equal(next.closings.length,2);assert.equal(next.closings[1].rows[0].truckId,'late');
+  assert.equal(next.invoiceReopens.length,0);
+  assert.throws(()=>executeCommand(next,{type:'period.close-complementary',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor),/pendente/);
   assert.deepEqual(validateState(next),next);
 });
 test('server records and reverses the payment for the selected truck row',()=>{
