@@ -19,6 +19,16 @@ test('farm can save one reusable payment account and assign it to plates across 
  state=executeCommand(state,{type:'payment-account.save',payload:{id:'shared-pix',name:'Conta do titular',details,truckIds:['b','c','a-farm2']}},actor).state;
  assert.equal(state.trucks.find(item=>item.id==='a').paymentAccountId,'shared-pix','o histórico mantém o vínculo da conta');assert.equal(state.trucks.find(item=>item.id==='a-farm2').paymentAccountId,'shared-pix');assert.deepEqual(validateState(state),state);
 });
+test('a plate linked to one payment account cannot be assigned to another until released',()=>{
+ let state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23'}];
+ const details={method:'pix',holder:'Titular',document:'12345678901',pixKey:'pix@example.com'},other={method:'pix',holder:'Outro titular',document:'98765432100',pixKey:'outro@example.com'};
+ state=executeCommand(state,{type:'payment-account.save',payload:{id:'first',name:'Conta 1',details,truckIds:['a']}},actor).state;
+ assert.throws(()=>executeCommand(state,{type:'payment-account.save',payload:{id:'second',name:'Conta 2',details:other,truckIds:['a','b']}},actor),/ABC1D23 já está vinculada a outra conta/);
+ assert.throws(()=>executeCommand(state,{type:'truck.save',payload:{...truck,paymentAccountId:''}},actor),/já pertence a uma conta de pagamento/);
+ state=executeCommand(state,{type:'payment-account.save',payload:{id:'first',name:'Conta 1',details,truckIds:[]}},actor).state;
+ state=executeCommand(state,{type:'payment-account.save',payload:{id:'second',name:'Conta 2',details:other,truckIds:['a','b']}},actor).state;
+ assert.deepEqual(state.trucks.map(item=>item.paymentAccountId),['second','second']);assert.deepEqual(validateState(state),state);
+});
 test('closing every farm creates an exclusive invoice per farm',()=>{
   const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
   const result=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor).state;
@@ -76,4 +86,5 @@ test('server records and reverses the payment for the selected truck row',()=>{
   const undone=executeCommand(paid,{type:'payment.undo',payload:{requestId,note:'Corrigir referência'}},carrier).state;
   assert.equal(undone.closings[0].rows[0].paid,null);assert.equal(undone.closings[0].rows[0].net,15000);
 });
+
 
