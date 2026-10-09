@@ -35,7 +35,7 @@ Deno.serve(async request=>{
   if(request.method==='OPTIONS')return corsResponse(new Response(null,{status:204}),request);
   try{
     const path=new URL(request.url).pathname;
-    if(path.includes('/api/ctes'))return corsResponse(await cteApi(request),request);
+    if(path.includes('/api/ctes')||path.includes('/api/cte-requests'))return corsResponse(await cteApi(request),request);
     if(path.includes('/api/receipts')||path.includes('/api/funding-receipts'))return corsResponse(await receiptApi(request),request);
     if(path.endsWith('/api/team')||path.endsWith('/api/team/invite')||path.endsWith('/api/team/status')){
       const actor=await backend.actor(request);if(!actor?.userId)return corsResponse(backend.responseJson({error:'Faça login.'},401),request);
