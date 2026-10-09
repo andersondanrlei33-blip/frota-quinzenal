@@ -28,7 +28,9 @@ export function inspectNfePdf(bytes,name){
 }
 export function extractNfeVehiclePlate(text){
  const normalized=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
- const match=normalized.match(/\bPLACA\s+DO\s+VEICULO\s*[:=\-]?\s*([A-Z0-9]{3}\s*-?\s*[A-Z0-9]{4})\b/);
+ const header=normalized.indexOf('PLACA DO VEICULO');if(header<0)return '';
+ const section=normalized.slice(header+'PLACA DO VEICULO'.length).split(/\b(?:ENDERECO|DADOS DOS PRODUTOS)\b/,1)[0].slice(0,1600);
+ const match=section.match(/\b([A-Z]{3}\s*-?\s*[A-Z0-9]{4})\b/);
  const plate=match?.[1].replace(/[^A-Z0-9]/g,'')||'';
  return plate.length===7?plate:'';
 }
