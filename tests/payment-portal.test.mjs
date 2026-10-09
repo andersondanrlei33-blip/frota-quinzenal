@@ -14,7 +14,7 @@ test('the group requests all four farms once and carrier receives only approved 
  const state=requested();assert.equal(state.paymentRequests.length,4);assert.equal(new Set(state.paymentRequests.map(q=>q.snapshot.farmId)).size,4);assert.equal(state.paymentRequests.reduce((n,q)=>n+q.snapshot.net,0),60000);
  assert.equal(state.paymentRequests[0].snapshot.paymentDetails.pixKey,'motorista0@example.com');
  assert.throws(()=>executeCommand(state,command('payment.request',{month:p.month,half:p.half}),group),/Não há placas/);
- const dto=presentState({state,revision:2,company:{id:group.companyId}},carrier);assert.equal(dto.state,null);assert.equal(dto.requests.length,4);assert.equal(dto.user.party,'carrier');assert.ok(!('trucks' in dto));
+ const dto=presentState({state,revision:2,company:{id:group.companyId}},carrier);assert.equal(dto.state,null);assert.equal(dto.requests.length,4);assert.ok(dto.requests.every(request=>request.invoiceNumber===1));assert.equal(dto.user.party,'carrier');assert.ok(!('trucks' in dto));
  assert.throws(()=>executeCommand(state,command('truck.save',{}),carrier),/transportadora/);assert.throws(()=>executeCommand(state,command('payment.record',{requestId:state.paymentRequests[0].id,date:'2026-10-06'}),group),/acesso da transportadora/);
 });
 test('a plate can be registered without banking data, but a request needs complete Pix or bank details',()=>{
