@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,CTE_REPORT_COLUMNS,inspectCte,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {createCteApi,CTE_REPORT_COLUMNS,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -83,6 +83,12 @@ test('valida XML de NF-e, extrai a chave e rejeita XML fora do padrão fiscal',(
  assert.throws(()=>inspectNfeXml(new TextEncoder().encode('<nfeProc><NFe><infNFe/></NFe></nfeProc>'),'nota.xml'),/chave de acesso/);
  assert.throws(()=>inspectNfeXml(bytes,'nota.pdf'),/somente arquivos XML/);
 });
+test('valida PDF da NF-e sem exigir leitura da chave pelo PDF',()=>{
+ const bytes=new TextEncoder().encode('%PDF-1.7\nconteudo de teste');
+ assert.deepEqual(inspectNfePdf(bytes,'danfe.pdf'),{name:'danfe.pdf',mime:'application/pdf',extension:'pdf',size:bytes.length,accessKey:''});
+ assert.throws(()=>inspectNfePdf(new TextEncoder().encode('nao e pdf'),'danfe.pdf'),/PDF válidos/);
+ assert.throws(()=>inspectNfePdf(bytes,'danfe.xml'),/PDF válidos/);
+});
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
  const {api,calls}=setup();const response=await api(formRequest());
@@ -125,6 +131,12 @@ test('funcionário anexa múltiplos XMLs e o servidor extrai as chaves automatic
  form.append('payload',JSON.stringify({truckId:'truck-a',invoiceKeys:[],note:'Enviar as notas anexas'}));form.append('invoiceFiles',new Blob([makeXml(key1)],{type:'application/xml'}),'nota-1.xml');form.append('invoiceFiles',new Blob([makeXml(key2)],{type:'application/xml'}),'nota-2.xml');
  const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.deepEqual(calls.request.invoiceKeys,[key1,key2]);assert.equal(calls.request.invoiceFiles.length,2);assert.equal(calls.request.invoiceFiles[0].details.accessKey,key1);
  const keysOnly=await api(new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key1]})}));assert.equal(keysOnly.status,201);
+});
+test('funcionário envia XML e PDF juntos e a transportadora pode baixar o PDF',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator'}),key='51260956023496000173550010000008571135775140',requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',makeXml=new TextEncoder().encode(`<nfeProc><NFe><infNFe Id="NFe${key}" versao="4.00"></infNFe></NFe></nfeProc>`),danfe=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a',invoiceKeys:[],note:'Imprimir para contabilidade'}));form.append('invoiceFiles',new Blob([makeXml],{type:'application/xml'}),'nota.xml');form.append('invoicePdfs',new Blob([danfe],{type:'application/pdf'}),'danfe.pdf');
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,2);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.mime),['application/xml','application/pdf']);assert.equal(calls.request.invoiceFiles[1].details.accessKey,'');
+ const saved={id:requestId,status:'pending',farmId:'farm-a',invoiceKeys:[key],invoiceFiles:[{id:fileId,name:'danfe.pdf',mime:'application/pdf',objectKey:companyId+'/'+requestId+'/file.pdf'}]},download=await setup({party:'carrier',role:'operator',request:saved}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(download.status,200);assert.equal((await download.json()).mime,'application/pdf');
 });
 
 test('XML anexado fica acessível somente à fazenda da solicitação e à equipe do grupo',async()=>{
