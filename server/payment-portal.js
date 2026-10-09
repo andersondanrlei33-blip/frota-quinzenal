@@ -12,10 +12,10 @@ export function requestPayments(state,payload,actor){
  for(const closing of periodClosings(state,p))for(const row of closing.rows){
   if(payload.farmId&&row.farmId!==payload.farmId||payload.truckId&&row.truckId!==payload.truckId||payload.closingId&&closing.id!==payload.closingId)continue;
   if(row.paid||row.net<=0||row.requestId)continue;
-  const truck=state.trucks.find(item=>item.id===row.truckId),missing=paymentDetailsMissing(truck?.paymentDetails);
+  const truck=state.trucks.find(item=>item.id===row.truckId),account=state.paymentAccounts?.find(item=>item.id===truck?.paymentAccountId&&item.farmId===row.farmId),details=account?.details||truck?.paymentDetails,missing=paymentDetailsMissing(details);
   if(missing.length)throw Error('Complete os dados de pagamento da placa '+row.plate+': '+missing.join(', ')+'.');
   const id=uid(),snapshot=structuredClone(row);delete snapshot.requestId;delete snapshot.paidHistory;
-  snapshot.paymentDetails=structuredClone(validatePaymentDetails(truck.paymentDetails,true));
+  snapshot.paymentDetails=structuredClone(validatePaymentDetails(details,true));if(account){snapshot.paymentAccountId=account.id;snapshot.paymentAccountName=account.name;}
   state.paymentRequests.push({id,batchId,closingId:closing.id,truckId:row.truckId,period:structuredClone(closing.period),snapshot,status:'pending',requestedAt:at,requestedBy:actor.userId,requestedEmail:actor.email||'',payment:null,paymentHistory:[]});row.requestId=id;selected.push(id);
  }
  if(!selected.length)throw Error('Não há placas fechadas e sem solicitação nesta seleção.');return selected;
@@ -39,17 +39,19 @@ export function recordRequestedPayment(state,payload,actor,receipt){
  row.paid=structuredClone(paid);request.payment=structuredClone(paid);request.status='paid';
 }
 export function recordRequestedPaymentBatch(state,payload,actor,receipt){
- const ids=payload.requestIds;if(!Array.isArray(ids)||ids.length<2||ids.length>50||new Set(ids).size!==ids.length)throw Error('Selecione de 2 a 50 placas distintas para o pagamento conjunto.');
- const targets=ids.map(id=>locateRequest(state,id)),first=targets[0],destination=JSON.stringify(first.request.snapshot.paymentDetails),farmId=first.row?.farmId;
+ const ids=payload.requestIds;if(!Array.isArray(ids)||ids.length<1||ids.length>50||new Set(ids).size!==ids.length)throw Error('O pagamento deve conter de 1 a 50 placas distintas.');
+ const targets=ids.map(id=>locateRequest(state,id)),first=targets[0],destination=JSON.stringify(first.request.snapshot.paymentDetails),accountId=first.request.snapshot.paymentAccountId||'',farmId=first.row?.farmId;
  if(!first.row||first.request.status!=='pending'||first.row.requestId!==first.request.id||first.row.paid)throw Error('Uma das solicitações selecionadas não está disponível para pagamento. Atualize a tela.');
  if(!validDate(payload.date)||payload.date>today())throw Error('Informe uma data de pagamento válida, até hoje.');
  if(paymentDetailsMissing(first.request.snapshot.paymentDetails).length)throw Error('Há placas sem dados de pagamento completos.');
  for(const {request,row,closing} of targets){
   if(request.status!=='pending'||!row||row.requestId!==request.id||row.paid)throw Error('Uma das solicitações selecionadas não está disponível para pagamento. Atualize a tela.');
-  if(!closing||closing.id!==first.closing.id||row.farmId!==farmId||JSON.stringify(request.snapshot.paymentDetails)!==destination)throw Error('O pagamento conjunto só pode reunir placas da mesma fatura, fazenda e conta de pagamento.');
+  if(!closing||closing.id!==first.closing.id||row.farmId!==farmId||(accountId?request.snapshot.paymentAccountId!==accountId:!!request.snapshot.paymentAccountId)||JSON.stringify(request.snapshot.paymentDetails)!==destination)throw Error('O pagamento conjunto só pode reunir placas da mesma fatura, fazenda e conta de pagamento.');
   if(row.net!==request.snapshot.net)throw Error('O valor fechado difere de uma solicitação. Confira com o grupo.');
   if(paymentDetailsMissing(request.snapshot.paymentDetails).length)throw Error('Há placas sem dados de pagamento completos.');
  }
+ const eligible=state.paymentRequests.filter(request=>{const row=state.closings.find(closing=>closing.id===request.closingId)?.rows.find(item=>item.truckId===request.truckId);return request.status==='pending'&&request.closingId===first.closing.id&&row?.farmId===farmId&&(accountId?request.snapshot.paymentAccountId===accountId:!request.snapshot.paymentAccountId)&&JSON.stringify(request.snapshot.paymentDetails)===destination;});
+ if(eligible.length!==ids.length||eligible.some(request=>!ids.includes(request.id)))throw Error('Inclua todas as placas pendentes desta conta e fatura no mesmo pagamento.');
  const firstId=first.request.id;
  if(!receipt||receipt.requestId!==firstId||!receipt.id||receipt.companyId!==actor.companyId||receipt.uploadedBy!==actor.userId)throw Error('Anexe um comprovante válido para o pagamento conjunto.');
  const groupId=uid(),recordedAt=new Date().toISOString(),amount=round(targets.reduce((total,{row})=>total+row.net,0));
