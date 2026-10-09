@@ -354,7 +354,7 @@ test('termination closes the final fortnight selected by date and keeps earlier 
 test('termination after a transfer closes all unpaid parts of that plate and conserves rounding',()=>{
   const s=transferFixture();transferTruck(s,'a','farm2','2026-10-06','','to');
   const p=previewEndActivities(s,'a','2026-10-10');assert.equal(p.truckId,'to');assert.equal(p.rows.length,2);assert.equal(p.total,13333.33);
-  const c=endActivities(s,'a','2026-10-10','','end','2026-10-06');assert.equal(c.rows.length,2);assert.equal(c.farmIds.length,2);assert.equal(s.trucks.find(t=>t.id==='to').end,'2026-10-10');assert.deepEqual(validateState(s),s);
+  const c=endActivities(s,'a','2026-10-10','','end','2026-10-06');assert.equal(c.rows.length,1);assert.equal(c.farmIds.length,1);assert.equal(s.closings.filter(item=>item.kind==='activity-end').length,2);assert.ok(s.closings.filter(item=>item.kind==='activity-end').every(item=>item.rows.every(row=>row.farmId===item.farmIds[0])));assert.equal(s.trucks.find(t=>t.id==='to').end,'2026-10-10');assert.equal(s.trucks.find(t=>t.id==='to').serviceEnded.closingIds.length,2);assert.deepEqual(validateState(s),s);
 });
 test('termination preserves a paid transferred part while balancing cents in the remainder',()=>{
   const s=transferFixture();transferTruck(s,'a','farm2','2026-10-06','','to');const c=saveClosing(s,period('2026-10',1),'farm1','paid','2026-10-06');c.rows[0].paid={date:'2026-10-06',note:'Primeira parte'};const old=structuredClone(c);

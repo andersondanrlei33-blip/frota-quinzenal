@@ -61,9 +61,9 @@ export function presentState(current,actor){
  const user={id:actor.userId,email:actor.email||'',role:actor.role,party:partyOf(actor)};
  if(partyOf(actor)==='carrier'){
   const invoiceNumbers=new Map(),periods=new Map();
-  for(const [order,closing] of current.state.closings.entries()){if(!periods.has(closing.period.key))periods.set(closing.period.key,[]);periods.get(closing.period.key).push({closing,order});}
-  for(const invoices of periods.values())invoices.sort((a,b)=>(a.closing.closedDate||'').localeCompare(b.closing.closedDate||'')||a.order-b.order).forEach(({closing},index)=>invoiceNumbers.set(closing.id,index+1));
-  const requests=(current.state.paymentRequests||[]).map(request=>({...structuredClone(request),invoiceNumber:invoiceNumbers.get(request.closingId)||null}));
+  for(const [order,closing] of current.state.closings.entries())for(const farmId of new Set(closing.rows.map(row=>row.farmId))){const key=closing.period.key+'\0'+farmId;if(!periods.has(key))periods.set(key,[]);periods.get(key).push({closing,farmId,order});}
+  for(const invoices of periods.values())invoices.sort((a,b)=>(a.closing.closedDate||'').localeCompare(b.closing.closedDate||'')||a.order-b.order).forEach(({closing,farmId},index)=>invoiceNumbers.set(closing.id+'\0'+farmId,index+1));
+  const requests=(current.state.paymentRequests||[]).map(request=>{const farmId=request.snapshot?.farmId||current.state.closings.find(closing=>closing.id===request.closingId)?.rows.find(row=>row.truckId===request.truckId)?.farmId;return {...structuredClone(request),invoiceNumber:invoiceNumbers.get(request.closingId+'\0'+farmId)||null};});
   return {revision:current.revision,company:current.company,user,state:null,requests,fundingTransfers:structuredClone(current.state.fundingTransfers||[]).map(transfer=>transfer.status==='awaiting_receipt'&&!Object.keys(transfer.receiptProfile||{}).length?{...transfer,receiptProfile:structuredClone(current.state.settings?.receiptProfile||{})}:transfer)};
  }
  return {...current,user};
