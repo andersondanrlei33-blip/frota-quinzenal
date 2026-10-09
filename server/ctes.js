@@ -1,10 +1,23 @@
 export const CTE_LIMIT=20*1024*1024;
+export const NFE_XML_LIMIT=10*1024*1024;
 export const CTE_REPORT_COLUMNS=['number','shipper','recipient','serviceTaker','issuer','totalValue','issuedOn','plate','manifestedNotes','shipperCity','shipperStateRegistration','shipperDocument','recipientCity','recipientStateRegistration','recipientDocument','serviceTakerCity','serviceTakerStateRegistration','serviceTakerDocument','issuerCity','issuerStateRegistration','issuerDocument'];
 
 const decodeXml=text=>String(text||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&').replace(/<[^>]+>/g,'').trim();
 function xmlElement(xml,name){const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),match=String(xml||'').match(new RegExp(`<(?:(?:[\\w.-]+):)?${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:(?:[\\w.-]+):)?${escaped}\\s*>`,'i'));return match?.[1]||'';}
 const xmlText=(xml,name)=>decodeXml(xmlElement(xml,name));
 function xmlElements(xml,name){const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');return [...String(xml||'').matchAll(new RegExp(`<(?:(?:[\\w.-]+):)?${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:(?:[\\w.-]+):)?${escaped}\\s*>`,'gi'))].map(match=>match[1]);}
+export function inspectNfeXml(bytes,name){
+ if(!(bytes instanceof Uint8Array)||!bytes.length||bytes.length>NFE_XML_LIMIT)throw Error('Cada XML de NF-e deve ter até 10 MB.');
+ let xml;try{xml=new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'').trimStart();}catch{throw Error('O XML da NF-e precisa estar em UTF-8 válido.');}
+ const rootName=xml.replace(/^(?:<\?xml\b[\s\S]*?\?>\s*)?/i,'').match(/^<(?:(?:[\w.-]+):)?(nfeProc|NFe)\b/i)?.[1];
+ if(/<!DOCTYPE|<!ENTITY/i.test(xml)||!rootName||!new RegExp(`<\\/(?:(?:[\\w.-]+):)?${rootName}\\s*>\\s*$`,'i').test(xml))throw Error('O arquivo não parece ser um XML de NF-e válido.');
+ const keyFromId=xml.match(/<(?:(?:[\w.-]+):)?infNFe\b[^>]*\bId\s*=\s*["']NFe(\d{44})["']/i)?.[1],keyFromProtocol=xmlText(xml,'chNFe').replace(/\D/g,'');
+ const accessKey=keyFromId||keyFromProtocol;
+ if(!accessKey||accessKey.length!==44)throw Error('Não encontrei a chave de acesso de 44 dígitos neste XML de NF-e.');
+ const cleanName=String(name||'').split(/[\\/]/).at(-1).replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,160);
+ if(!cleanName||cleanName.toLowerCase().split('.').at(-1)!=='xml')throw Error('Anexe somente arquivos XML de NF-e.');
+ return {name:cleanName,mime:'application/xml',extension:'xml',size:bytes.length,accessKey};
+}
 const manifestedNotesFromXml=normalized=>{
  const documents=xmlElement(normalized,'infDoc'),notes=[];
  for(const entry of xmlElements(documents,'infNFe')){const accessKey=xmlText(entry,'chave').replace(/\D/g,'');if(accessKey.length===44)notes.push(String(Number(accessKey.slice(25,34))));}
@@ -72,10 +85,10 @@ export function parseCtePdfText(text){
  return {issuer:issuer.slice(0,160),recipient:recipient.slice(0,160),shipper:shipper.slice(0,160),serviceTaker:serviceTaker.slice(0,160),participantDetails,totalValue:Number(totalValue.toFixed(2)),issuedOn,plate,number:number.slice(0,40),manifestedNotes:uniqueManifestedNotes};
 }
 
-async function boundedFormData(request){
+async function boundedFormData(request,limit=CTE_LIMIT+65536){
  const reader=request.body?.getReader();if(!reader)throw Error('Anexe o CT-e.');
  const chunks=[];let size=0;
- while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>CTE_LIMIT+65536){await reader.cancel();throw Error('O CT-e deve ter até 20 MB.');}chunks.push(value);}
+ while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>limit){await reader.cancel();throw Error('Os arquivos anexados excedem o limite de tamanho permitido.');}chunks.push(value);}
  const body=new Uint8Array(size);let offset=0;for(const chunk of chunks){body.set(chunk,offset);offset+=chunk.length;}
  return new Request(request.url,{method:'POST',headers:request.headers,body}).formData();
 }
@@ -102,19 +115,29 @@ export function createCteApi({backend,readPdf}){
    const [rows,current,requests,preferences]=await Promise.all([backend.ctes.list(actor.companyId,farmId),backend.repository.load(actor.companyId),backend.cteRequests?.list(actor.companyId,farmId)||[],actor.party==='farm'?null:backend.ctes.getPreferences?.(actor.userId,actor.companyId)??null]);
    const state=current.state||{};
    const farms=(state.farms||[]).filter(f=>!farmId||f.id===farmId);
-   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),requests,trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
+   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),requests:requests.map(item=>({...item,invoiceFiles:(item.invoiceFiles||[]).map(({objectKey,...file})=>file)})),trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
   }
   if(request.method==='POST'&&path.endsWith('/api/cte-requests')){
    if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente o funcionário da fazenda pode solicitar CT-e.'},403);
-   const text=await request.text();if(text.length>12000)return backend.responseJson({error:'A solicitação excede o tamanho permitido.'},413);
-   const body=JSON.parse(text),truckId=String(body.truckId||''),invoiceKeys=Array.isArray(body.invoiceKeys)?body.invoiceKeys.map(value=>String(value||'').replace(/\D/g,'')).filter(Boolean):[];
+   const isMultipart=request.headers.get('Content-Type')?.toLowerCase().includes('multipart/form-data'),data=isMultipart?await boundedFormData(request,20*1024*1024+65536):null;
+   const text=isMultipart?String(data.get('payload')||''):await request.text();if(text.length>12000)return backend.responseJson({error:'A solicitação excede o tamanho permitido.'},413);
+   const body=JSON.parse(text),truckId=String(body.truckId||''),manualKeys=Array.isArray(body.invoiceKeys)?body.invoiceKeys.map(value=>String(value||'').replace(/\D/g,'')).filter(Boolean):[];
+   const invoiceFiles=[];if(data){for(const file of data.getAll('invoiceFiles')){if(!file||typeof file.arrayBuffer!=='function'||!file.size)continue;if(invoiceFiles.length>=10)throw Error('Anexe no máximo 10 XMLs de NF-e por solicitação.');if(file.size>NFE_XML_LIMIT)throw Error('Cada XML de NF-e deve ter até 10 MB.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfeXml(bytes,file.name);invoiceFiles.push({bytes,details});}}
+   const invoiceKeys=[...new Set([...manualKeys,...invoiceFiles.map(item=>item.details.accessKey)])];
    if(!/^[\w-]{1,200}$/.test(truckId))throw Error('Selecione o caminhão da solicitação.');
-   if(!invoiceKeys.length||invoiceKeys.length>100||invoiceKeys.some(key=>key.length!==44))throw Error('Informe de 1 a 100 chaves de NF-e válidas, com 44 dígitos cada.');
-   if(new Set(invoiceKeys).size!==invoiceKeys.length)throw Error('Remova as chaves de NF-e duplicadas.');
+   if(!invoiceKeys.length||invoiceKeys.length>100||invoiceKeys.some(key=>key.length!==44))throw Error('Anexe os XMLs das NF-e ou informe de 1 a 100 chaves válidas, com 44 dígitos cada.');
+   if(manualKeys.length!==new Set(manualKeys).size)throw Error('Remova as chaves de NF-e duplicadas.');
    const note=String(body.note||'').trim();if(note.length>500)throw Error('A observação deve ter até 500 caracteres.');
    const current=await backend.repository.load(actor.companyId),truck=(current.state.trucks||[]).find(item=>item.id===truckId&&item.farmId===actor.farmId&&!item.transferOut&&!item.end&&!item.serviceEnded),farm=(current.state.farms||[]).find(item=>item.id===actor.farmId);
    if(!truck||!farm)throw Error('Este caminhão não está disponível na fazenda vinculada ao seu acesso.');
-   const saved=await backend.cteRequests.create(actor,truck,farm,invoiceKeys,note);return backend.responseJson(saved,201);
+   const saved=await backend.cteRequests.create(actor,truck,farm,invoiceKeys,note,invoiceFiles);return backend.responseJson(saved,201);
+  }
+  const requestFileMatch=path.match(/\/api\/cte-requests\/([0-9a-f-]{36})\/files\/([0-9a-f-]{36})$/i);
+  if(request.method==='GET'&&requestFileMatch){
+   if(!['farm','carrier','group'].includes(actor.party))return backend.responseJson({error:'Acesso não permitido.'},403);
+   const item=await backend.cteRequests?.find(actor.companyId,requestFileMatch[1]);if(!item||actor.party==='farm'&&item.farmId!==actor.farmId)return backend.responseJson({error:'XML de NF-e não encontrado para esta solicitação.'},404);
+   const invoiceFile=item.invoiceFiles?.find(file=>file.id===requestFileMatch[2]);if(!invoiceFile)return backend.responseJson({error:'XML de NF-e não encontrado.'},404);
+   return backend.responseJson({name:invoiceFile.name,mime:invoiceFile.mime,signedUrl:await backend.cteRequests.signFile(invoiceFile),expiresIn:120});
   }
   if(request.method==='POST'&&path.endsWith('/api/ctes/preferences')){
    if(actor.party==='farm')return backend.responseJson({error:'A personalização do relatório não está disponível neste acesso.'},403);

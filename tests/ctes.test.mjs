@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,CTE_REPORT_COLUMNS,inspectCte,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {createCteApi,CTE_REPORT_COLUMNS,inspectCte,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -39,9 +39,10 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
   },
   cteRequests:{
-   list:async(_company,farm)=>{calls.requestListFarm=farm;return [];},
+   list:async(_company,farm)=>{calls.requestListFarm=farm;return request?[request]:[];},
    find:async(_company,id)=>request?.id===id?request:null,
-   create:async(actor,truck,farm,invoiceKeys,note)=>{calls.request={actor,truck,farm,invoiceKeys,note};return {id:'55555555-5555-4555-8555-555555555555',farmId:farm.id,plate:truck.plate,invoiceKeys,status:'pending'};}
+   create:async(actor,truck,farm,invoiceKeys,note,invoiceFiles)=>{calls.request={actor,truck,farm,invoiceKeys,note,invoiceFiles};return {id:'55555555-5555-4555-8555-555555555555',farmId:farm.id,plate:truck.plate,invoiceKeys,status:'pending'};},
+   signFile:async()=> 'https://storage.example/signed?download=nota.xml'
   }
  };
  return {api:createCteApi({backend,readPdf:async()=>pdfText}),calls};
@@ -73,6 +74,14 @@ test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',(
  assert.equal(inspectCte(pdf,'documento.pdf').mime,'application/pdf');
  assert.throws(()=>inspectCte(new TextEncoder().encode('texto'),'documento.pdf'),/Envie o PDF/);
  assert.throws(()=>inspectCte(new Uint8Array([0]),'documento.exe'),/Envie o PDF/);
+});
+
+test('valida XML de NF-e, extrai a chave e rejeita XML fora do padrão fiscal',()=>{
+ const accessKey='51260956023496000173550010000008571135775140',bytes=new TextEncoder().encode(`<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe"><NFe><infNFe Id="NFe${accessKey}" versao="4.00"></infNFe></NFe></nfeProc>`);
+ assert.deepEqual(inspectNfeXml(bytes,'nota.xml'),{name:'nota.xml',mime:'application/xml',extension:'xml',size:bytes.length,accessKey});
+ assert.throws(()=>inspectNfeXml(new TextEncoder().encode('<!DOCTYPE NFe><NFe></NFe>'),'nota.xml'),/XML de NF-e válido/);
+ assert.throws(()=>inspectNfeXml(new TextEncoder().encode('<nfeProc><NFe><infNFe/></NFe></nfeProc>'),'nota.xml'),/chave de acesso/);
+ assert.throws(()=>inspectNfeXml(bytes,'nota.pdf'),/somente arquivos XML/);
 });
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
@@ -109,6 +118,25 @@ test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para 
  const ended=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key]})}),endedApi=setup({party:'farm',trucks:[{...state.trucks[0],end:'2026-10-07'}]}).api;await assert.rejects(()=>endedApi(ended),/não está disponível/);
  const invalid=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:['857']})});await assert.rejects(()=>api(invalid),/44 dígitos/);
  assert.equal((await setup({party:'farm',role:'viewer'}).api(request)).status,403);
+});
+
+test('funcionário anexa múltiplos XMLs e o servidor extrai as chaves automaticamente',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator'}),key1='51260956023496000173550010000008571135775140',key2='51260956023496000173550010000008581135775140',makeXml=key=>new TextEncoder().encode(`<nfeProc><NFe><infNFe Id="NFe${key}" versao="4.00"></infNFe></NFe></nfeProc>`),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a',invoiceKeys:[],note:'Enviar as notas anexas'}));form.append('invoiceFiles',new Blob([makeXml(key1)],{type:'application/xml'}),'nota-1.xml');form.append('invoiceFiles',new Blob([makeXml(key2)],{type:'application/xml'}),'nota-2.xml');
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.deepEqual(calls.request.invoiceKeys,[key1,key2]);assert.equal(calls.request.invoiceFiles.length,2);assert.equal(calls.request.invoiceFiles[0].details.accessKey,key1);
+ const keysOnly=await api(new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key1]})}));assert.equal(keysOnly.status,201);
+});
+
+test('XML anexado fica acessível somente à fazenda da solicitação e à equipe do grupo',async()=>{
+ const requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',invoiceFile={id:fileId,name:'nota.xml',mime:'application/xml',accessKey:'51260956023496000173550010000008571135775140',objectKey:companyId+'/'+requestId+'/'+fileId+'.xml'},request={id:requestId,status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[invoiceFile.accessKey],invoiceFiles:[invoiceFile]};
+ const response=await setup({party:'farm',role:'operator',farmId:'farm-a',request}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(response.status,200);assert.match((await response.json()).signedUrl,/download=nota\.xml/);
+ const denied=await setup({party:'farm',role:'operator',farmId:'farm-b',request}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(denied.status,404);
+ const carrier=await setup({party:'carrier',role:'operator',request}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(carrier.status,200);
+});
+
+test('a listagem de solicitações nunca expõe os caminhos privados do Storage',async()=>{
+ const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',invoiceKeys:[],invoiceFiles:[{id:'66666666-6666-4666-8666-666666666666',name:'nota.xml',objectKey:companyId+'/privado/nota.xml'}]},listed=await setup({party:'carrier',role:'operator',request}).api(new Request('https://example.test/api/ctes'));
+ assert.equal(listed.status,200);assert.equal((await listed.json()).requests[0].invoiceFiles[0].objectKey,undefined);
 });
 
 test('acesso fiscal de funcionário só lista e baixa CT-es da fazenda vinculada',async()=>{
