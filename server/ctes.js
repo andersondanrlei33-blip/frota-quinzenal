@@ -1,5 +1,7 @@
 export const CTE_LIMIT=20*1024*1024;
 export const NFE_XML_LIMIT=10*1024*1024;
+export const REQUEST_FILE_LIMIT=10*1024*1024;
+export const REQUEST_TOTAL_FILE_LIMIT=20*1024*1024;
 export const CTE_REPORT_COLUMNS=['number','shipper','recipient','serviceTaker','issuer','totalValue','issuedOn','plate','manifestedNotes','shipperCity','shipperStateRegistration','shipperDocument','recipientCity','recipientStateRegistration','recipientDocument','serviceTakerCity','serviceTakerStateRegistration','serviceTakerDocument','issuerCity','issuerStateRegistration','issuerDocument'];
 
 const decodeXml=text=>String(text||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&').replace(/<[^>]+>/g,'').trim();
@@ -17,6 +19,12 @@ export function inspectNfeXml(bytes,name){
  const cleanName=String(name||'').split(/[\\/]/).at(-1).replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,160);
  if(!cleanName||cleanName.toLowerCase().split('.').at(-1)!=='xml')throw Error('Anexe somente arquivos XML de NF-e.');
  return {name:cleanName,mime:'application/xml',extension:'xml',size:bytes.length,accessKey};
+}
+export function inspectNfePdf(bytes,name){
+ if(!(bytes instanceof Uint8Array)||!bytes.length||bytes.length>REQUEST_FILE_LIMIT)throw Error('Cada PDF da NF-e deve ter até 10 MB.');
+ const cleanName=String(name||'').split(/[\\/]/).at(-1).replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,160);
+ if(!cleanName||cleanName.toLowerCase().split('.').at(-1)!=='pdf'||!new TextDecoder().decode(bytes.slice(0,8)).includes('%PDF-'))throw Error('Anexe somente arquivos PDF válidos da NF-e.');
+ return {name:cleanName,mime:'application/pdf',extension:'pdf',size:bytes.length,accessKey:''};
 }
 const manifestedNotesFromXml=normalized=>{
  const documents=xmlElement(normalized,'infDoc'),notes=[];
@@ -122,8 +130,8 @@ export function createCteApi({backend,readPdf}){
    const isMultipart=request.headers.get('Content-Type')?.toLowerCase().includes('multipart/form-data'),data=isMultipart?await boundedFormData(request,20*1024*1024+65536):null;
    const text=isMultipart?String(data.get('payload')||''):await request.text();if(text.length>12000)return backend.responseJson({error:'A solicitação excede o tamanho permitido.'},413);
    const body=JSON.parse(text),truckId=String(body.truckId||''),manualKeys=Array.isArray(body.invoiceKeys)?body.invoiceKeys.map(value=>String(value||'').replace(/\D/g,'')).filter(Boolean):[];
-   const invoiceFiles=[];if(data){for(const file of data.getAll('invoiceFiles')){if(!file||typeof file.arrayBuffer!=='function'||!file.size)continue;if(invoiceFiles.length>=10)throw Error('Anexe no máximo 10 XMLs de NF-e por solicitação.');if(file.size>NFE_XML_LIMIT)throw Error('Cada XML de NF-e deve ter até 10 MB.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfeXml(bytes,file.name);invoiceFiles.push({bytes,details});}}
-   const invoiceKeys=[...new Set([...manualKeys,...invoiceFiles.map(item=>item.details.accessKey)])];
+   const invoiceFiles=[];if(data){const xmlFiles=data.getAll('invoiceFiles').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size),pdfFiles=data.getAll('invoicePdfs').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size);if(xmlFiles.length>10)throw Error('Anexe no máximo 10 XMLs de NF-e por solicitação.');if(pdfFiles.length>10)throw Error('Anexe no máximo 10 PDFs de NF-e por solicitação.');let total=0;for(const [files,inspect] of [[xmlFiles,inspectNfeXml],[pdfFiles,inspectNfePdf]])for(const file of files){if(file.size>REQUEST_FILE_LIMIT)throw Error('Cada arquivo deve ter até 10 MB.');total+=file.size;if(total>REQUEST_TOTAL_FILE_LIMIT)throw Error('A soma dos anexos deve ter até 20 MB por solicitação.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspect(bytes,file.name);invoiceFiles.push({bytes,details});}}
+   const invoiceKeys=[...new Set([...manualKeys,...invoiceFiles.map(item=>item.details.accessKey).filter(Boolean)])];
    if(!/^[\w-]{1,200}$/.test(truckId))throw Error('Selecione o caminhão da solicitação.');
    if(!invoiceKeys.length||invoiceKeys.length>100||invoiceKeys.some(key=>key.length!==44))throw Error('Anexe os XMLs das NF-e ou informe de 1 a 100 chaves válidas, com 44 dígitos cada.');
    if(manualKeys.length!==new Set(manualKeys).size)throw Error('Remova as chaves de NF-e duplicadas.');
