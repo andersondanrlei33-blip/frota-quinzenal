@@ -16,6 +16,7 @@ export function executeCommand(input,command,actor,context={}){
   switch(command.type){
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id),farmId=text(p.farmId),paymentAccountId=text(p.paymentAccountId||'',100),account=paymentAccountId?requireRecord(state.paymentAccounts,paymentAccountId,'Conta de pagamento'):null;
+      if(prior?.paymentAccountId&&prior.paymentAccountId!==paymentAccountId)throw Error('Esta placa já pertence a uma conta de pagamento. Edite o vínculo atual para liberá-la antes de alterar a conta.');
       const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId,bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',paymentAccountId,paymentDetails:account?structuredClone(account.details):p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
       validateTruck(truck,state,true);const index=state.trucks.findIndex(item=>item.id===id);if(index<0)state.trucks.push(truck);else state.trucks[index]=truck;break;
     }
@@ -24,7 +25,7 @@ export function executeCommand(input,command,actor,context={}){
       if(!details||!name)throw Error('Informe um nome e os dados da conta de pagamento.');validatePaymentDetails(details,true);
       if(!Array.isArray(p.truckIds)||p.truckIds.length>500)throw Error('Confira as placas selecionadas para esta conta.');
       const trucks=truckIds.map(truckId=>requireRecord(state.trucks,truckId,'Caminhão'));if(trucks.some(truck=>truck.transferOut))throw Error('Selecione o cadastro atual de cada placa, após a transferência.');
-      const existing=state.paymentAccounts.find(account=>account.id===id),account={id,name,details};if(existing){Object.assign(existing,account);delete existing.farmId;}else state.paymentAccounts.push(account);
+      const existing=state.paymentAccounts.find(account=>account.id===id),alreadyLinked=trucks.find(truck=>truck.paymentAccountId&&truck.paymentAccountId!==id);if(alreadyLinked)throw Error(`A placa ${alreadyLinked.plate} já está vinculada a outra conta. Edite o vínculo atual para liberá-la antes de criar outro.`);const account={id,name,details};if(existing){Object.assign(existing,account);delete existing.farmId;}else state.paymentAccounts.push(account);
       for(const truck of state.trucks)if(truck.paymentAccountId===id&&!truckIds.includes(truck.id)&&!truck.transferOut)truck.paymentAccountId='';for(const truck of trucks){truck.paymentAccountId=id;truck.paymentDetails=structuredClone(details);}break;
     }
     case 'payment-account.remove':{
@@ -104,4 +105,5 @@ export function executeCommand(input,command,actor,context={}){
   applyFixedMonthlyRule(state);state.updatedAt=new Date().toISOString();validateState(state);
   return {state,audit:{action:command.type,actorId:actor.userId,at:state.updatedAt}};
 }
+
 
