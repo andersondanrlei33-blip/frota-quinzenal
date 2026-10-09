@@ -1,3 +1,5 @@
+import {accruedRows,period,periodRows,today} from './engine.js';
+
 export const CTE_LIMIT=20*1024*1024;
 export const NFE_XML_LIMIT=10*1024*1024;
 export const REQUEST_FILE_LIMIT=10*1024*1024;
@@ -131,7 +133,8 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    const [rows,current,requests,preferences]=await Promise.all([backend.ctes.list(actor.companyId,farmId),backend.repository.load(actor.companyId),backend.cteRequests?.list(actor.companyId,farmId)||[],actor.party==='farm'?null:backend.ctes.getPreferences?.(actor.userId,actor.companyId)??null]);
    const state=current.state||{};
    const farms=(state.farms||[]).filter(f=>!farmId||f.id===farmId);
-   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),requests:requests.map(item=>({...item,invoiceFiles:(item.invoiceFiles||[]).map(({objectKey,...file})=>file)})),trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
+   const query=new URL(request.url).searchParams,month=query.get('month')||'',half=Number(query.get('half')),validAccrualPeriod=/^\d{4}-(0[1-9]|1[0-2])$/.test(month)&&[1,2].includes(half),accrualPeriod=validAccrualPeriod?period(month,half):null,asOf=today(),accrualSource=actor.party==='carrier'&&accrualPeriod?(asOf<accrualPeriod.start?[]:accrualPeriod.end<asOf?periodRows(state,accrualPeriod):accruedRows(state,accrualPeriod,asOf)):null,accruals=accrualSource?.filter(row=>!state.trucks.find(truck=>truck.id===row.truckId)?.sample).map(({truckId,plate,driver,farmId,farmName,eligibleDays,payableDays,gross,discount,net})=>({truckId,plate,driver,farmId,farmName,eligibleDays,payableDays,gross,discount,net}));
+   return backend.responseJson({documents:rows.map(({objectKey,...row})=>row),requests:requests.map(item=>({...item,invoiceFiles:(item.invoiceFiles||[]).map(({objectKey,...file})=>file)})),trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),...(accruals?{accrualRows:accruals}:{}),preferences});
   }
   if(request.method==='POST'&&path.endsWith('/api/cte-requests')){
    if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente o funcionário da fazenda pode solicitar CT-e.'},403);
