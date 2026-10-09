@@ -151,8 +151,9 @@ test('the online interface requires login, saves truck and payment commands on t
   const app=await boot();assert.match(app.get('#main').innerHTML,/Entrar no sistema/);
   assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');assert.match(app.get('#main').innerHTML,/Visão geral/);
   const today=app.run('today()'),month=today.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
+  await app.action('new-truck');assert.match(app.get('#modal-content').innerHTML,/Nome para identificar a conta/);assert.match(app.get('#modal-content').innerHTML,/criar e vincular uma conta automaticamente/);
   assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:'9',monthly:'30.000,00',start:month+'-01',end:'',paymentMethod:'pix',paymentHolder:'Motorista',paymentDocument:'12345678901',paymentPixKey:'motorista@example.com'}),'');
-  const id=app.state().state.trucks[0].id;assert.equal(app.state().state.trucks.length,1);
+  const id=app.state().state.trucks[0].id,truck=app.state().state.trucks[0];assert.equal(app.state().state.trucks.length,1);assert.equal(app.state().state.paymentAccounts.length,1);assert.equal(truck.paymentAccountId,app.state().state.paymentAccounts[0].id);assert.match(app.state().state.paymentAccounts[0].name,/Conta de Motorista/);
   app.get('#closing-farm').value='farm1';await app.action('confirm-close');const closing=app.state().state.closings[0];assert.equal(closing.rows[0].net,15000);
   assert.match(await app.submit('payment-form',{date:today,note:'Teste'},{id}),/transportadora/);
   assert.equal(await app.submit('request-payments-form',{},{}),'');const requestId=app.state().state.paymentRequests[0].id;assert.equal(app.state().state.paymentRequests[0].snapshot.paymentDetails.pixKey,'motorista@example.com');

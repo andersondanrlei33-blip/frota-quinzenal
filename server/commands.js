@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,validatePaymentDetails} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,paymentDetailsMissing,validatePaymentDetails} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,recordRequestedPaymentBatch,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
@@ -17,7 +17,9 @@ export function executeCommand(input,command,actor,context={}){
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id),farmId=text(p.farmId),paymentAccountId=text(p.paymentAccountId||'',100),account=paymentAccountId?requireRecord(state.paymentAccounts,paymentAccountId,'Conta de pagamento'):null;
       if(prior?.paymentAccountId&&prior.paymentAccountId!==paymentAccountId)throw Error('Esta placa já pertence a uma conta de pagamento. Edite o vínculo atual para liberá-la antes de alterar a conta.');
-      const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId,bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',paymentAccountId,paymentDetails:account?structuredClone(account.details):p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
+      let paymentDetails=account?structuredClone(account.details):p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),linkedAccountId=paymentAccountId;
+      if(!linkedAccountId&&paymentDetails&&!paymentDetailsMissing(paymentDetails).length){validatePaymentDetails(paymentDetails,true);linkedAccountId=uid();const generatedName=('Conta de '+paymentDetails.holder).slice(0,80);state.paymentAccounts.push({id:linkedAccountId,name:text(p.paymentAccountName||generatedName,80),details:structuredClone(paymentDetails)});}
+      const truck={id,plate:text(p.plate,7),driver:text(p.driver),carrier:text(p.carrier),farmId,bodyType:p.bodyType,axles:p.axles,monthly:p.monthly,start:p.start,end:p.end||'',paymentAccountId:linkedAccountId,paymentDetails,...(prior?.sample?{sample:true}:{}),...(prior?.transferIn?{transferIn:prior.transferIn}:{}),...(prior?.transferOut?{transferOut:prior.transferOut}:{}),...(prior?.serviceEnded?{serviceEnded:prior.serviceEnded}:{})};
       validateTruck(truck,state,true);const index=state.trucks.findIndex(item=>item.id===id);if(index<0)state.trucks.push(truck);else state.trucks[index]=truck;break;
     }
     case 'payment-account.save':{

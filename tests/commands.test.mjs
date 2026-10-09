@@ -9,6 +9,13 @@ test('server commands calculate amounts themselves and reject client supplied pa
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);
   assert.equal(closed.state.closings[0].rows[0].net,15000);assert.equal(closed.state.closings[0].rows[0].paid,null);assert.deepEqual(state,before);assert.equal(closed.audit.actorId,actor.userId);
 });
+test('saving a plate with complete payment details creates its account once and later plates can reuse it',()=>{
+ let state=initialState();const details={method:'pix',holder:'Titular da conta',document:'12345678901',pixKey:'pix@example.com'};
+ state=executeCommand(state,{type:'truck.save',payload:{...truck,paymentDetails:details,paymentAccountName:'Conta principal'}},actor).state;
+ const account=state.paymentAccounts[0];assert.equal(state.paymentAccounts.length,1);assert.equal(account.name,'Conta principal');assert.equal(state.trucks[0].paymentAccountId,account.id);
+ state=executeCommand(state,{type:'truck.save',payload:{...truck,id:'b',plate:'DEF1G23',paymentAccountId:account.id}},actor).state;
+ assert.equal(state.paymentAccounts.length,1);assert.equal(state.trucks[1].paymentAccountId,account.id);assert.equal(state.trucks[1].paymentDetails.pixKey,details.pixKey);assert.deepEqual(validateState(state),state);
+});
 test('farm can save one reusable payment account and assign it to plates across farms',()=>{
  let state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23'},{...truck,id:'c',plate:'GHI1J23',farmId:'farm2'}];
  const details={method:'pix',holder:'Titular compartilhado',document:'12345678901',pixKey:'pix@example.com'};
