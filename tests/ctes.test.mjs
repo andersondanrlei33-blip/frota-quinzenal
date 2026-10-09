@@ -91,7 +91,7 @@ test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros 
 
 test('portal lista os documentos da empresa e fornece download privado por tempo limitado',async()=>{
  const {api}=setup({party:'group',role:'viewer'});const listed=await api(new Request('https://example.test/api/ctes'));
- assert.equal(listed.status,200);assert.equal((await listed.json()).documents[0].plate,'ABC1D23');
+ assert.equal(listed.status,200);const data=await listed.json();assert.equal(data.documents[0].plate,'ABC1D23');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').start,'2026-10-01');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').transferIn,null);
  const downloaded=await api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(downloaded.status,200);assert.match((await downloaded.json()).signedUrl,/download=cte\.xml/);
  const unknown=await api(new Request('https://example.test/api/ctes/44444444-4444-4444-8444-444444444444'));assert.equal(unknown.status,404);
 });
