@@ -47,7 +47,7 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async updateMember(userId,role,active,party=null,farmId=null){return api('/api/team/status',{userId,role,active,party,farmId});},
     async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
-    async ctes(){return api('/api/ctes');},
+    async ctes(filters={}){const query=new URLSearchParams(filters);return api('/api/ctes'+(query.size?'?'+query.toString():''));},
     async requestCte(payload){if(payload instanceof FormData)return request(url+'/functions/v1/'+functionName+'/api/cte-requests',{method:'POST',body:payload,token:await getToken(),company:true,raw:true});return api('/api/cte-requests',payload);},
     async cteRequestFileLink(requestId,fileId){return api('/api/cte-requests/'+encodeURIComponent(requestId)+'/files/'+encodeURIComponent(fileId));},
     async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
