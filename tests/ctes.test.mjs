@@ -13,6 +13,12 @@ Remetente: MORENA SEMENTES LTDA Destinatário: JOSE ALTAIR LAZAROTTO
 Tomador Serviço: JOSE ALTAIR LAZAROTTO Município: LUCAS DO RIO VERDE CEP: 78450-000
 VALOR TOTAL DO SERVIÇO
 FRETE FRETE 46.875,32
+DOCUMENTOS ORIGINÁRIOS
+TIPODOC CNPJ/CPF EMITENTE SÉRIE/NR.DOCUMENTO
+NFE 56.023.496/0001-73 1/857
+51260956023496000173550010000008571135775140
+NFE 56.023.496/0001-73 1/858
+51260956023496000173550010000008581135775140
 OBSERVAÇÕES
 Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
@@ -43,12 +49,14 @@ const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
 test('extrai automaticamente participantes, valor, data e placa do XML do CT-e',()=>{
  const parsed=parseCteXml(xml);assert.equal(parsed.issuer,'Transportadora Exemplo Ltda');assert.equal(parsed.recipient,'Fazenda Exemplo SA');assert.equal(parsed.shipper,'Remetente Exemplo Ltda');assert.equal(parsed.serviceTaker,'Fazenda Exemplo SA');assert.deepEqual(parsed.participantDetails.shipper,{city:'',stateRegistration:'',cnpj:'',cpf:''});
  assert.equal(parseCteXml(xmlToma4).serviceTaker,'Tomador Contratante Ltda');
+ const accessKey='51260956023496000173550010000008571135775140',secondAccessKey=accessKey.slice(0,25)+'000000858'+accessKey.slice(34),withNotes=new TextEncoder().encode(new TextDecoder().decode(xml).replace('</infCTeNorm>','<infDoc><infNFe><chave>'+accessKey+'</chave></infNFe><infNFe><chave>'+secondAccessKey+'</chave></infNFe></infDoc></infCTeNorm>'));
+ assert.deepEqual(parseCteXml(withNotes).manifestedNotes,['857','858']);
  const detailed=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<emit><xNome>Transportadora Exemplo Ltda</xNome></emit>','<emit><CNPJ>12345678000199</CNPJ><IE>123456789</IE><xNome>Transportadora Exemplo Ltda</xNome><enderEmit><xMun>Cuiaba</xMun></enderEmit></emit>').replace('<rem><xNome>Remetente Exemplo Ltda</xNome></rem>','<rem><CNPJ>11222333000144</CNPJ><IE>987654321</IE><xNome>Remetente Exemplo Ltda</xNome><enderReme><xMun>Campo Novo</xMun></enderReme></rem>').replace('<dest><xNome>Fazenda Exemplo SA</xNome></dest>','<dest><CPF>12345678901</CPF><IE>1234567</IE><xNome>Fazenda Exemplo SA</xNome></dest>'));
  const detail=parseCteXml(detailed).participantDetails;assert.deepEqual(detail.shipper,{city:'Campo Novo',stateRegistration:'987654321',cnpj:'11.222.333/0001-44',cpf:''});assert.deepEqual(detail.recipient,{city:'',stateRegistration:'1234567',cnpj:'',cpf:'123.456.789-01'});
 });
 
-test('extrai automaticamente os campos importantes do texto do DACTE em PDF',()=>{
- const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');
+test('extrai automaticamente dados do DACTE e todas as notas manifestadas',()=>{
+ const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');assert.deepEqual(parsed.manifestedNotes,['857','858']);
  const detailed=parseCtePdfText(pdfText.replace('Tomador Serviço:', 'Município: CAMPO NOVO DO PARECIS CEP: 78360-000 Município: LUCAS DO RIO VERDE CEP: 78450-000\nCNPJ/CPF: 56.023.496/0001-73 Insc.Est: 140735488 CNPJ/CPF: 330.803.640-15 Insc.Est: 135597749\nTomador Serviço:'));
  assert.deepEqual(detailed.participantDetails.shipper,{city:'CAMPO NOVO DO PARECIS',stateRegistration:'140735488',cnpj:'56.023.496/0001-73',cpf:''});assert.deepEqual(detailed.participantDetails.recipient,{city:'LUCAS DO RIO VERDE',stateRegistration:'135597749',cnpj:'',cpf:'330.803.640-15'});assert.equal(detailed.participantDetails.serviceTaker.cpf,'330.803.640-15');
 });
@@ -73,7 +81,7 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
 
 test('transportadora envia PDF do DACTE e associa pela placa mesmo quando emissão antecede início cadastrado',async()=>{
  const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
- assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.details.mime,'application/pdf');
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.deepEqual(calls.upload.metadata.manifestedNotes,['857','858']);assert.equal(calls.upload.details.mime,'application/pdf');
 });
 
 test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros sem correspondência de período',async()=>{

@@ -70,6 +70,12 @@ test('CPF and CNPJ share one CT-e report field per participant without losing sa
   assert.equal(app.run("CTE_FILTER_FIELDS.recipientDocument.get({participantDetails:{recipient:{cnpj:'',cpf:'12345678901'}}})"),'123.456.789-01');
   app.run(`ctePreferences=JSON.parse(${JSON.stringify(JSON.stringify(saved))});ctePreferencesForm()`);const html=app.get('#modal-content').innerHTML;assert.equal((html.match(/<span>CPF\/CNPJ d[oa] [^<]+<\/span>/g)||[]).length,4);const checkboxFields=[...html.matchAll(/data-cte-pref-column="([^"]+)"/g)].map(match=>match[1]);assert.deepEqual(checkboxFields.filter(field=>field.endsWith('Document')),mergedColumns);assert.equal(checkboxFields.filter(field=>/(?:Cnpj|Cpf)$/.test(field)).length,0);
 });
+test('CT-e report offers all manifested invoice numbers in one customizable column',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  app.run("cteDocuments=[{id:'cte-notes',farmId:'farm1',farmName:'Fazenda 1',number:'5079',plate:'BCD5C56',issuedOn:'2026-09-22',totalValue:46875.32,manifestedNotes:['857','858']}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['manifestedNotes'],columnOrder:['manifestedNotes']};main.innerHTML=ctesView()");
+  assert.match(app.get('#main').innerHTML,/NOTAS FISCAIS MANIFESTADAS/);assert.match(app.get('#main').innerHTML,/857, 858/);
+  app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Notas fiscais manifestadas/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="manifestedNotes"/);
+});
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'group@example.test',password:'sixchars'}),'');
   app.run("location.hash='#settings';render()");assert.doesNotMatch(app.get('#main').innerHTML,/Dados do recibo padrão/);
