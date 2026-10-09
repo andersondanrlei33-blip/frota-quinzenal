@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {initialState,period,saveClosing} from '../server/engine.js';
 import {executeCommand} from '../server/commands.js';
 import {createFleetApi} from '../server/api.js';
-const accounts={group:{userId:'group',companyId:'one',party:'group',role:'admin'},carrier:{userId:'carrier',companyId:'one',party:'carrier',role:'operator'},viewer:{userId:'viewer',companyId:'one',party:'carrier',role:'viewer'}};
+const accounts={group:{userId:'group',companyId:'one',party:'group',role:'admin'},carrier:{userId:'carrier',companyId:'one',party:'carrier',role:'operator'},viewer:{userId:'viewer',companyId:'one',party:'carrier',role:'viewer'},farm:{userId:'farm',companyId:'one',party:'farm',farmId:'farm1',role:'operator'}};
 const http=(user,payload)=>new Request('https://fleet.test'+(payload?'/api/commands':'/api/state'),{method:payload?'POST':'GET',headers:{Authorization:'Bearer '+user,...(payload?{'Content-Type':'application/json'}:{})},body:payload?JSON.stringify(payload):undefined});
 test('carrier API cannot retrieve group records or mark payment with a client-forged proof',async()=>{
  let s=initialState();s.trucks=[{id:'t',plate:'ABC1D23',driver:'Motorista',carrier:'Contratado',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista',document:'12345678901',pixKey:'motorista@example.com'}}];saveClosing(s,period('2026-10',1),'','closing','2026-10-06');s=executeCommand(s,{type:'payment.request',payload:{month:'2026-10',half:1}},accounts.group).state;
@@ -14,4 +14,12 @@ test('carrier API cannot retrieve group records or mark payment with a client-fo
  assert.equal((await api(http('carrier',{type:'truck.save',payload:{},expectedRevision:1}))).status,403);
  const c={type:'payment.record',payload:{requestId:s.paymentRequests[0].id,receiptId:'forged',date:'2026-10-06',receipt:{id:'forged',uploadedBy:'carrier'}},expectedRevision:1};
  assert.equal((await api(http('group',c))).status,403);assert.equal((await api(http('viewer',c))).status,403);assert.equal((await api(http('carrier',c))).status,400);assert.equal(stored.revision,1);assert.equal(stored.state.closings[0].rows[0].paid,null);
+});
+
+test('farm staff cannot read company financial state or execute finance commands',async()=>{
+ const stored={state:initialState(),revision:4,company:{id:'one',name:'Grupo'}};
+ const repository={async load(){return structuredClone(stored);},async commit(){throw Error('not expected');}};
+ const api=createFleetApi({repository,authenticate:async request=>accounts[request.headers.get('Authorization').slice(7)]});
+ const stateResponse=await api(http('farm')),payload=await stateResponse.json();assert.equal(stateResponse.status,200);assert.equal(payload.state,null);assert.equal(payload.user.farmId,'farm1');assert.equal(payload.company.name,'Grupo');
+ assert.equal((await api(http('farm',{type:'truck.save',payload:{},expectedRevision:4}))).status,403);
 });

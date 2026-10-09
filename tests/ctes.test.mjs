@@ -24,10 +24,10 @@ Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
 const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
-function setup({party='carrier',role='operator',trucks=state.trucks}={}){
+function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,request=null}={}){
  const calls={};
  const backend={
-  actor:async()=>({userId,email:'user@example.com',companyId,party,role}),
+  actor:async()=>({userId,email:'user@example.com',companyId,party,role,farmId}),
   responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}}),
   repository:{load:async()=>({state:{...state,trucks}})},
   ctes:{
@@ -37,6 +37,11 @@ function setup({party='carrier',role='operator',trucks=state.trucks}={}){
    upload:async(actor,metadata,bytes,details,snapshot)=>{calls.upload={actor,metadata,bytes,details,snapshot};return {id:documentId,name:details.name,mime:details.mime,size:details.size};},
    find:async(idCompany,id)=>idCompany===companyId&&id===documentId?{name:'cte.xml',mime:'application/xml',objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}:null,
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
+  },
+  cteRequests:{
+   list:async(_company,farm)=>{calls.requestListFarm=farm;return [];},
+   find:async(_company,id)=>request?.id===id?request:null,
+   create:async(actor,truck,farm,invoiceKeys,note)=>{calls.request={actor,truck,farm,invoiceKeys,note};return {id:'55555555-5555-4555-8555-555555555555',farmId:farm.id,plate:truck.plate,invoiceKeys,status:'pending'};}
   }
  };
  return {api:createCteApi({backend,readPdf:async()=>pdfText}),calls};
@@ -94,6 +99,31 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
  assert.equal(listed.status,200);const data=await listed.json();assert.equal(data.documents[0].plate,'ABC1D23');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').start,'2026-10-01');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').transferIn,null);
  const downloaded=await api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(downloaded.status,200);assert.match((await downloaded.json()).signedUrl,/download=cte\.xml/);
  const unknown=await api(new Request('https://example.test/api/ctes/44444444-4444-4444-8444-444444444444'));assert.equal(unknown.status,404);
+});
+
+test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator'}),key='51260956023496000173550010000008571135775140';
+ const request=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key],note:'Manifestar carga da Fazenda A'})});
+ const response=await api(request);assert.equal(response.status,201);assert.equal(calls.request.actor.farmId,'farm-a');assert.equal(calls.request.truck.id,'truck-a');assert.deepEqual(calls.request.invoiceKeys,[key]);
+ const foreign=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-c',invoiceKeys:[key]})}),foreignApi=setup({party:'farm',trucks:[...state.trucks,{...state.trucks[1],id:'truck-c',farmId:'farm-b'}]}).api;await assert.rejects(()=>foreignApi(foreign),/não está disponível/);
+ const ended=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:[key]})}),endedApi=setup({party:'farm',trucks:[{...state.trucks[0],end:'2026-10-07'}]}).api;await assert.rejects(()=>endedApi(ended),/não está disponível/);
+ const invalid=new Request('https://example.test/api/cte-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({truckId:'truck-a',invoiceKeys:['857']})});await assert.rejects(()=>api(invalid),/44 dígitos/);
+ assert.equal((await setup({party:'farm',role:'viewer'}).api(request)).status,403);
+});
+
+test('acesso fiscal de funcionário só lista e baixa CT-es da fazenda vinculada',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator',farmId:'farm-a'}),listed=await api(new Request('https://example.test/api/ctes')),data=await listed.json();
+ assert.equal(listed.status,200);assert.equal(calls.requestListFarm,'farm-a');assert.deepEqual(data.farms.map(farm=>farm.id),['farm-a']);assert.ok(data.trucks.every(truck=>truck.farmId==='farm-a'));
+ const foreign=await setup({party:'farm',role:'operator',farmId:'farm-b'}).api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(foreign.status,404);
+});
+
+test('associar CT-e à solicitação exige que todas as NF-e pedidas apareçam no documento',async()=>{
+ const key='51260956023496000173550010000008571135775140',second='51260956023496000173550010000008581135775140',request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[key,second]};
+ const withNotes=new TextEncoder().encode(new TextDecoder().decode(xml).replace('</infCTeNorm>','<infDoc><infNFe><chave>'+key+'</chave></infNFe><infNFe><chave>'+second+'</chave></infNFe></infDoc></infCTeNorm>'));
+ const {api,calls}=setup({party:'carrier',request}),form=new FormData();form.append('requestId',request.id);form.append('file',new Blob([withNotes],{type:'application/xml'}),'cte.xml');
+ const response=await api(new Request('https://example.test/api/ctes',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.upload.metadata.requestId,request.id);
+ const missing={...request,invoiceKeys:[key,'51260956023496000173550010000009991135775140']},secondSetup=setup({party:'carrier',request:missing}),badForm=new FormData();badForm.append('requestId',request.id);badForm.append('file',new Blob([withNotes],{type:'application/xml'}),'cte.xml');
+ await assert.rejects(()=>secondSetup.api(new Request('https://example.test/api/ctes',{method:'POST',body:badForm})),/todas as NF-e solicitadas/);
 });
 
 test('cada usuário salva sua seleção e ordem de colunas no portal da própria empresa',async()=>{
