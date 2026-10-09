@@ -54,8 +54,10 @@ body.report-open{overflow:hidden}
 
 .cte-print-heading{display:none}
 @media print{
-  @page cte-report{size:A4 landscape;margin:10mm}
-  .cte-report-card{page:cte-report;border:0;border-radius:0;box-shadow:none;margin:0}
+  @page cte-report{size:A4 landscape;margin:0}
+  .shell main:has(.cte-report-card){max-width:none;min-height:0;margin:0;padding:0}
+  .shell main:has(.cte-report-card)>:not(.cte-report-card){display:none!important}
+  .cte-report-card{page:cte-report;border:0;border-radius:0;box-shadow:none;margin:0;padding:10mm}
   .cte-report-card .cte-print-heading{display:block!important;padding:0 0 8mm;border-bottom:1px solid #d7dfda;margin-bottom:5mm}
   .cte-print-heading h1{font-size:20pt;margin:0 0 2mm}
   .cte-print-heading p{font-size:9pt;color:#53675c}

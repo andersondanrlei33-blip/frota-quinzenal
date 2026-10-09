@@ -58,6 +58,7 @@ test('CT-e print uses the selected farm, visible columns and applied column filt
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   app.run("cteDocuments=[{id:'cte-one',farmId:'farm1',farmName:'Fazenda 1',number:'5219',plate:'ABC1234',issuedOn:'2026-10-08',totalValue:100,shipper:'Remetente A'},{id:'cte-two',farmId:'farm1',farmName:'Fazenda 1',number:'5181',plate:'DEF5678',issuedOn:'2026-10-09',totalValue:200,shipper:'Remetente B'}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['number','plate'],columnOrder:['number','plate']};cteFarmFilter='farm1';cteColumnFilters={plate:['ABC1234']};main.innerHTML=ctesView()");
   const html=app.get('#main').innerHTML;assert.match(html,/Imprimir \/ Salvar PDF/);assert.match(html,/Fazenda: Fazenda 1 · 1 documento\(s\)/);assert.match(html,/ABC1234/);assert.doesNotMatch(html,/DEF5678|Remetente A/);
+  const css=fs.readFileSync(new URL('../frontend/styles.css',import.meta.url),'utf8');assert.match(css,/main:has\(\.cte-report-card\)>:not\(\.cte-report-card\)\{display:none!important\}/);assert.match(css,/@page cte-report\{size:A4 landscape;margin:0\}/);
   await app.action('cte-print');assert.equal(app.printCount(),1);
 });
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
