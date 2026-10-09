@@ -38,6 +38,7 @@ export function executeCommand(input,command,actor,context={}){
       if(p.operation==='delete')state.discounts=state.discounts.filter(item=>item.id!==p.id);break;
     }
     case 'period.close':saveClosing(state,period(p.month,p.half),p.farmId||'');break;
+    case 'period.close-complementary':{const selectedPeriod=period(p.month,p.half),farmId=text(p.farmId,100);reopenForInvoice(state,selectedPeriod,farmId);saveClosing(state,selectedPeriod,farmId);break;}
     case 'period.reopen':reopenClosing(state,period(p.month,p.half),p.farmId||'',p.closingId||'');break;
     case 'period.reopen-invoice':reopenForInvoice(state,period(p.month,p.half),p.farmId||'');break;
     case 'period.reopen-truck':reopenTruckClosing(state,period(p.month,p.half),p.closingId,text(p.truckId,100));break;
