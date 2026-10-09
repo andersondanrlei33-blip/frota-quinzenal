@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,CTE_REPORT_COLUMNS,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {createCteApi,CTE_REPORT_COLUMNS,extractNfeVehiclePlate,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -24,7 +24,7 @@ Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
 const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
-function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,request=null}={}){
+function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,request=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
  const calls={};
  const backend={
   actor:async()=>({userId,email:'user@example.com',companyId,party,role,farmId}),
@@ -45,7 +45,7 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
    signFile:async()=> 'https://storage.example/signed?download=nota.xml'
   }
  };
- return {api:createCteApi({backend,readPdf:async()=>pdfText}),calls};
+ return {api:createCteApi({backend,readPdf:async()=>pdfText,readNfePdf}),calls};
 }
 const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
  const form=new FormData();form.append('file',new Blob([bytes],{type:fileName.endsWith('.xml')?'application/xml':'application/pdf'}),fileName);
@@ -74,6 +74,12 @@ test('valida assinatura e extensão do PDF e do XML e rejeita outros formatos',(
  assert.equal(inspectCte(pdf,'documento.pdf').mime,'application/pdf');
  assert.throws(()=>inspectCte(new TextEncoder().encode('texto'),'documento.pdf'),/Envie o PDF/);
  assert.throws(()=>inspectCte(new Uint8Array([0]),'documento.exe'),/Envie o PDF/);
+});
+
+test('lê a placa do DANFE em texto selecionável, com formatos antigos e Mercosul',()=>{
+ assert.equal(extractNfeVehiclePlate('TRANSPORTADOR / VOLUMES TRANSPORTADOS\nPLACA DO VEÍCULO\nBCD5C56\nUF PR'),'BCD5C56');
+ assert.equal(extractNfeVehiclePlate('PLACA DO VEÍCULO: ABC-1234'),'ABC1234');
+ assert.equal(extractNfeVehiclePlate('Documento sem placa'), '');
 });
 
 test('valida XML de NF-e, extrai a chave e rejeita XML fora do padrão fiscal',()=>{
@@ -134,8 +140,21 @@ test('funcionário envia uma ou mais NF-e somente em PDF, sem XML nem chave',asy
 test('funcionário envia PDF e a transportadora pode baixar o anexo',async()=>{
  const {api,calls}=setup({party:'farm',role:'operator'}),requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',danfe=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
  form.append('payload',JSON.stringify({truckId:'truck-a',note:'Imprimir para contabilidade'}));form.append('invoicePdfs',new Blob([danfe],{type:'application/pdf'}),'danfe.pdf');
- const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,1);assert.equal(calls.request.invoiceFiles[0].details.mime,'application/pdf');assert.deepEqual(calls.request.invoiceKeys,[]);
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,1);assert.equal(calls.request.invoiceFiles[0].details.mime,'application/pdf');assert.equal(calls.request.invoiceFiles[0].details.vehiclePlate,'ABC1D23');assert.deepEqual(calls.request.invoiceKeys,[]);
  const saved={id:requestId,status:'pending',farmId:'farm-a',invoiceKeys:[],invoiceFiles:[{id:fileId,name:'danfe.pdf',mime:'application/pdf',objectKey:companyId+'/'+requestId+'/file.pdf'}]},download=await setup({party:'carrier',role:'operator',request:saved}).api(new Request(`https://example.test/api/cte-requests/${requestId}/files/${fileId}`));assert.equal(download.status,200);assert.equal((await download.json()).mime,'application/pdf');
+});
+
+test('recusa solicitação quando a placa selecionada diverge da placa da NF-e',async()=>{
+ const {api,calls}=setup({party:'farm',role:'operator',readNfePdf:async()=> 'PLACA DO VEÍCULO BCD5C56'}),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe.pdf');
+ await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form})),/placa selecionada.*ABC1D23.*BCD5C56/);
+ assert.equal(calls.request,undefined);
+});
+
+test('pede conferência quando o PDF não informa a placa do veículo',async()=>{
+ const {api}=setup({party:'farm',role:'operator',readNfePdf:async()=> 'DANFE sem campo preenchido'}),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe.pdf');
+ await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form})),/Não consegui localizar a placa/);
 });
 
 test('XML anexado fica acessível somente à fazenda da solicitação e à equipe do grupo',async()=>{

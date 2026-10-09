@@ -26,6 +26,12 @@ export function inspectNfePdf(bytes,name){
  if(!cleanName||cleanName.toLowerCase().split('.').at(-1)!=='pdf'||!new TextDecoder().decode(bytes.slice(0,8)).includes('%PDF-'))throw Error('Anexe somente arquivos PDF válidos da NF-e.');
  return {name:cleanName,mime:'application/pdf',extension:'pdf',size:bytes.length,accessKey:''};
 }
+export function extractNfeVehiclePlate(text){
+ const normalized=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
+ const match=normalized.match(/\bPLACA\s+DO\s+VEICULO\s*[:=\-]?\s*([A-Z0-9]{3}\s*-?\s*[A-Z0-9]{4})\b/);
+ const plate=match?.[1].replace(/[^A-Z0-9]/g,'')||'';
+ return plate.length===7?plate:'';
+}
 const manifestedNotesFromXml=normalized=>{
  const documents=xmlElement(normalized,'infDoc'),notes=[];
  for(const entry of xmlElements(documents,'infNFe')){const accessKey=xmlText(entry,'chave').replace(/\D/g,'');if(accessKey.length===44)notes.push(String(Number(accessKey.slice(25,34))));}
@@ -112,7 +118,7 @@ export function inspectCte(bytes,name){
  return {mime,extension:ext,name:cleanName,size:bytes.length};
 }
 
-export function createCteApi({backend,readPdf}){
+export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
  return async request=>{
   const actor=await backend.actor(request);if(!actor?.userId)return backend.responseJson({error:'Faça login para acessar o sistema.'},401);
   if(!actor.companyId)return backend.responseJson({error:'Sua conta não tem acesso a esta empresa.'},403);
@@ -130,13 +136,14 @@ export function createCteApi({backend,readPdf}){
    const isMultipart=request.headers.get('Content-Type')?.toLowerCase().includes('multipart/form-data'),data=isMultipart?await boundedFormData(request,20*1024*1024+65536):null;
    const text=isMultipart?String(data.get('payload')||''):await request.text();if(text.length>12000)return backend.responseJson({error:'A solicitação excede o tamanho permitido.'},413);
    const body=JSON.parse(text),truckId=String(body.truckId||'');
-   const invoiceFiles=[];if(data){if(data.getAll('invoiceFiles').some(file=>file&&typeof file.arrayBuffer==='function'&&file.size))throw Error('Esta solicitação aceita somente PDFs das NF-e.');const pdfFiles=data.getAll('invoicePdfs').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size);if(pdfFiles.length>10)throw Error('Anexe no máximo 10 PDFs de NF-e por solicitação.');let total=0;for(const file of pdfFiles){if(file.size>REQUEST_FILE_LIMIT)throw Error('Cada PDF deve ter até 10 MB.');total+=file.size;if(total>REQUEST_TOTAL_FILE_LIMIT)throw Error('A soma dos PDFs deve ter até 20 MB por solicitação.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfePdf(bytes,file.name);invoiceFiles.push({bytes,details});}}
+   const invoiceFiles=[];if(data){if(data.getAll('invoiceFiles').some(file=>file&&typeof file.arrayBuffer==='function'&&file.size))throw Error('Esta solicitação aceita somente PDFs das NF-e.');const pdfFiles=data.getAll('invoicePdfs').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size);if(pdfFiles.length>10)throw Error('Anexe no máximo 10 PDFs de NF-e por solicitação.');let total=0;for(const file of pdfFiles){if(file.size>REQUEST_FILE_LIMIT)throw Error('Cada PDF deve ter até 10 MB.');total+=file.size;if(total>REQUEST_TOTAL_FILE_LIMIT)throw Error('A soma dos PDFs deve ter até 20 MB por solicitação.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfePdf(bytes,file.name),text=await readNfePdf(bytes);details.vehiclePlate=extractNfeVehiclePlate(text);if(!details.vehiclePlate)throw Error(`Não consegui localizar a placa do veículo no PDF ${details.name}. Confira se o DANFE informa a placa no campo “Placa do veículo”.`);invoiceFiles.push({bytes,details});}}
    const invoiceKeys=[];
    if(!/^[\w-]{1,200}$/.test(truckId))throw Error('Selecione o caminhão da solicitação.');
    if(!invoiceFiles.length)throw Error('Anexe ao menos um PDF da NF-e ou DANFE.');
    const note=String(body.note||'').trim();if(note.length>500)throw Error('A observação deve ter até 500 caracteres.');
    const current=await backend.repository.load(actor.companyId),truck=(current.state.trucks||[]).find(item=>item.id===truckId&&item.farmId===actor.farmId&&!item.transferOut&&!item.end&&!item.serviceEnded),farm=(current.state.farms||[]).find(item=>item.id===actor.farmId);
    if(!truck||!farm)throw Error('Este caminhão não está disponível na fazenda vinculada ao seu acesso.');
+   const selectedPlate=String(truck.plate||'').toUpperCase().replace(/[^A-Z0-9]/g,'');for(const {details} of invoiceFiles)if(details.vehiclePlate!==selectedPlate)throw Error(`A placa selecionada (${truck.plate}) é diferente da placa ${details.vehiclePlate} informada na NF-e ${details.name}. Confira o caminhão e os PDFs antes de solicitar.`);
    const saved=await backend.cteRequests.create(actor,truck,farm,invoiceKeys,note,invoiceFiles);return backend.responseJson(saved,201);
   }
   const requestFileMatch=path.match(/\/api\/cte-requests\/([0-9a-f-]{36})\/files\/([0-9a-f-]{36})$/i);
