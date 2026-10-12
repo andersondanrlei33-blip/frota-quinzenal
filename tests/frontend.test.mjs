@@ -96,6 +96,11 @@ test('second fortnight reminds about a truck started in the first and links to i
   let html=app.get('#main').innerHTML;assert.match(html,/começaram na 1ª quinzena e ainda não foram faturados nela/);assert.match(html,/data-action="view-period" data-month="2026-10" data-half="1"/);
   await app.action('view-period','',{month:'2026-10',half:1});html=app.get('#main').innerHTML;assert.match(html,/01\/10\/2026 a 15\/10\/2026/);assert.match(html,/ABC1D23/);
 });
+test('closings keep payment status metrics without the accumulated liquid forecast card',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ const state=initialState();state.trucks=[{id:'daily',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:''}];app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()");
+ const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/Total líquido acumulado até hoje|previsão até o fim da quinzena/);assert.match(html,/Saldo a pagar/);assert.match(html,/Pagamentos realizados/);assert.match(html,/Descontos da quinzena/);
+});
 test('payment details display CPF and CNPJ with punctuation',async()=>{
   const app=await boot();
   assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
