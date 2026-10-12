@@ -5,35 +5,42 @@
   <meta name="theme-color" content="#172c2b"><meta name="referrer" content="no-referrer">
   <meta name="description" content="Controle de caminhões, descontos e pagamentos por quinzena.">
   <title>Frota — Pagamentos quinzenais</title>
-  <link rel="stylesheet" href="./styles.css?v=90">
+  <link rel="stylesheet" href="./styles.css?v=93">
 </head>
 <body>
   <aside class="sidebar">
     <a class="brand" href="#overview" aria-label="Frota, visão geral"><span class="brand-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 9h15v14H4zM19 15h5l4 5v3h-9" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="9" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/></svg></span><span>frota<span class="brand-dot">.</span></span></a>
-    <div class="workspace-label">CONTROLE OPERACIONAL</div>
+    <div class="workspace-label">MENU PRINCIPAL</div>
     <nav aria-label="Menu principal">
-      <a href="#overview" data-nav="overview"><span>◫</span> Visão geral</a>
-      <a href="#farms" data-nav="farms"><span>▦</span> Fazendas</a>
-      <a href="#trucks" data-nav="trucks"><span>▤</span> Caminhões</a>
-      <a href="#discounts" data-nav="discounts"><span>−</span> Descontos</a>
-      <a href="#closings" data-nav="closings"><span>▣</span> Fechamentos</a>
-      <a href="#requests" data-nav="requests"><span>▣</span> Solicitações</a>
-      <a href="#ctes" data-nav="ctes"><span>▧</span> CT-e</a>
-      <a href="#cte-requests" data-nav="cte-requests"><span>▤</span> Solicitar CT-e</a>
-      <a href="#farm-accrual" data-nav="farm-accrual"><span>◷</span> Diárias em aberto</a>
-      <a href="#reconciliation" data-nav="reconciliation"><span>↔</span> Encontro de contas</a>
-      <a href="#settings" data-nav="settings"><span>⚙</span> Configurações</a>
+      <section class="nav-section" data-nav-section="operation"><div class="nav-section-label">FROTA</div>
+        <a href="#overview" data-nav="overview"><span>◫</span> Visão geral</a>
+        <a href="#farms" data-nav="farms"><span>▦</span> Fazendas</a>
+        <a href="#trucks" data-nav="trucks"><span>▤</span> Caminhões</a>
+        <a href="#discounts" data-nav="discounts"><span>−</span> Descontos</a>
+      </section>
+      <section class="nav-section" data-nav-section="payments"><div class="nav-section-label">DIÁRIAS E PAGAMENTOS</div>
+        <a href="#closings" data-nav="closings"><span>▣</span> Diárias e fechamentos</a>
+        <a href="#requests" data-nav="requests"><span>▣</span> Solicitações</a>
+        <a href="#reconciliation" data-nav="reconciliation"><span>↔</span> Encontro de contas</a>
+      </section>
+      <section class="nav-section" data-nav-section="fiscal"><div class="nav-section-label">FISCAL</div>
+        <a href="#ctes" data-nav="ctes"><span>▧</span> CT-e recebidos</a>
+        <a href="#cte-requests" data-nav="cte-requests"><span>▤</span> Solicitar CT-e</a>
+      </section>
+      <section class="nav-section" data-nav-section="admin"><div class="nav-section-label">ADMINISTRAÇÃO</div>
+        <a href="#settings" data-nav="settings"><span>⚙</span> Configurações</a>
+      </section>
     </nav>
-    <div class="sidebar-bottom"><span class="step-tag">ETAPA 01</span><strong>Pagamentos</strong><p>Uma quinzena de cada vez.</p><div class="storage-label"><i></i><span id="cloud-status">Banco online</span></div><div id="account-label" class="secondary"></div><div class="cloud-sidebar-actions"><button class="btn small" data-action="cloud-refresh">Atualizar dados</button><button class="btn small" data-action="cloud-logout">Sair</button></div></div>
+    <div class="sidebar-bottom"><div class="storage-label"><i></i><span id="cloud-status">Banco online</span></div><div id="account-label" class="secondary"></div><div class="cloud-sidebar-actions"><button class="btn small" data-action="cloud-refresh">Atualizar dados</button><button class="btn small" data-action="cloud-logout">Sair</button></div></div>
   </aside>
   <div class="shell">
     <header class="topbar"><div><span class="breadcrumb">Frota</span><span class="breadcrumb-sep">/</span><span id="breadcrumb-current">Visão geral</span></div><span class="topbar-right"><span id="company-label">Frota</span><span class="version-pill">ONLINE</span></span></header>
     <main id="main" tabindex="-1"></main>
-    <footer>Frota · Pagamentos quinzenais <span>Registros compartilhados da empresa, salvos no banco online.</span></footer>
+    <footer>Frota · Operação, pagamentos e CT-e <span>Registros compartilhados da empresa, salvos no banco online.</span></footer>
   </div>
   <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
   <dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=90"></script>
+  <script type="module" src="./app.js?v=93"></script>
 </body>
 </html>

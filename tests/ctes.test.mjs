@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCteApi,CTE_REPORT_COLUMNS,extractNfeVehiclePlate,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
-import {days,period,today} from '../server/engine.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -123,16 +122,11 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
  const downloaded=await api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(downloaded.status,200);assert.match((await downloaded.json()).signedUrl,/download=cte\.xml/);
  const unknown=await api(new Request('https://example.test/api/ctes/44444444-4444-4444-8444-444444444444'));assert.equal(unknown.status,404);
 });
-test('carrier receives only per-plate accrual totals for the selected fortnight',async()=>{
- const p=period(today().slice(0,7),Number(today().slice(8))<=15?1:2),truck={...state.trucks[0],monthly:40000,start:p.start,end:''},repositoryState={...state,trucks:[truck],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true},discounts:[],closings:[]};
- const {api}=setup({party:'carrier',trucks:[truck],repositoryState}),response=await api(new Request(`https://example.test/api/ctes?month=${p.month}&half=${p.half}`)),data=await response.json();
- assert.equal(response.status,200);assert.equal(data.accrualRows.length,1);assert.equal(data.accrualRows[0].plate,truck.plate);assert.equal(data.accrualRows[0].eligibleDays,days(p.start,today()));assert.ok(data.accrualRows[0].net>0);assert.equal('monthly' in data.accrualRows[0],false);assert.equal('events' in data.accrualRows[0],false);
-});
-
-test('farm portal receives accrual rows only for its assigned farm',async()=>{
- const p=period(today().slice(0,7),Number(today().slice(8))<=15?1:2),trucks=[{...state.trucks[0],monthly:40000,start:p.start,end:''},{...state.trucks[1],monthly:40000,start:p.start,end:'',farmId:'farm-b'}],repositoryState={...state,trucks,settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true},discounts:[],closings:[]};
- const {api}=setup({party:'farm',farmId:'farm-a',trucks,repositoryState}),response=await api(new Request(`https://example.test/api/ctes?month=${p.month}&half=${p.half}`)),data=await response.json();
- assert.equal(response.status,200);assert.equal(data.accrualRows.length,1);assert.equal(data.accrualRows[0].farmId,'farm-a');assert.equal(data.accrualRows[0].plate,trucks[0].plate);assert.equal('monthly' in data.accrualRows[0],false);
+test('CT-e portal endpoint does not return daily accrual amounts',async()=>{
+ const group=setup({party:'carrier'}),groupResponse=await group.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),groupData=await groupResponse.json();
+ assert.equal(groupResponse.status,200);assert.equal('accrualRows' in groupData,false);
+ const farm=setup({party:'farm',farmId:'farm-a'}),farmResponse=await farm.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),farmData=await farmResponse.json();
+ assert.equal(farmResponse.status,200);assert.equal('accrualRows' in farmData,false);assert.ok(farmData.trucks.every(truck=>truck.farmId==='farm-a'));
 });
 
 test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{

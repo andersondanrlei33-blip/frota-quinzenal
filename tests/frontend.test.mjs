@@ -96,10 +96,17 @@ test('second fortnight reminds about a truck started in the first and links to i
   let html=app.get('#main').innerHTML;assert.match(html,/começaram na 1ª quinzena e ainda não foram faturados nela/);assert.match(html,/data-action="view-period" data-month="2026-10" data-half="1"/);
   await app.action('view-period','',{month:'2026-10',half:1});html=app.get('#main').innerHTML;assert.match(html,/01\/10\/2026 a 15\/10\/2026/);assert.match(html,/ABC1D23/);
 });
-test('closings keep payment status metrics without the accumulated liquid forecast card',async()=>{
+test('closings show the fortnight total and daily count without an accumulated forecast',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const state=initialState();state.trucks=[{id:'daily',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:''}];app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()");
- const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/Total líquido acumulado até hoje|previsão até o fim da quinzena/);assert.match(html,/Saldo a pagar/);assert.match(html,/Pagamentos realizados/);assert.match(html,/Descontos da quinzena/);
+ const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/acumulad[oa]s? até|Total líquido acumulado|previsão até o fim da quinzena/);assert.match(html,/Diárias previstas na quinzena/);assert.match(html,/15 dia\(s\) na quinzena/);assert.match(html,/Líquido previsto da quinzena: R\$\s?20\.000,00/);assert.match(html,/Saldo a pagar/);assert.match(html,/Pagamentos realizados/);assert.match(html,/Descontos da quinzena/);
+});
+test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ const shell=fs.readFileSync(new URL('../frontend/index.html',import.meta.url),'utf8'),html=app.get('#main').innerHTML;
+ assert.match(shell,/data-nav-section="operation"/);assert.match(shell,/data-nav-section="payments"/);assert.match(shell,/data-nav-section="fiscal"/);assert.match(shell,/data-nav-section="admin"/);
+ assert.match(shell,/DIÁRIAS E PAGAMENTOS/);assert.match(shell,/CT-e recebidos/);assert.doesNotMatch(shell,/ETAPA 01|Uma quinzena de cada vez/);
+ assert.doesNotMatch(html,/Testar com exemplos|Carregar dados de exemplo|Conheça o controle|data-action="demo"/);
 });
 test('payment details display CPF and CNPJ with punctuation',async()=>{
   const app=await boot();
@@ -137,22 +144,17 @@ test('account reconciliation compares lifetime payments and CT-es across farm tr
  const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);assert.match(html,/class="num">2<span/);
  await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/CT-es manifestados/);assert.match(detail,/Pagamentos à placa/);assert.match(detail,/TOTAL MANIFESTADO/);assert.match(detail,/R\$\s?5\.000,00/);
 });
-test('reconciliation adds an independent fortnight accrual panel and preserves lifetime totals',async()=>{
+test('reconciliation keeps only the lifetime payment versus CT-e comparison',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const state=initialState();state.trucks=Array.from({length:10},(_,index)=>({id:`truck-${index}`,plate:`ABC${index}D${index}`,driver:`Motorista ${index}`,carrier:'Transportadora',farmId:'farm1',monthly:40000,start:'2026-10-08',end:''}));
- app.run(`state=JSON.parse(${JSON.stringify(JSON.stringify(state))});location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
- let html=app.get('#main').innerHTML;assert.match(html,/Acumulado de diárias na quinzena/);assert.match(html,/R\$\s?26\.666,70/);assert.match(html,/2 diária\(s\) a pagar/);assert.match(html,/Conferência por período de atividade/);assert.match(html,/Total pago às placas/);assert.match(html,/ACUMULADO NA QUINZENA/);assert.match(html,/R\$\s?2\.666,67<span class="secondary">2 diária\(s\) em aberto/);assert.doesNotMatch(html,/2 diária\(s\) · 01\/10\/2026 a 15\/10\/2026/);
- await app.action('reconciliation-accrued-half','',{half:'2'});html=app.get('#main').innerHTML;assert.match(html,/Esta quinzena ainda não começou/);assert.match(html,/Conferência por período de atividade/);assert.match(html,/CT-es manifestados/);
-});
-test('farm portal shows open daily accruals only for the employee’s assigned farm',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- app.run(`currentUser={party:'farm',farmId:'farm-a',role:'operator',email:'farm@example.test'};cteFarms=[{id:'farm-a',name:'Fazenda A'}];cteAccrualRows=[{truckId:'truck-a',plate:'ABC1D23',driver:'Motorista A',farmId:'farm-a',farmName:'Fazenda A',eligibleDays:2,payableDays:2,gross:2666.67,discount:0,net:2666.67},{truckId:'truck-b',plate:'DEF1G23',driver:'Motorista B',farmId:'farm-b',farmName:'Fazenda B',eligibleDays:2,payableDays:2,gross:2666.67,discount:0,net:2666.67}];location.hash='#farm-accrual';cteLoading=true;render();cteLoading=false`);
- const html=app.get('#main').innerHTML;assert.match(html,/Diárias em aberto/);assert.match(html,/ABC1D23/);assert.match(html,/2 diária\(s\) em aberto/);assert.match(html,/R\$\s?2\.666,67/);assert.doesNotMatch(html,/DEF1G23|2 diária\(s\) · 01\/10\/2026 a 15\/10\/2026/);
+ app.run("location.hash='#reconciliation';render()");const html=app.get('#main').innerHTML;
+ assert.match(html,/Encontro de contas/);assert.match(html,/Total pago às placas/);assert.match(html,/CT-es manifestados/);assert.match(html,/Conferência por período de atividade/);
+ assert.doesNotMatch(html,/Diárias em aberto|ACUMULADO NA QUINZENA|Acumulado de diárias|diária\(s\) em aberto/);
+ assert.doesNotMatch(fs.readFileSync(new URL('../frontend/index.html',import.meta.url),'utf8'),/data-nav="farm-accrual"/);
 });
 test('carrier portal can reconcile its paid requests with CT-es across transfers',async()=>{
  const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
- app.run(`cteTrucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a'}}];cteAccrualRows=[{truckId:'truck-b',plate:'ABC1234',driver:'Motorista A',farmId:'farm1',farmName:'Fazenda 1',eligibleDays:2,payableDays:2,gross:2666.67,discount:0,net:2666.67}];cteDocuments=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-09-30',totalValue:20000}];portalRequests=[{id:'request-a',truckId:'truck-a',snapshot:{truckId:'truck-a',plate:'ABC1234',net:12000},status:'paid',payment:{date:'2026-10-15',receipt:{id:'receipt-a'}}},{id:'request-b',truckId:'truck-b',snapshot:{truckId:'truck-b',plate:'ABC1234',net:13000},status:'paid',payment:{date:'2026-10-31',receipt:{id:'receipt-b'}}}];location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
- const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/ACUMULADO NA QUINZENA/);assert.match(html,/R\$\s?2\.666,67<span class="secondary">2 diária\(s\)/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);
+ app.run(`cteTrucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a'}}];cteDocuments=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-09-30',totalValue:20000}];portalRequests=[{id:'request-a',truckId:'truck-a',snapshot:{truckId:'truck-a',plate:'ABC1234',net:12000},status:'paid',payment:{date:'2026-10-15',receipt:{id:'receipt-a'}}},{id:'request-b',truckId:'truck-b',snapshot:{truckId:'truck-b',plate:'ABC1234',net:13000},status:'paid',payment:{date:'2026-10-31',receipt:{id:'receipt-b'}}}];location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
+ const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.doesNotMatch(html,/ACUMULADO NA QUINZENA|diária\(s\) em aberto/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);
  await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Comprovante/);assert.match(detail,/Pagamentos à placa/);
 });
 test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{

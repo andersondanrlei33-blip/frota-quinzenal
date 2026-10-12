@@ -2,7 +2,7 @@ import {initialState,validateState,validateTruck,validateDiscount,saveClosing,cl
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,recordRequestedPaymentBatch,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
-const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','examples.load','examples.remove','receipt.settings.save']);
+const adminActions=new Set(['farms.save','farm.remove','farm.status','backup.import','receipt.settings.save']);
 const allowedRoles=new Set(['admin','operator']);
 const text=(value,max=100)=>{if(typeof value!=='string'||value.trim().length>max)throw Error('Confira os campos de texto.');return value.trim();};
 function requireRecord(list,id,label,key='id'){const record=list.find(item=>item[key]===id);if(!record)throw Error(label+' não encontrado.');return record;}
@@ -90,18 +90,6 @@ export function executeCommand(input,command,actor,context={}){
     case 'farm.status':setFarmActive(state,p.id,p.active);break;
     case 'backup.import':{
       const restored=applyFixedMonthlyRule(validateState(p.state));protectPortalBackup(state,restored);Object.assign(state,restored);break;
-    }
-    case 'examples.load':{
-      if(state.trucks.length)throw Error('Os exemplos exigem um cadastro de caminhões vazio.');
-      const farms=state.farms.filter(farm=>farm.active!==false);if(!farms.length)throw Error('Cadastre ou reative uma fazenda antes de carregar exemplos.');
-      const month=period(p.month,1).month,a=uid(),b=uid(),c=uid();
-      state.trucks=[{id:a,plate:'TST1A01',driver:'Motorista de exemplo 1',carrier:'Transportadora de exemplo',farmId:farms[0].id,bodyType:'Caçamba',axles:7,monthly:40000,start:month+'-01',end:'',sample:true},{id:b,plate:'TST2B02',driver:'Motorista de exemplo 2',carrier:'Transportadora de exemplo',farmId:farms[0].id,bodyType:'Graneleiro',axles:9,monthly:35000,start:month+'-06',end:'',sample:true},{id:c,plate:'TST3C03',driver:'Motorista de exemplo 3',carrier:'Contratado de exemplo',farmId:(farms[1]||farms[0]).id,bodyType:'Caçamba',axles:9,monthly:42000,start:month+'-01',end:month+'-11',sample:true}];
-      state.discounts=[{id:uid(),truckId:a,start:month+'-08',end:month+'-09',reason:'Falta',note:'Exemplo: dois dias de falta.'},{id:uid(),truckId:b,start:month+'-12',end:month+'-12',reason:'Oficina',note:'Exemplo: manutenção.'}];break;
-    }
-    case 'examples.remove':{
-      const ids=new Set(state.trucks.filter(truck=>truck.sample).map(truck=>truck.id));
-      if(state.closings.some(closing=>closing.rows.some(row=>ids.has(row.truckId))))throw Error('Reabra os fechamentos dos exemplos antes de removê-los.');
-      state.trucks=state.trucks.filter(truck=>!ids.has(truck.id));state.discounts=state.discounts.filter(discount=>!ids.has(discount.truckId));break;
     }
     default:throw Error('Ação não reconhecida.');
   }
