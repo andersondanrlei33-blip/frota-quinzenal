@@ -239,7 +239,7 @@ function confirmHistoryReopen(closingId,truckId='') {
   openModal(title,'Confira antes de continuar.',`<p style="font-size:13px;line-height:1.8;color:var(--ink)">${e(text)}</p><div class="form-note warn">A reabertura mantém o fechamento anterior das outras placas. Pagamentos, solicitações e transferências financeiras impedem esta ação.</div><div class="form-actions"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="${row?'confirm-history-reopen-truck':'confirm-history-reopen-closing'}" data-closing="${e(h.id)}" ${row?`data-truck="${e(row.truckId)}"`:''}>Confirmar reabertura</button></div>`);
 }
 function historyMarkup() {
-  const selectedKey=currentPeriod().key,visibleClosings=state.closings.filter(c=>c.period.key===selectedKey);
+  const selectedKey=currentPeriod().key,visibleClosings=state.closings.filter(c=>c.period.key===selectedKey&&(!farmFilter||c.farmIds.includes(farmFilter)));
   if(!visibleClosings.length)return `<h2 style="margin:30px 0 15px">Faturas da quinzena selecionada</h2><section class="card empty"><p>As faturas fechadas desta quinzena aparecerão aqui.</p></section>`;
   const periods=new Map();for(const c of visibleClosings){if(!periods.has(c.period.key))periods.set(c.period.key,[]);periods.get(c.period.key).push(c);}
   const groups=[...periods.values()].sort((a,b)=>b[0].period.key.localeCompare(a[0].period.key)).map(invoices=>{
