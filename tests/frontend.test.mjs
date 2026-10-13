@@ -57,6 +57,13 @@ test('carrier sees one payment per shared account with plate values expandable i
  let html=app.get('#main').innerHTML;assert.match(html,/Conta do João/);assert.match(html,/Ver placas e valores individuais/);assert.equal((html.match(/data-action="pay-group"/g)||[]).length,1);assert.doesNotMatch(html,/data-payment-group-request/);
  const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});const form=app.get('#modal-content').innerHTML;assert.match(form,/Registrar pagamento da conta/);assert.match(form,/pix@example\.com/);assert.match(form,/ABC1D20/);assert.match(form,/ABC1D21/);assert.match(form,/Total da transferência/);
 });
+test('group can follow payment requests but cannot register a payment',async()=>{
+ const app=await boot('operator');assert.equal(await app.submit('access-form',{email:'group@example.test',password:'test-password'}),'');
+ const details={method:'pix',holder:'Titular do Pix',document:'12345678901',pixKey:'pix@example.com'},state=initialState();state.paymentAccounts=[{id:'pix-account',farmId:'farm1',name:'Conta do João',details}];state.trucks=[{id:'truck-1',plate:'ABC1D20',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'pix-account',paymentDetails:details}];saveClosing(state,period('2026-10',1),'farm1','invoice-account','2026-10-06');
+ const actor={userId:'group-user',email:'group@example.test',role:'operator',party:'group',companyId:'company-one'},requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;app.mutateState(saved=>Object.assign(saved,requested));await app.poll();app.run("location.hash='#requests';render()");
+ const html=app.get('#main').innerHTML;assert.match(html,/Conta do João/);assert.match(html,/Aguardando pagamento/);assert.doesNotMatch(html,/data-action="pay-group"|Registrar pagamento/);
+ const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});assert.equal(app.get('#modal').open,false);assert.match(app.get('#toast').textContent,/Acesse como transportadora/);
+});
 test('payment history shows each joint transfer once and opens its plates, amounts and receipt',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const detailsA={method:'pix',holder:'Titular A',document:'12345678901',pixKey:'conta-a@example.com'},detailsB={method:'pix',holder:'Titular B',document:'12345678901',pixKey:'conta-b@example.com'},state=initialState();
@@ -271,3 +278,4 @@ test('truck list groups transfers and returns into one plate with a consolidated
  app.run("farmFilter='farm1';render()");const html=app.get('#main').innerHTML;assert.match(html,/1 placa\(s\) · 3 período\(s\)/);assert.match(html,/Passou por 2 fazendas/);assert.match(html,/Detalhes/);
  await app.action('truck-history','period-c');const details=app.get('#modal-content').innerHTML;assert.match(details,/Períodos de trabalho/);assert.match(details,/Fazenda 2/);assert.match(details,/Transferir fazenda/);assert.match(details,/Editar período atual/);
 })
+

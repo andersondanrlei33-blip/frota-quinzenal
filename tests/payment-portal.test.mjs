@@ -16,6 +16,11 @@ test('the group requests all four farms once and carrier receives only approved 
  assert.throws(()=>executeCommand(state,command('payment.request',{month:p.month,half:p.half}),group),/Não há placas/);
  const dto=presentState({state,revision:2,company:{id:group.companyId}},carrier);assert.equal(dto.state,null);assert.equal(dto.requests.length,4);assert.ok(dto.requests.every(request=>request.invoiceNumber===1));assert.equal(dto.user.party,'carrier');assert.ok(!('trucks' in dto));
  assert.throws(()=>executeCommand(state,command('truck.save',{}),carrier),/transportadora/);assert.throws(()=>executeCommand(state,command('payment.record',{requestId:state.paymentRequests[0].id,date:'2026-10-06'}),group),/acesso da transportadora/);
+ const farm={userId:'farm-user',email:'farm@test.example',role:'operator',party:'farm',farmId:'farm1',companyId:'company-one'};
+ for(const actor of [group,farm]){
+  assert.throws(()=>executeCommand(state,command('payment.record',{requestId:state.paymentRequests[0].id,date:'2026-10-06'}),actor),/acesso da transportadora/);
+  assert.throws(()=>executeCommand(state,command('payment.record-batch',{requestIds:[state.paymentRequests[0].id],date:'2026-10-06'}),actor),/acesso da transportadora/);
+ }
 });
 test('one bank account groups farm plates into one complete carrier payment',()=>{
  let state=initialState();const details={method:'pix',holder:'Titular Pix',document:'12345678901',pixKey:'conta@example.com'};state.trucks=[0,1].map(index=>({id:'joint-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details}));
@@ -80,3 +85,4 @@ test('proof files are limited by actual bytes and content signature rather than 
  const pdf=new TextEncoder().encode('%PDF-1.4\nSample technical fixture');assert.equal(inspectReceipt(pdf,'arquivo.html').mime,'application/pdf');assert.equal(inspectReceipt(new Uint8Array([137,80,78,71,13,10,26,10]),'foto.png').mime,'image/png');assert.equal(inspectReceipt(new Uint8Array([255,216,255]),'foto.jpg').mime,'image/jpeg');
  assert.throws(()=>inspectReceipt(new TextEncoder().encode('<script>'), 'comprovante.pdf'),/PDF, JPG ou PNG/);assert.throws(()=>inspectReceipt(new Uint8Array(RECEIPT_LIMIT+1),'grande.pdf'),/10 MB/);
 });
+
