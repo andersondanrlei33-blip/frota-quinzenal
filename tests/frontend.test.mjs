@@ -246,4 +246,18 @@ test('first access collects company credentials and an administrator can generat
   app.run("location.hash='#settings';render();");assert.match(app.get('#main').innerHTML,/Equipe e acesso/);
   assert.equal(await app.submit('invite-form',{email:'staff@example.test',role:'viewer'}),'');assert.match(app.get('#invite-result').innerHTML,/staff@example.test/);assert.match(app.get('#invite-result').innerHTML,/#activate=/);
 });
-
+test('truck list groups transfers and returns into one plate with a consolidated details view',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
+ const state=initialState();
+ state.trucks=[
+  {id:'period-a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'period-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},
+  {id:'period-b',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-03',end:'2026-10-04',transferIn:{fromTruckId:'period-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'},transferOut:{toTruckId:'period-c',toFarmId:'farm1',toFarmName:'Fazenda 1',date:'2026-10-05'}},
+  {id:'period-c',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-05',end:'',transferIn:{fromTruckId:'period-b',fromFarmId:'farm2',fromFarmName:'Fazenda 2',date:'2026-10-05'}},
+  {id:'other',plate:'DEF1G23',driver:'Outro motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:''}
+ ];
+ app.mutateState(saved=>Object.assign(saved,state));await app.poll();
+ app.run("location.hash='#trucks';render()");
+ const all=app.get('#main').innerHTML;assert.match(all,/2 placa\(s\) · 4 período\(s\)/);assert.equal((all.match(/data-action="truck-history"/g)||[]).length,2);
+ app.run("farmFilter='farm1';render()");const html=app.get('#main').innerHTML;assert.match(html,/1 placa\(s\) · 3 período\(s\)/);assert.match(html,/Passou por 2 fazendas/);assert.match(html,/Detalhes/);
+ await app.action('truck-history','period-c');const details=app.get('#modal-content').innerHTML;assert.match(details,/Períodos de trabalho/);assert.match(details,/Fazenda 2/);assert.match(details,/Transferir fazenda/);assert.match(details,/Editar período atual/);
+})
