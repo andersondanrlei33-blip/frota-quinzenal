@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
-import {initialState,period,saveClosing} from '../server/engine.js';
+import {initialState,period,saveClosing,transferTruck} from '../server/engine.js';
 import {executeCommand} from '../server/commands.js';
 import {createFleetApi} from '../server/api.js';
 
@@ -101,6 +101,16 @@ test('closings show the fortnight total and daily count without an accumulated f
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const state=initialState();state.trucks=[{id:'daily',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:''}];app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()");
  const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/acumulad[oa]s? até|Total líquido acumulado|previsão até o fim da quinzena/);assert.match(html,/Diárias previstas na quinzena/);assert.match(html,/15 dia\(s\) na quinzena/);assert.match(html,/Líquido previsto da quinzena: R\$\s?20\.000,00/);assert.match(html,/Saldo a pagar/);assert.match(html,/Pagamentos realizados/);assert.match(html,/Descontos da quinzena/);
+});
+test('fortnight preview groups transferred periods into one plate row and one end-activities action',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ const state=initialState();state.trucks=[{id:'atv-origin',plate:'ATV2C70',driver:'JUNIOR',carrier:'BARROS',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:''}];
+ transferTruck(state,'atv-origin','farm2','2026-10-12','','atv-veneza');transferTruck(state,'atv-veneza','farm1','2026-10-13','','atv-return');
+ app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;farmFilter='';location.hash='#closings';render()");
+ const html=app.get('#main').innerHTML,preview=html.slice(html.indexOf('Diárias previstas na quinzena'),html.indexOf('Totais por transportador'));
+ assert.equal((preview.match(/class="plate">ATV2C70/g)||[]).length,1);assert.match(preview,/3 período\(s\)/);assert.match(preview,/15<span class="secondary">total na quinzena/);assert.match(preview,/R\$\s?17\.500,00/);assert.match(preview,/Detalhes \(3\)/);
+ await app.action('fortnight-plate-detail','',{plate:'ATV2C70'});const details=app.get('#modal-content').innerHTML;
+ assert.match(details,/Fazenda 1 · Fazenda 2/);assert.match(details,/Períodos considerados/);assert.match(details,/11\/10\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
 });
 test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
