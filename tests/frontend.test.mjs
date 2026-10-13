@@ -71,6 +71,8 @@ test('transportadora envia CT-e somente pela solicitação com placa e fazenda d
  await app.action('cte-upload');assert.equal(app.get('#modal').open,false);
  app.run("cteRequests=[{id:'request-one',status:'pending',farmName:'Fazenda Veneza',plate:'ATV2C70',requestedEmail:'funcionario@example.test',invoiceKeys:[]}];cteUploadForm('request-one')");
  assert.match(app.get('#modal-content').innerHTML,/Fazenda Veneza · ATV2C70/);
+ app.run("cteRequests=[{id:'request-correction',status:'pending',farmName:'Fazenda Sossego',plate:'ATV2C70',invoiceKeys:['chave'],invoiceFiles:[{name:'CARTA-CORRECAO-MINUTA-PLACA-ATV2C70.pdf',documentType:'correction'}]}];cteUploadForm('request-correction')");
+ const correctionModal=app.get('#modal-content').innerHTML;assert.match(correctionModal,/carta de correção anexada/i);assert.match(correctionModal,/confirmPlateCorrection/);assert.match(correctionModal,/vinculado à placa ATV2C70/);
  assert.throws(()=>app.run("cteUploadForm()"),/solicitação pendente da fazenda/);
 });
 test('payment history shows each joint transfer once and opens its plates, amounts and receipt',async()=>{
