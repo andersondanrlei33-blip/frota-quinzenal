@@ -34,7 +34,7 @@ test('a mixed closing reports paid total, pending balance and individual status 
 test('a report from history includes only its selected closing, excluding late complementary registrations',()=>{
   const state=fleet(1),p=period('2026-10',2);saveClosing(state,p,'','original','2026-10-31');
   state.trucks.push({...state.trucks[0],id:'late',plate:'XYZ9B87'});reopenForInvoice(state,p,'farm1');saveClosing(state,p,'farm1','complement','2026-10-31');
-  assert.equal(createReport(state,p).truckCount,2);const report=createReport(state,p,{closingId:'original'});assert.equal(report.truckCount,1);assert.equal(report.total,15000);assert.deepEqual(validateState(state),state);
+  assert.equal(createReport(state,p).truckCount,2);const report=createReport(state,p,{closingId:'original'});assert.equal(report.truckCount,1);assert.equal(report.total,15000);assert.equal(report.invoiceNumber,1);assert.match(reportMarkup(report),/Fatura 1/);assert.deepEqual(validateState(state),state);
 });
 test('cross-period discounts are clipped to the saved service range and long notes get continuation pages',()=>{
   const state=fleet(1),p=period('2026-10',2);state.trucks[0].end='2026-10-25';

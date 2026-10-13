@@ -136,7 +136,7 @@ test('saved closing preserves values and prevents a new discount in a closed per
   s.trucks[0].monthly=50000;s.settings.mode='half';
   assert.equal(c.rows[0].net,13333.33);assert.notEqual(draft(s,p)[0].net,c.rows[0].net);
   assert.throws(()=>validateDiscount({id:'d',truckId:'a',start:'2026-10-08',end:'2026-10-08',reason:'Falta',note:''},s),/fechada/);
-  assert.deepEqual(validateState(JSON.parse(JSON.stringify(s))),s);
+  const migrated=validateState(JSON.parse(JSON.stringify(s)));assert.equal(migrated.closings[0].invoiceNumber,1);assert.equal(migrated.nextInvoiceNumber,2);assert.deepEqual(migrated.closings[0].rows,s.closings[0].rows);
 });
 test('backup schema rejects malformed values and duplicate closings',()=>{
   assert.throws(()=>validateState({schema:99}));

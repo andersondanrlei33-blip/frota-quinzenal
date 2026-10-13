@@ -46,6 +46,7 @@ test('closing every farm creates an exclusive invoice per farm',()=>{
   const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
   const result=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor).state;
   assert.equal(result.closings.length,2);assert.deepEqual(result.closings.map(closing=>closing.farmIds.length),[1,1]);
+  assert.deepEqual(result.closings.map(closing=>closing.invoiceNumber),[1,2]);assert.equal(result.nextInvoiceNumber,3);
   assert.ok(result.closings.every(closing=>closing.rows.every(row=>row.farmId===closing.farmIds[0])));assert.deepEqual(validateState(result),result);
 });
 test('splitting a legacy mixed invoice keeps payments and remaps active requests to their farm invoice',()=>{
@@ -53,7 +54,7 @@ test('splitting a legacy mixed invoice keeps payments and remaps active requests
   const closing=saveClosing(state,period('2026-10',1),'','mixed','2026-10-06');closing.rows.find(row=>row.farmId==='farm1').paid={date:'2026-10-06',note:'Pago preservado'};
   const requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1}},actor).state;
   const before=structuredClone(requested.closings[0]);const result=executeCommand(requested,{type:'invoice.split-by-farm',payload:{}},actor).state;
-  assert.equal(result.closings.length,2);assert.ok(result.closings.every(item=>item.farmIds.length===1&&item.rows.every(row=>row.farmId===item.farmIds[0])));
+  assert.equal(result.closings.length,2);assert.ok(result.closings.every(item=>item.farmIds.length===1&&item.rows.every(row=>row.farmId===item.farmIds[0])));assert.deepEqual(result.closings.map(item=>item.invoiceNumber),[1,2]);
   assert.deepEqual(result.closings.find(item=>item.farmIds[0]==='farm1').rows[0].paid,before.rows.find(row=>row.farmId==='farm1').paid);
   const active=result.paymentRequests.find(item=>item.status==='pending');assert.equal(result.closings.find(item=>item.id===active.closingId).farmIds[0],active.snapshot.farmId);
   assert.equal(result.closings.find(item=>item.id===active.closingId).rows[0].requestId,active.id);assert.deepEqual(validateState(result),result);
@@ -82,10 +83,19 @@ test('one command issues a complementary invoice and keeps the paid invoice snap
   const original=structuredClone(first);state.trucks.push({...truck,id:'late',plate:'XYZ9B87',start:'2026-10-08'});
   assert.throws(()=>executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor),/Reabra a quinzena/);
   const next=executeCommand(state,{type:'period.close-complementary',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;
-  assert.deepEqual(next.closings[0],original);assert.equal(next.closings.length,2);assert.equal(next.closings[1].rows[0].truckId,'late');
+  assert.deepEqual(next.closings[0],original);assert.equal(next.closings.length,2);assert.equal(next.closings[1].rows[0].truckId,'late');assert.deepEqual(next.closings.map(closing=>closing.invoiceNumber),[1,2]);
   assert.equal(next.invoiceReopens.length,0);
   assert.throws(()=>executeCommand(next,{type:'period.close-complementary',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor),/pendente/);
   assert.deepEqual(validateState(next),next);
+});
+test('invoice numbers are global, persisted, and never reused after reopening',()=>{
+ const state=initialState();state.trucks=[truck,{...truck,id:'b',plate:'DEF1G23',farmId:'farm2'}];
+ let result=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor).state;
+ assert.deepEqual(result.closings.map(closing=>closing.invoiceNumber),[1,2]);
+ result=executeCommand(result,{type:'period.reopen',payload:{month:'2026-10',half:1,farmId:'farm2'}},actor).state;
+ result.trucks.push({...truck,id:'late',plate:'XYZ9B87',farmId:'farm2',start:'2026-10-08'});
+ result=executeCommand(result,{type:'period.close',payload:{month:'2026-10',half:1,farmId:'farm2'}},actor).state;
+ assert.deepEqual(result.closings.map(closing=>closing.invoiceNumber),[1,3]);assert.equal(result.nextInvoiceNumber,4);
 });
 test('server records and reverses the payment for the selected truck row',()=>{
   const state=initialState();state.trucks=[truck];const closing=saveClosing(state,period('2026-10',1),'','closing-payment','2026-10-06');

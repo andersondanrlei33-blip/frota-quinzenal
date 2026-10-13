@@ -88,7 +88,23 @@ export function period(month,half) {
 export const dateLabel = s => validDate(s) ? s.split('-').reverse().join('/') : '—';
 export const periodLabel = p => `${dateLabel(p.start)} a ${dateLabel(p.end)}`;
 export function initialState() {
-  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],paymentAccounts:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],paymentAccounts:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],nextInvoiceNumber:1,settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+}
+export function allocateInvoiceNumber(state) {
+  const used=(state.closings||[]).reduce((max,closing)=>Math.max(max,Number.isInteger(closing.invoiceNumber)?closing.invoiceNumber:0),0);
+  const next=Math.max(Number.isSafeInteger(state.nextInvoiceNumber)?state.nextInvoiceNumber:1,used+1);
+  state.nextInvoiceNumber=next+1;
+  return next;
+}
+function migrateInvoiceSequence(state) {
+  const seen=new Set();let max=0;
+  for(const closing of state.closings||[])if(closing.invoiceNumber!==undefined){
+    if(!Number.isSafeInteger(closing.invoiceNumber)||closing.invoiceNumber<1||seen.has(closing.invoiceNumber))throw Error('A sequência de números das faturas é inválida.');
+    seen.add(closing.invoiceNumber);max=Math.max(max,closing.invoiceNumber);
+  }
+  let next=Math.max(Number.isSafeInteger(state.nextInvoiceNumber)?state.nextInvoiceNumber:1,max+1);
+  for(const closing of state.closings||[])if(closing.invoiceNumber===undefined){while(seen.has(next))next++;closing.invoiceNumber=next;seen.add(next);max=Math.max(max,next);next++;}
+  state.nextInvoiceNumber=Math.max(next,max+1);
 }
 export function farmHasLinks(state,id) {
   return !!state.paymentRequests?.some(r=>r.snapshot.farmId===id)||state.fundingTransfers?.some(r=>r.farmId===id)||state.trucks.some(t=>t.farmId===id||t.transferIn?.fromFarmId===id||t.transferOut?.toFarmId===id||t.serviceEnded?.revisions?.some(revision=>revision.row?.farmId===id))||state.closings.some(c=>c.farmIds?.includes(id)||c.rows.some(r=>r.farmId===id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.farmId===id)));
@@ -184,7 +200,7 @@ export function closingPreview(state,p,farmId='') {
 export function saveClosing(state,p,farmId='',id=uid(),closedDate=today()) {
   if(!state.settings.confirmed)throw Error('Defina a regra de cálculo primeiro.');
   const preview=closingPreview(state,p,farmId);
-  const c={id,period:{...p},farmIds:[...preview.farmIds],kind:preview.complementFarmIds.length?'complement':'initial',settings:structuredClone(state.settings),closedDate,rows:structuredClone(preview.rows)};
+  const c={id,invoiceNumber:allocateInvoiceNumber(state),period:{...p},farmIds:[...preview.farmIds],kind:preview.complementFarmIds.length?'complement':'initial',settings:structuredClone(state.settings),closedDate,rows:structuredClone(preview.rows)};
   state.closings.push(c);state.invoiceReopens=(state.invoiceReopens||[]).filter(key=>!preview.farmIds.some(farmId=>key===invoiceReopenKey(p.key,farmId)));return c;
 }
 export function splitClosingsByFarm(state,p=null) {
@@ -193,7 +209,7 @@ export function splitClosingsByFarm(state,p=null) {
     if(p&&closing.period.key!==p.key||!closing.rows.length)return [closing];
     const rowsByFarm=new Map();for(const row of closing.rows){if(!rowsByFarm.has(row.farmId))rowsByFarm.set(row.farmId,[]);rowsByFarm.get(row.farmId).push(row);}
     if(rowsByFarm.size<=1&&closing.farmIds.length<=1)return [closing];
-    const invoices=[...rowsByFarm].sort(([a],[b])=>a.localeCompare(b)).map(([farmId,rows],index)=>({...structuredClone(closing),id:index===0?closing.id:uid(),farmIds:[farmId],rows:structuredClone(rows)}));
+    const invoices=[...rowsByFarm].sort(([a],[b])=>a.localeCompare(b)).map(([farmId,rows],index)=>({...structuredClone(closing),id:index===0?closing.id:uid(),invoiceNumber:index===0?closing.invoiceNumber:allocateInvoiceNumber(state),farmIds:[farmId],rows:structuredClone(rows)}));
     for(const request of state.paymentRequests||[]){if(request.closingId!==closing.id)continue;const farmId=request.snapshot?.farmId||[...rowsByFarm].find(([,rows])=>rows.some(row=>row.truckId===request.truckId))?.[0],invoice=invoices.find(item=>item.farmIds[0]===farmId);if(!invoice)throw Error('Não foi possível identificar a fazenda de uma solicitação vinculada à fatura.');request.closingId=invoice.id;}
     changed++;return invoices;
   });
@@ -355,14 +371,14 @@ export function endActivities(state,id,date,note='',closingId=uid(),closedDate=t
   if(plan.pending.length){
     const rowsByFarm=new Map();for(const row of plan.pending){if(!rowsByFarm.has(row.farmId))rowsByFarm.set(row.farmId,[]);rowsByFarm.get(row.farmId).push(row);}
     for(const [index,[farmId,rows]] of [...rowsByFarm].sort(([a],[b])=>a.localeCompare(b)).entries()){
-      const invoice={id:index===0?closingId:uid(),period:plan.period,farmIds:[farmId],kind:'activity-end',activityEndDate:date,settings:structuredClone(next.settings),closedDate,rows:structuredClone(rows)};
+      const invoice={id:index===0?closingId:uid(),invoiceNumber:allocateInvoiceNumber(next),period:plan.period,farmIds:[farmId],kind:'activity-end',activityEndDate:date,settings:structuredClone(next.settings),closedDate,rows:structuredClone(rows)};
       next.closings.push(invoice);closingIds.push(invoice.id);
     }
     c=next.closings.find(item=>item.id===closingIds[0]);
   } else c=periodClosings(next,plan.period).find(c=>c.rows.some(r=>r.truckId===t.id));
   t.serviceEnded={date,periodKey:plan.period.key,closingId:c?.id||'',...(closingIds.length>1?{closingIds}:{}),closedDate,note:String(note).trim().slice(0,300),revisions:[...(previous.revisions||[]),...plan.revisions],cancelledDiscounts:[...(previous.cancelledDiscounts||[]),...plan.cancelled]};
   validateState(next);
-  state.trucks=next.trucks;state.discounts=next.discounts;state.closings=next.closings;
+  state.trucks=next.trucks;state.discounts=next.discounts;state.closings=next.closings;state.nextInvoiceNumber=next.nextInvoiceNumber;
   return c;
 }
 export function validateDiscount(d,state,checkBudget=true) {
@@ -446,6 +462,8 @@ export function migrateState(s) {
     result.trucks=result.trucks?.map(t=>({...t,bodyType:t.bodyType||'',axles:t.axles??null}));
     result.closings=result.closings?.map(c=>({...c,farmIds:c.farmIds||result.farms.map(f=>f.id),rows:c.rows.map(r=>({...r,bodyType:r.bodyType||'',axles:r.axles??null}))}));
   }
+  result.nextInvoiceNumber=result.nextInvoiceNumber??1;
+  migrateInvoiceSequence(result);
   return result;
 }
 export function validateState(input) {

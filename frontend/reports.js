@@ -1,4 +1,4 @@
-import {periodRows,periodLabel,dateLabel,round,money} from './engine.js?v=104';
+import {periodRows,periodLabel,dateLabel,round,money} from './engine.js?v=105';
 
 const reportEscape=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const reportSum=(rows,key)=>round(rows.reduce((total,row)=>total+(row[key]||0),0));
@@ -28,6 +28,7 @@ function reportChunks(items,maxItems,maxLines,lines) {
 }
 
 export function createReport(state,p,{farmId='',onlyPaid=false,closingId='',plate=''}={}) {
+  const invoiceNumber=closingId?state.closings.find(closing=>closing.id===closingId)?.invoiceNumber:null;
   const rows=periodRows(state,p).filter(row=>(!farmId||row.farmId===farmId)&&(!closingId||row.closingId===closingId)&&(!plate||row.plate===plate)&&(!onlyPaid||row.paid));
   const grouped=new Map();
   for(const row of rows){if(!grouped.has(row.farmId))grouped.set(row.farmId,[]);grouped.get(row.farmId).push(row);}
@@ -43,7 +44,7 @@ export function createReport(state,p,{farmId='',onlyPaid=false,closingId='',plat
       if(noteLines>4)for(const noteChunk of reportChunks(notes,18,25,note=>Math.ceil(note.length/95))){pages.push({...common,kind:'notes',notes:noteChunk,rows:[],total:0});}
     });
   }
-  return {period:{...p},onlyPaid,closingId,plate,pages,total:reportSum(rows,'net'),farmCount:grouped.size,truckCount:new Set(rows.map(row=>row.plate)).size};
+  return {period:{...p},onlyPaid,closingId,invoiceNumber,plate,pages,total:reportSum(rows,'net'),farmCount:grouped.size,truckCount:new Set(rows.map(row=>row.plate)).size};
 }
 
 export function reportMarkup(report) {
@@ -55,7 +56,7 @@ export function reportMarkup(report) {
     const totalLabel=page.status==='Pagos'?'Total pago':'Total líquido';
     const notes=page.notes.length?`<div class="report-notes"><h3>Observações</h3>${page.notes.map(note=>`<p>${reportEscape(note)}</p>`).join('')}</div>`:'';
     return `<article class="report-sheet" aria-label="${reportEscape(page.farmName)}, página ${index+1}">
-      <header class="report-head"><div class="report-brand">frota<span>.</span></div><h1>Relatório quinzenal</h1><h2>${reportEscape(page.farmName)}</h2><div class="report-period"><div><strong>${p.half}ª quinzena de ${reportEscape(monthName)}</strong><p>${reportEscape(periodLabel(p))}</p></div><span class="report-status ${page.status==='Pagos'?'settled':''}">${reportEscape(page.status)}</span></div></header>
+      <header class="report-head"><div class="report-brand">frota<span>.</span></div><h1>Relatório quinzenal</h1><h2>${reportEscape(page.farmName)}</h2><div class="report-period"><div><strong>${p.half}ª quinzena de ${reportEscape(monthName)}</strong><p>${reportEscape(periodLabel(p))}${report.invoiceNumber?` · Fatura ${report.invoiceNumber}`:''}</p></div><span class="report-status ${page.status==='Pagos'?'settled':''}">${reportEscape(page.status)}</span></div></header>
       ${page.kind==='trucks'?`<div class="report-count">${new Set(page.rows.map(row=>row.plate)).size} caminhão(ões)${page.multipleChunks?` nesta página · ${page.farmCount} na fazenda`:''}${report.plate?' · Placa: '+reportEscape(report.plate):''}${report.onlyPaid?' · Somente pagos':''}</div>
       <table class="report-table"><colgroup><col style="width:30%"><col style="width:23%"><col style="width:11%"><col style="width:17%"><col style="width:19%"></colgroup><thead><tr><th>Placa / motorista</th><th>Transportador</th><th class="report-days">Dias a pagar</th><th class="num">Descontos (R$)</th><th class="num">Líquido (R$)</th></tr></thead><tbody>${page.rows.map(row=>`<tr><td><div class="report-truck-heading"><strong>${reportEscape(row.plate)}</strong><span class="report-start">Início: ${dateLabel(row.contractStart)}</span></div><span class="report-driver">${reportEscape(row.driver)}</span>${mixed?`<span class="report-row-status">${row.paid?'Pago em '+dateLabel(row.paid.date):reportRowStatus(row)}</span>`:''}</td><td>${reportEscape(row.carrier)}</td><td class="report-days">${row.payableDays}</td><td class="num">${row.discount?reportMoney(row.discount):'—'}</td><td class="num">${reportMoney(row.net)}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="3">${page.multipleChunks?'SUBTOTAL DESTA PÁGINA':report.plate?'TOTAL DA PLACA NA FAZENDA':'TOTAL DA FAZENDA'}</td><td class="num">${reportMoney(page.discount)}</td><td class="num">${reportMoney(page.total)}</td></tr></tfoot></table>
       <div class="report-total"><strong>${totalLabel}${page.multipleChunks?' nesta página':''}</strong><strong>${money(page.total)}</strong></div>

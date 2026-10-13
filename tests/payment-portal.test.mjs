@@ -22,6 +22,13 @@ test('the group requests all four farms once and carrier receives only approved 
   assert.throws(()=>executeCommand(state,command('payment.record-batch',{requestIds:[state.paymentRequests[0].id],date:'2026-10-06'}),actor),/acesso da transportadora/);
  }
 });
+test('the carrier portal uses the same unique invoice number across farms',()=>{
+ const state=initialState();state.trucks=[...closed().trucks.slice(0,2)];
+ const saved=executeCommand(state,command('period.close',{month:p.month,half:p.half}),group).state;
+ const requestedState=executeCommand(saved,command('payment.request',{month:p.month,half:p.half}),group).state;
+ const dto=presentState({state:requestedState,revision:3,company:{id:group.companyId}},carrier);
+ assert.deepEqual(dto.requests.map(request=>request.invoiceNumber),[1,2]);
+});
 test('one bank account groups farm plates into one complete carrier payment',()=>{
  let state=initialState();const details={method:'pix',holder:'Titular Pix',document:'12345678901',pixKey:'conta@example.com'};state.trucks=[0,1].map(index=>({id:'joint-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:details}));
  state=executeCommand(state,command('payment-account.save',{id:'pix-shared',name:'Conta conjunta',details,truckIds:['joint-0','joint-1']}),group).state;saveClosing(state,p,'farm1','invoice-pix','2026-10-06');

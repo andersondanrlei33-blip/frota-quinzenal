@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,paymentDetailsMissing,validatePaymentDetails} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,paymentDetailsMissing,validatePaymentDetails,allocateInvoiceNumber} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,recordRequestedPaymentBatch,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
@@ -89,7 +89,10 @@ export function executeCommand(input,command,actor,context={}){
     case 'farm.remove':removeFarm(state,p.id);break;
     case 'farm.status':setFarmActive(state,p.id,p.active);break;
     case 'backup.import':{
-      const restored=applyFixedMonthlyRule(validateState(p.state));protectPortalBackup(state,restored);Object.assign(state,restored);break;
+      const restored=applyFixedMonthlyRule(validateState(p.state));protectPortalBackup(state,restored);
+      const previousById=new Map(state.closings.map(closing=>[closing.id,closing]));restored.nextInvoiceNumber=Math.max(state.nextInvoiceNumber||1,restored.nextInvoiceNumber||1);
+      for(const closing of restored.closings){const previous=previousById.get(closing.id);if(previous)closing.invoiceNumber=previous.invoiceNumber;else closing.invoiceNumber=allocateInvoiceNumber(restored);}
+      Object.assign(state,restored);break;
     }
     default:throw Error('Ação não reconhecida.');
   }
