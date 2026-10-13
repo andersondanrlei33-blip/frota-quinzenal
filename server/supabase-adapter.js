@@ -54,7 +54,7 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     sign:receipts.sign
   };
   const mapCte=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,number:r.cte_number,issuer:r.issuer,recipient:r.recipient,shipper:r.shipper||'Não identificado',serviceTaker:r.service_taker||'Não identificado',participantDetails:r.participant_details||{},manifestedNotes:r.manifested_notes||[],totalValue:Number(r.total_value),issuedOn:r.issued_on,uploadedBy:r.uploaded_by,uploadedAt:r.created_at,name:r.file_name,mime:r.content_type,size:r.size_bytes,requestId:r.request_id||null,objectKey:r.object_key}:null;
-  const mapCteRequest=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,invoiceKeys:r.invoice_keys||[],invoiceFiles:(r.invoice_files||[]).map(file=>({id:file.id,name:file.name,mime:file.mime,size:file.size,accessKey:file.accessKey,vehiclePlate:file.vehiclePlate,objectKey:file.objectKey})),note:r.note||'',status:r.status,requestedBy:r.requested_by,requestedEmail:r.requested_email,requestedAt:r.created_at,documentId:r.cte_document_id||null,updatedAt:r.updated_at}:null;
+  const mapCteRequest=r=>r?{id:r.id,companyId:r.company_id,farmId:r.farm_id,farmName:r.farm_name,truckId:r.truck_id,plate:r.plate,driver:r.driver,invoiceKeys:r.invoice_keys||[],invoiceFiles:(r.invoice_files||[]).map(file=>({id:file.id,name:file.name,mime:file.mime,size:file.size,accessKey:file.accessKey,vehiclePlate:file.vehiclePlate,documentType:file.documentType,objectKey:file.objectKey})),note:r.note||'',status:r.status,requestedBy:r.requested_by,requestedEmail:r.requested_email,requestedAt:r.created_at,documentId:r.cte_document_id||null,updatedAt:r.updated_at}:null;
   const cteInvoiceBucket='fleet-cte-invoices';
   const cteRequests={
     async list(companyId,farmId=null){const query=new URLSearchParams({company_id:'eq.'+companyId,select:'*',order:'created_at.desc'});if(farmId)query.set('farm_id','eq.'+farmId);return (await service('/rest/v1/fleet_cte_requests?'+query)||[]).map(mapCteRequest);},
@@ -92,3 +92,4 @@ export function corsResponse(response,request){
   headers.set('Vary','Origin');headers.set('Access-Control-Allow-Headers','authorization,apikey,content-type,x-fleet-company');headers.set('Access-Control-Allow-Methods','GET,POST,OPTIONS');headers.set('Cache-Control','private, no-store');
   return new Response(response.body,{status:response.status,headers});
 }
+

@@ -87,4 +87,5 @@ body.report-open{overflow:hidden}
 .nav-section{display:grid;gap:3px;margin-bottom:7px}.nav-section-label{font-size:9px;letter-spacing:1.2px;color:#80998d;padding:7px 12px 3px}.nav-section[hidden]{display:none!important}@media(min-width:851px){nav{flex:1;min-height:0;overflow-y:auto;align-content:start;scrollbar-width:thin}.sidebar-bottom{padding-top:12px}}@media(max-width:850px){.nav-section{display:contents}.nav-section-label{display:none}}
 
 @media(max-width:850px){.nav-section{display:flex;gap:4px;flex:0 0 auto;margin:0}.nav-section-label{display:none}}
+.cte-correction-confirm{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;font-size:12px;line-height:1.5;cursor:pointer}.cte-correction-confirm input[type=checkbox]{width:16px;min-width:16px;height:16px;min-height:16px;margin:2px 0 0;accent-color:var(--green)}
 

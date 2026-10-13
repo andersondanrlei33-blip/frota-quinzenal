@@ -191,6 +191,18 @@ test('associar CT-e à solicitação exige que todas as NF-e pedidas apareçam n
  await assert.rejects(()=>secondSetup.api(new Request('https://example.test/api/ctes',{method:'POST',body:badForm})),/todas as NF-e solicitadas/);
 });
 
+test('carta de correção anexada permite confirmar placa diferente e associa o CT-e à placa do pedido',async()=>{
+ const key='51260956023496000173550010000008571135775140',request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[key],invoiceFiles:[{id:'correction-one',name:'CARTA-CORRECAO-MINUTA-PLACA-ABC1D23.pdf',documentType:'correction'}]},withOtherPlate=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<placa>ABC1D23</placa>','<placa>BCD5C56</placa>').replace('</infCTeNorm>','<infDoc><infNFe><chave>'+key+'</chave></infNFe></infDoc></infCTeNorm>'));
+ const makeForm=confirm=>{const form=new FormData();form.append('requestId',request.id);if(confirm)form.append('confirmPlateCorrection','true');form.append('file',new Blob([withOtherPlate],{type:'application/xml'}),'cte.xml');return new Request('https://example.test/api/ctes',{method:'POST',body:form});};
+ const withoutConfirmation=setup({party:'carrier',request});await assert.rejects(()=>withoutConfirmation.api(makeForm(false)),/Confira a carta de correção e marque a confirmação/);
+ const {api,calls}=setup({party:'carrier',request}),response=await api(makeForm(true));assert.equal(response.status,201);assert.equal(calls.upload.metadata.plate,'ABC1D23');assert.equal(calls.upload.metadata.truckId,'truck-a');assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.participantDetails.plateCorrection.documentPlate,'BCD5C56');assert.equal(calls.upload.metadata.participantDetails.plateCorrection.linkedPlate,'ABC1D23');assert.deepEqual(calls.upload.metadata.participantDetails.plateCorrection.files,['CARTA-CORRECAO-MINUTA-PLACA-ABC1D23.pdf']);assert.equal(calls.upload.metadata.participantDetails.plateCorrection.confirmedBy,userId);assert.ok(calls.upload.metadata.participantDetails.plateCorrection.confirmedAt);
+});
+
+test('placa divergente sem carta de correção continua bloqueada',async()=>{
+ const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[]},withOtherPlate=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<placa>ABC1D23</placa>','<placa>BCD5C56</placa>')),form=new FormData();form.append('requestId',request.id);form.append('confirmPlateCorrection','true');form.append('file',new Blob([withOtherPlate],{type:'application/xml'}),'cte.xml');
+ const {api}=setup({party:'carrier',request});await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),/placa do CT-e precisa ser a mesma placa/);
+});
+
 test('cada usuário salva sua seleção e ordem de colunas no portal da própria empresa',async()=>{
  const {api,calls}=setup({party:'group',role:'viewer'}),mergedDocuments=['shipperDocument','recipientDocument','serviceTakerDocument','issuerDocument'],visibleColumns=['plate','shipperCity',...mergedDocuments],columnOrder=['plate','shipperCity',...mergedDocuments,...CTE_REPORT_COLUMNS.filter(field=>!['plate','shipperCity',...mergedDocuments].includes(field))];
  const response=await api(new Request('https://example.test/api/ctes/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visibleColumns,columnOrder})}));
@@ -198,3 +210,4 @@ test('cada usuário salva sua seleção e ordem de colunas no portal da própria
  assert.deepEqual(mergedDocuments.filter(field=>CTE_REPORT_COLUMNS.includes(field)),mergedDocuments);assert.equal(CTE_REPORT_COLUMNS.filter(field=>/^(shipper|recipient|serviceTaker|issuer)(Cnpj|Cpf)$/.test(field)).length,0);
  const invalid=await api(new Request('https://example.test/api/ctes/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visibleColumns:['unknown'],columnOrder:['unknown']})}));assert.equal(invalid.status,400);
 });
+

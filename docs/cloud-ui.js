@@ -1,5 +1,5 @@
-import {createCloudClient} from './cloud-client.js?v=100';
-import {CLOUD_CONFIG} from './config.js?v=100';
+import {createCloudClient} from './cloud-client.js?v=101';
+import {CLOUD_CONFIG} from './config.js?v=101';
 export const cloud=createCloudClient(CLOUD_CONFIG);
 export function authErrorMessage(error){
   const message=error?.message||'';
