@@ -64,6 +64,15 @@ test('group can follow payment requests but cannot register a payment',async()=>
  const html=app.get('#main').innerHTML;assert.match(html,/Conta do João/);assert.match(html,/Aguardando pagamento/);assert.doesNotMatch(html,/data-action="pay-group"|Registrar pagamento/);
  const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});assert.equal(app.get('#modal').open,false);assert.match(app.get('#toast').textContent,/Acesse como transportadora/);
 });
+test('transportadora envia CT-e somente pela solicitação com placa e fazenda definidas',async()=>{
+ const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
+ app.run("view='ctes';cteSummaryLoaded=true;render()");const html=app.get('#main').innerHTML;
+ assert.doesNotMatch(html,/data-action="cte-upload"|Enviar primeiro CT-e/);
+ await app.action('cte-upload');assert.equal(app.get('#modal').open,false);
+ app.run("cteRequests=[{id:'request-one',status:'pending',farmName:'Fazenda Veneza',plate:'ATV2C70',requestedEmail:'funcionario@example.test',invoiceKeys:[]}];cteUploadForm('request-one')");
+ assert.match(app.get('#modal-content').innerHTML,/Fazenda Veneza · ATV2C70/);
+ assert.throws(()=>app.run("cteUploadForm()"),/solicitação pendente da fazenda/);
+});
 test('payment history shows each joint transfer once and opens its plates, amounts and receipt',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const detailsA={method:'pix',holder:'Titular A',document:'12345678901',pixKey:'conta-a@example.com'},detailsB={method:'pix',holder:'Titular B',document:'12345678901',pixKey:'conta-b@example.com'},state=initialState();
