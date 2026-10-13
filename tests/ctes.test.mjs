@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createCteApi,CTE_REPORT_COLUMNS,extractNfeVehiclePlate,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
-const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
+const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infCarga><vCarga>1000</vCarga><proPred>Soja</proPred><infQ><cUnid>01</cUnid><tpMed>PESO BRUTO</tpMed><qCarga>44222.000</qCarga></infQ></infCarga><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
 const xmlToma4=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<toma3><toma>3</toma></toma3>','<toma4><xNome>Tomador Contratante Ltda</xNome></toma4>'));
 const pdf=new TextEncoder().encode('%PDF-1.7 fake');
 const pdfText=`BARROS TRANSPORTES RODOVIARIOS LTDA DACTE Modal
@@ -20,11 +20,12 @@ NFE 56.023.496/0001-73 1/857
 NFE 56.023.496/0001-73 1/858
 51260956023496000173550010000008581135775140
 OBSERVAÇÕES
+PESO BRUTO: 44.222,000 KG
 Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
 const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
-function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,repositoryState=null,request=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
+function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,repositoryState=null,request=null,documents=null,downloadCte=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
  const calls={};
  const backend={
   actor:async()=>({userId,email:'user@example.com',companyId,party,role,farmId}),
@@ -33,7 +34,9 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
   ctes:{
    getPreferences:async()=>null,
    savePreferences:async(_user,_company,prefs)=>{calls.preferences=prefs;return prefs;},
-   list:async()=>[{id:documentId,farmId:'farm-a',farmName:'Fazenda A',truckId:'truck-a',plate:'ABC1D23',driver:'João',number:'123',issuedOn:'2026-10-08',uploadedAt:'2026-10-08T12:00:00Z',name:'cte.xml',mime:'application/xml',size:xml.length,objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}],
+   list:async()=>documents||[{id:documentId,farmId:'farm-a',farmName:'Fazenda A',truckId:'truck-a',plate:'ABC1D23',driver:'João',number:'123',issuedOn:'2026-10-08',uploadedAt:'2026-10-08T12:00:00Z',name:'cte.xml',mime:'application/xml',size:xml.length,objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}],
+   download:async document=>downloadCte?downloadCte(document):xml,
+   saveWeight:async(company,id,weight,unit)=>{calls.savedWeight={company,id,weight,unit};},
    upload:async(actor,metadata,bytes,details,snapshot)=>{calls.upload={actor,metadata,bytes,details,snapshot};return {id:documentId,name:details.name,mime:details.mime,size:details.size};},
    find:async(idCompany,id)=>idCompany===companyId&&id===documentId?{name:'cte.xml',mime:'application/xml',objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}:null,
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
@@ -53,7 +56,7 @@ const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
 };
 
 test('extrai automaticamente participantes, valor, data e placa do XML do CT-e',()=>{
- const parsed=parseCteXml(xml);assert.equal(parsed.issuer,'Transportadora Exemplo Ltda');assert.equal(parsed.recipient,'Fazenda Exemplo SA');assert.equal(parsed.shipper,'Remetente Exemplo Ltda');assert.equal(parsed.serviceTaker,'Fazenda Exemplo SA');assert.deepEqual(parsed.participantDetails.shipper,{city:'',stateRegistration:'',cnpj:'',cpf:''});
+ const parsed=parseCteXml(xml);assert.equal(parsed.issuer,'Transportadora Exemplo Ltda');assert.equal(parsed.recipient,'Fazenda Exemplo SA');assert.equal(parsed.shipper,'Remetente Exemplo Ltda');assert.equal(parsed.serviceTaker,'Fazenda Exemplo SA');assert.equal(parsed.cargoWeight,44222);assert.equal(parsed.cargoWeightUnit,'kg');assert.deepEqual(parsed.participantDetails.shipper,{city:'',stateRegistration:'',cnpj:'',cpf:''});
  assert.equal(parseCteXml(xmlToma4).serviceTaker,'Tomador Contratante Ltda');
  const accessKey='51260956023496000173550010000008571135775140',secondAccessKey=accessKey.slice(0,25)+'000000858'+accessKey.slice(34),withNotes=new TextEncoder().encode(new TextDecoder().decode(xml).replace('</infCTeNorm>','<infDoc><infNFe><chave>'+accessKey+'</chave></infNFe><infNFe><chave>'+secondAccessKey+'</chave></infNFe></infDoc></infCTeNorm>'));
  assert.deepEqual(parseCteXml(withNotes).manifestedNotes,['857','858']);
@@ -62,7 +65,7 @@ test('extrai automaticamente participantes, valor, data e placa do XML do CT-e',
 });
 
 test('extrai automaticamente dados do DACTE e todas as notas manifestadas',()=>{
- const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');assert.deepEqual(parsed.manifestedNotes,['857','858']);
+ const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.cargoWeight,44222);assert.equal(parsed.cargoWeightUnit,'kg');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');assert.deepEqual(parsed.manifestedNotes,['857','858']);
  const detailed=parseCtePdfText(pdfText.replace('Tomador Serviço:', 'Município: CAMPO NOVO DO PARECIS CEP: 78360-000 Município: LUCAS DO RIO VERDE CEP: 78450-000\nCNPJ/CPF: 56.023.496/0001-73 Insc.Est: 140735488 CNPJ/CPF: 330.803.640-15 Insc.Est: 135597749\nTomador Serviço:'));
  assert.deepEqual(detailed.participantDetails.shipper,{city:'CAMPO NOVO DO PARECIS',stateRegistration:'140735488',cnpj:'56.023.496/0001-73',cpf:''});assert.deepEqual(detailed.participantDetails.recipient,{city:'LUCAS DO RIO VERDE',stateRegistration:'135597749',cnpj:'',cpf:'330.803.640-15'});assert.equal(detailed.participantDetails.serviceTaker.cpf,'330.803.640-15');
 });
@@ -99,7 +102,7 @@ test('valida PDF da NF-e sem exigir leitura da chave pelo PDF',()=>{
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
  const {api,calls}=setup();const response=await api(formRequest());
- assert.equal(response.status,201);assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.issuer,'Transportadora Exemplo Ltda');assert.equal(calls.upload.metadata.recipient,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.shipper,'Remetente Exemplo Ltda');assert.equal(calls.upload.metadata.serviceTaker,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.totalValue,1250.75);assert.equal(calls.upload.snapshot.plate,'ABC1D23');assert.equal(calls.upload.details.mime,'application/xml');
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.issuer,'Transportadora Exemplo Ltda');assert.equal(calls.upload.metadata.recipient,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.shipper,'Remetente Exemplo Ltda');assert.equal(calls.upload.metadata.serviceTaker,'Fazenda Exemplo SA');assert.equal(calls.upload.metadata.totalValue,1250.75);assert.equal(calls.upload.metadata.cargoWeight,44222);assert.equal(calls.upload.metadata.cargoWeightUnit,'kg');assert.equal(calls.upload.snapshot.plate,'ABC1D23');assert.equal(calls.upload.details.mime,'application/xml');
  const denied=await setup({party:'group'}).api(formRequest());assert.equal(denied.status,403);
  const viewer=await setup({role:'viewer'}).api(formRequest());assert.equal(viewer.status,403);
  const noMatchApi=createCteApi({backend:{actor:async()=>({userId,email:'user@example.com',companyId,party:'carrier',role:'operator'}),responseJson:(value,status=200)=>new Response(JSON.stringify(value),{status}),repository:{load:async()=>({state:{farms:state.farms,trucks:[]}})},ctes:{upload:async()=>{throw Error('unexpected');}}}});
@@ -108,7 +111,7 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
 
 test('transportadora envia PDF do DACTE e associa pela placa mesmo quando emissão antecede início cadastrado',async()=>{
  const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
- assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.deepEqual(calls.upload.metadata.manifestedNotes,['857','858']);assert.equal(calls.upload.details.mime,'application/pdf');
+ assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.metadata.cargoWeight,44222);assert.equal(calls.upload.metadata.cargoWeightUnit,'kg');assert.deepEqual(calls.upload.metadata.manifestedNotes,['857','858']);assert.equal(calls.upload.details.mime,'application/pdf');
 });
 
 test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros sem correspondência de período',async()=>{
@@ -121,6 +124,10 @@ test('portal lista os documentos da empresa e fornece download privado por tempo
  assert.equal(listed.status,200);const data=await listed.json();assert.equal(data.documents[0].plate,'ABC1D23');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').start,'2026-10-01');assert.equal(data.trucks.find(truck=>truck.id==='truck-a').transferIn,null);
  const downloaded=await api(new Request('https://example.test/api/ctes/'+documentId));assert.equal(downloaded.status,200);assert.match((await downloaded.json()).signedUrl,/download=cte\.xml/);
  const unknown=await api(new Request('https://example.test/api/ctes/44444444-4444-4444-8444-444444444444'));assert.equal(unknown.status,404);
+});
+test('a lista lê e salva uma única vez o peso dos CT-es antigos sem expor o caminho do arquivo',async()=>{
+ const oldDocument={id:documentId,farmId:'farm-a',farmName:'Fazenda A',truckId:'truck-a',plate:'ABC1D23',driver:'João',number:'123',issuedOn:'2026-10-08',uploadedAt:'2026-10-08T12:00:00Z',name:'cte.xml',mime:'application/xml',size:xml.length,cargoWeight:null,cargoWeightChecked:false,objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}, {api,calls}=setup({party:'group',role:'viewer',documents:[oldDocument]});
+ const listed=await api(new Request('https://example.test/api/ctes')),data=await listed.json();assert.equal(data.documents[0].cargoWeight,44222);assert.equal(data.documents[0].cargoWeightUnit,'kg');assert.equal(calls.savedWeight.weight,44222);assert.equal(calls.savedWeight.unit,'kg');assert.equal('objectKey' in data.documents[0],false);assert.equal('cargoWeightChecked' in data.documents[0],false);
 });
 test('CT-e portal endpoint does not return daily accrual amounts',async()=>{
  const group=setup({party:'carrier'}),groupResponse=await group.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),groupData=await groupResponse.json();
