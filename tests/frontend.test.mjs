@@ -165,6 +165,12 @@ test('CT-e report offers all manifested invoice numbers in one customizable colu
   assert.match(app.get('#main').innerHTML,/NOTAS FISCAIS MANIFESTADAS/);assert.match(app.get('#main').innerHTML,/857, 858/);
   app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Notas fiscais manifestadas/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="manifestedNotes"/);
 });
+test('CT-e report columns can be dragged to any position in the saved order',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  app.run("ctePreferences={visibleColumns:['number','shipper','plate'],columnOrder:['number','shipper','plate']};ctePreferencesForm()");
+  assert.match(app.get('#modal-content').innerHTML,/draggable="true" data-cte-pref-row="number"/);assert.match(app.get('#modal-content').innerHTML,/arraste cada linha para a posição desejada/);
+  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder')],['shipper','plate','number']);
+});
 test('account reconciliation compares lifetime payments and CT-es across farm transfers',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const state=initialState();state.trucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'}}];

@@ -365,10 +365,11 @@ function reconciliationDetail(id){
 function ctePreferencesForm(){
  const current=ctePreferences.visibleColumns.length?ctePreferences.visibleColumns:DEFAULT_CTE_COLUMNS,order=ctePreferences.columnOrder.length?ctePreferences.columnOrder:ALL_CTE_COLUMNS;
  ctePreferenceDraft={visibleColumns:[...current],columnOrder:[...order]};
- const rows=()=>ctePreferenceDraft.columnOrder.map((field,index)=>`<div class="cte-preference-row"><label><input type="checkbox" data-cte-pref-column="${field}" ${ctePreferenceDraft.visibleColumns.includes(field)?'checked':''}><span>${e(CTE_FILTER_FIELDS[field].label)}</span></label><span><button class="btn small" type="button" data-action="cte-pref-up" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para cima" ${index===0?'disabled':''}>↑</button> <button class="btn small" type="button" data-action="cte-pref-down" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para baixo" ${index===ctePreferenceDraft.columnOrder.length-1?'disabled':''}>↓</button></span></div>`).join('');
- openModal('Personalizar relatório','Escolha as colunas, ajuste a ordem e salve sua visualização pessoal.',`<form id="cte-preferences-form"><div class="cte-preference-list">${rows()}</div><div class="form-note">A preferência fica salva na sua conta. Os CT-es e os filtros continuam compartilhados com a empresa.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar personalização</button></div></form>`);
+ openModal('Personalizar relatório','Escolha as colunas e arraste cada linha para a posição desejada.',`<form id="cte-preferences-form"><div class="cte-preference-list">${ctePreferenceRowsHtml()}</div><div class="form-note">A preferência fica salva na sua conta. Os CT-es e os filtros continuam compartilhados com a empresa.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar personalização</button></div></form>`);
 }
-function renderCtePreferenceRows(){const list=modalContent.querySelector('.cte-preference-list');if(!list||!ctePreferenceDraft)return;list.innerHTML=ctePreferenceDraft.columnOrder.map((field,index)=>`<div class="cte-preference-row"><label><input type="checkbox" data-cte-pref-column="${field}" ${ctePreferenceDraft.visibleColumns.includes(field)?'checked':''}><span>${e(CTE_FILTER_FIELDS[field].label)}</span></label><span><button class="btn small" type="button" data-action="cte-pref-up" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para cima" ${index===0?'disabled':''}>↑</button> <button class="btn small" type="button" data-action="cte-pref-down" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para baixo" ${index===ctePreferenceDraft.columnOrder.length-1?'disabled':''}>↓</button></span></div>`).join('');}
+function ctePreferenceRowsHtml(){return ctePreferenceDraft.columnOrder.map((field,index)=>`<div class="cte-preference-row" draggable="true" data-cte-pref-row="${field}"><label><input type="checkbox" data-cte-pref-column="${field}" ${ctePreferenceDraft.visibleColumns.includes(field)?'checked':''}><span>${e(CTE_FILTER_FIELDS[field].label)}</span></label><span class="cte-preference-actions"><span class="cte-preference-grip" aria-hidden="true" title="Arraste para mudar a ordem">⠿</span><button class="btn small" type="button" data-action="cte-pref-up" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para cima" ${index===0?'disabled':''}>↑</button> <button class="btn small" type="button" data-action="cte-pref-down" data-field="${field}" aria-label="Mover ${e(CTE_FILTER_FIELDS[field].label)} para baixo" ${index===ctePreferenceDraft.columnOrder.length-1?'disabled':''}>↓</button></span></div>`).join('');}
+function moveCtePreference(field,target,after=false){if(!ctePreferenceDraft||field===target)return;const order=ctePreferenceDraft.columnOrder,from=order.indexOf(field);if(from<0)return;order.splice(from,1);const targetIndex=order.indexOf(target);if(targetIndex<0){order.splice(from,0,field);return;}order.splice(targetIndex+(after?1:0),0,field);}
+function renderCtePreferenceRows(){const list=modalContent.querySelector('.cte-preference-list');if(!list||!ctePreferenceDraft)return;list.innerHTML=ctePreferenceRowsHtml();}
 
 function hasCteRequestDraft(){const form=main.querySelector('#cte-request-form');if(!form)return false;const plate=form.querySelector('[name="truckId"]'),files=form.querySelector('[name="invoicePdfs"]'),note=form.querySelector('[name="note"]');return Boolean(plate?.value||files?.files?.length||note?.value.trim());}
 async function loadCteData(){
@@ -647,6 +648,22 @@ function closeReport() {reportDialog.close();document.body.classList.remove('rep
 function printReport() {if(!reportDialog.open||document.querySelector('#report-print').disabled)return;const title=document.title;document.title=`Rota Safra - Relatório ${reportContext.period.key}${reportContext.plate?' - '+reportContext.plate:''}`;try{window.print();}finally{document.title=title;}}
 reportDialog.addEventListener('close',()=>{document.body.classList.remove('report-open');reportInvoker?.focus?.();});
 let pendingBackup=null;
+let draggedCtePreference='';
+document.addEventListener('dragstart',ev=>{
+  const row=ev.target.closest?.('[data-cte-pref-row]');if(!row||!ctePreferenceDraft)return;
+  draggedCtePreference=row.dataset.ctePrefRow;ev.dataTransfer?.setData('text/plain',draggedCtePreference);if(ev.dataTransfer)ev.dataTransfer.effectAllowed='move';row.classList.add('is-dragging');
+});
+document.addEventListener('dragover',ev=>{
+  const row=ev.target.closest?.('[data-cte-pref-row]');if(!row||!draggedCtePreference)return;
+  ev.preventDefault();const rect=row.getBoundingClientRect(),after=ev.clientY>=rect.top+rect.height/2;row.classList.toggle('drop-after',after);row.classList.toggle('drop-before',!after);
+});
+document.addEventListener('drop',ev=>{
+  const row=ev.target.closest?.('[data-cte-pref-row]');if(!row||!ctePreferenceDraft)return;
+  ev.preventDefault();const field=ev.dataTransfer?.getData('text/plain')||draggedCtePreference,rect=row.getBoundingClientRect();
+  ctePreferenceDraft.visibleColumns=[...modalContent.querySelectorAll('[data-cte-pref-column]:checked')].map(input=>input.dataset.ctePrefColumn);
+  moveCtePreference(field,row.dataset.ctePrefRow,ev.clientY>=rect.top+rect.height/2);draggedCtePreference='';renderCtePreferenceRows();
+});
+document.addEventListener('dragend',ev=>{ev.target.closest?.('[data-cte-pref-row]')?.classList.remove('is-dragging');draggedCtePreference='';});
 document.addEventListener('click',async ev=>{
   const b=ev.target.closest('[data-action]');if(!b||b.disabled)return;const a=b.dataset.action,id=b.dataset.id;
   try {
