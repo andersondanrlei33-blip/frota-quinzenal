@@ -1,5 +1,5 @@
-import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=105';
-import {createReport,reportMarkup} from './reports.js?v=105';
+import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=106';
+import {createReport,reportMarkup} from './reports.js?v=106';
 import {cloud,authErrorMessage} from './cloud-ui.js?v=105';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
@@ -132,7 +132,7 @@ function adoptServerData(data) {
 }
 function updateCloudStatus() {
   const label=document.querySelector('#cloud-status');if(label)label.textContent=stale?'Há novas alterações. Atualize os dados.':saving?'Salvando no servidor…':'Dados salvos no banco online';
-  const company=document.querySelector('#company-label');if(company)company.textContent=currentCompany?.name||'Frota';
+  const company=document.querySelector('#company-label');if(company)company.textContent=currentCompany?.name||'Rota Safra';
   const account=document.querySelector('#account-label');if(account)account.textContent=currentUser?(currentUser.email+' · '+(isCarrier()?'Transportadora':isFarmEmployee()?'Funcionário da fazenda':'Grupo das fazendas')):'';
 }
 async function refreshServerData({automatic=false}={}) {
@@ -146,7 +146,7 @@ async function refreshServerData({automatic=false}={}) {
 function renderAccess() {
   document.body.classList.add('logged-out');
   const ready=inviteTicket&&inviteInfo;
-  main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>${ready?inviteSignin?'Aceitar acesso':'Configurar seu acesso':'Entrar no sistema'}</h1><p>${ready?e(inviteInfo.companyName):'Acesse os registros da empresa, salvos no banco online.'}</p><form id="access-form" class="auth-form">${errBox()}${ready&&inviteInfo.firstAccess?'<div class="field"><label for="access-company">Nome da empresa</label><input id="access-company" name="companyName" maxlength="120" required autocomplete="organization"></div>':''}<div class="field"><label for="access-email">E-mail</label><input id="access-email" name="email" type="email" value="${e(ready?inviteInfo.email:'')}" ${ready&&inviteInfo.email?'readonly':''} required autocomplete="username"></div><div class="field"><label for="access-password">Senha</label><input id="access-password" name="password" type="password" required ${ready&&!inviteSignin?'minlength="6"':''} autocomplete="${ready&&!inviteSignin?'new-password':'current-password'}">${ready&&!inviteSignin?'<small>Use pelo menos 6 caracteres. A senha é definida aqui.</small>':''}</div><button class="btn primary" type="submit" ${inviteTicket&&!ready?'disabled':''}>${ready&&!inviteSignin?'Criar acesso':'Entrar'}</button>${ready?`<button type="button" class="btn ghost" data-action="auth-switch">${inviteSignin?'Criar uma nova conta':'Já tenho uma conta'}</button>`:''}</form>${inviteTicket&&!ready?'<p id="invite-message" class="auth-help">Conferindo o link de acesso…</p>':'<p class="auth-help">O administrador da empresa libera os usuários e seus perfis de acesso.</p>'}</section></div>`;
+  main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">Rota Safra<span>.</span></div><h1>${ready?inviteSignin?'Aceitar acesso':'Configurar seu acesso':'Entrar no sistema'}</h1><p>${ready?e(inviteInfo.companyName):'Acesse os registros da empresa, salvos no banco online.'}</p><form id="access-form" class="auth-form">${errBox()}${ready&&inviteInfo.firstAccess?'<div class="field"><label for="access-company">Nome da empresa</label><input id="access-company" name="companyName" maxlength="120" required autocomplete="organization"></div>':''}<div class="field"><label for="access-email">E-mail</label><input id="access-email" name="email" type="email" value="${e(ready?inviteInfo.email:'')}" ${ready&&inviteInfo.email?'readonly':''} required autocomplete="username"></div><div class="field"><label for="access-password">Senha</label><input id="access-password" name="password" type="password" required ${ready&&!inviteSignin?'minlength="6"':''} autocomplete="${ready&&!inviteSignin?'new-password':'current-password'}">${ready&&!inviteSignin?'<small>Use pelo menos 6 caracteres. A senha é definida aqui.</small>':''}</div><button class="btn primary" type="submit" ${inviteTicket&&!ready?'disabled':''}>${ready&&!inviteSignin?'Criar acesso':'Entrar'}</button>${ready?`<button type="button" class="btn ghost" data-action="auth-switch">${inviteSignin?'Criar uma nova conta':'Já tenho uma conta'}</button>`:''}</form>${inviteTicket&&!ready?'<p id="invite-message" class="auth-help">Conferindo o link de acesso…</p>':'<p class="auth-help">O administrador da empresa libera os usuários e seus perfis de acesso.</p>'}</section></div>`;
 }
 const accessProfiles=[['group:operator','Grupo — cadastros, fechamentos e solicitações'],['carrier:operator','Transportadora — pagamentos com comprovante'],['farm:operator','Funcionário — solicitar e receber CT-e'],['group:viewer','Grupo — somente consulta'],['carrier:viewer','Transportadora — somente consulta'],['farm:viewer','Funcionário — somente consulta de CT-e'],['group:admin','Administrador do grupo — equipe e configurações']];
 const profileOptions=value=>accessProfiles.map(([key,label])=>opt(key,label,value)).join('');
@@ -644,7 +644,7 @@ function openReport(closingId='',invoker=null) {
   renderReportPreview(farmId,false);document.body.classList.add('report-open');if(!reportDialog.open)reportDialog.showModal();
 }
 function closeReport() {reportDialog.close();document.body.classList.remove('report-open');reportInvoker?.focus?.();}
-function printReport() {if(!reportDialog.open||document.querySelector('#report-print').disabled)return;const title=document.title;document.title=`Frota - Relatório ${reportContext.period.key}${reportContext.plate?' - '+reportContext.plate:''}`;try{window.print();}finally{document.title=title;}}
+function printReport() {if(!reportDialog.open||document.querySelector('#report-print').disabled)return;const title=document.title;document.title=`Rota Safra - Relatório ${reportContext.period.key}${reportContext.plate?' - '+reportContext.plate:''}`;try{window.print();}finally{document.title=title;}}
 reportDialog.addEventListener('close',()=>{document.body.classList.remove('report-open');reportInvoker?.focus?.();});
 let pendingBackup=null;
 document.addEventListener('click',async ev=>{
@@ -893,11 +893,11 @@ window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0);});
 async function restoreSession(){
   if(!cloud.hasSession()){render();return;}
   document.body.classList.add('logged-out');
-  main.innerHTML='<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>Restaurando acesso</h1><p>Conferindo sua sessão com o servidor…</p></section></div>';
+  main.innerHTML='<div class="login-page"><section class="auth-card"><div class="auth-brand">Rota Safra<span>.</span></div><h1>Restaurando acesso</h1><p>Conferindo sua sessão com o servidor…</p></section></div>';
   try{adoptServerData(await cloud.load());render();}
   catch(error){
     if(error.status===400||error.status===401||error.status===403){cloud.forgetSession();render();return;}
-    main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">frota<span>.</span></div><h1>Não foi possível conectar</h1><p>${e(authErrorMessage(error))}</p><div class="actions" style="margin-top:20px"><button class="btn primary" data-action="restore-session">Tentar novamente</button><button class="btn" data-action="forget-session">Entrar novamente</button></div></section></div>`;
+    main.innerHTML=`<div class="login-page"><section class="auth-card"><div class="auth-brand">Rota Safra<span>.</span></div><h1>Não foi possível conectar</h1><p>${e(authErrorMessage(error))}</p><div class="actions" style="margin-top:20px"><button class="btn primary" data-action="restore-session">Tentar novamente</button><button class="btn" data-action="forget-session">Entrar novamente</button></div></section></div>`;
   }
 }
 if(inviteTicket)render();else restoreSession();

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#172c2b"><meta name="referrer" content="no-referrer">
-  <meta name="description" content="Controle de caminhões, descontos e pagamentos por quinzena.">
-  <title>Frota — Pagamentos quinzenais</title>
+  <meta name="description" content="Rota Safra: controle de frota, diárias, pagamentos e CT-e.">
+  <title>Rota Safra — Gestão de frota</title>
   <link rel="stylesheet" href="./styles.css?v=105">
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="#overview" aria-label="Frota, visão geral"><span class="brand-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 9h15v14H4zM19 15h5l4 5v3h-9" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="9" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/></svg></span><span>frota<span class="brand-dot">.</span></span></a>
+    <a class="brand" href="#overview" aria-label="Rota Safra, visão geral"><span class="brand-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 9h15v14H4zM19 15h5l4 5v3h-9" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="9" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="24" r="3" fill="#172c2b" stroke="currentColor" stroke-width="2.2"/></svg></span><span>Rota Safra<span class="brand-dot">.</span></span></a>
     <div class="workspace-label">MENU PRINCIPAL</div>
     <nav aria-label="Menu principal">
       <section class="nav-section" data-nav-section="operation"><div class="nav-section-label">FROTA</div>
@@ -34,14 +34,14 @@
     <div class="sidebar-bottom"><div class="storage-label"><i></i><span id="cloud-status">Banco online</span></div><div id="account-label" class="secondary"></div><div class="cloud-sidebar-actions"><button class="btn small" data-action="cloud-refresh">Atualizar dados</button><button class="btn small" data-action="cloud-logout">Sair</button></div></div>
   </aside>
   <div class="shell">
-    <header class="topbar"><div><span class="breadcrumb">Frota</span><span class="breadcrumb-sep">/</span><span id="breadcrumb-current">Visão geral</span></div><span class="topbar-right"><span id="company-label">Frota</span><span class="version-pill">ONLINE</span></span></header>
+    <header class="topbar"><div><span class="breadcrumb">Rota Safra</span><span class="breadcrumb-sep">/</span><span id="breadcrumb-current">Visão geral</span></div><span class="topbar-right"><span id="company-label">Rota Safra</span><span class="version-pill">ONLINE</span></span></header>
     <main id="main" tabindex="-1"></main>
-    <footer>Frota · Operação, pagamentos e CT-e <span>Registros compartilhados da empresa, salvos no banco online.</span></footer>
+    <footer>Rota Safra · Gestão de frota, diárias e CT-e <span>Registros compartilhados da empresa, salvos no banco online.</span></footer>
   </div>
   <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
   <dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=105"></script>
+  <script type="module" src="./app.js?v=106"></script>
 </body>
 </html>
 
