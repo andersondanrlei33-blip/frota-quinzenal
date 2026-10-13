@@ -4,7 +4,8 @@ export const partyOf=actor=>actor?.party||'group';
 export function authorizePortalCommand(command,actor){
  const party=partyOf(actor),payment=['payment.record','payment.record-batch','payment.undo','funding.receipt'].includes(command.type);
  if(party==='carrier'&&!payment)fail('A transportadora pode enviar recibos assinados e registrar pagamentos dos motoristas.');
- if(party==='group'&&['payment.record','payment.record-batch','funding.receipt'].includes(command.type))fail('Este documento deve ser enviado pelo acesso da transportadora.');
+ if(['payment.record','payment.record-batch'].includes(command.type)&&party!=='carrier')fail('Somente o acesso da transportadora pode registrar pagamentos.');
+ if(command.type==='funding.receipt'&&party!=='carrier')fail('Este documento deve ser enviado pelo acesso da transportadora.');
  if(party==='group'&&command.type==='payment.undo'&&actor.role!=='admin')fail('Somente a transportadora pode corrigir esse pagamento.');
 }
 export function requestPayments(state,payload,actor){
@@ -91,3 +92,4 @@ export function presentState(current,actor){
  }
  return {...current,user};
 }
+
