@@ -108,9 +108,9 @@ test('fortnight preview groups transferred periods into one plate row and one en
  transferTruck(state,'atv-origin','farm2','2026-10-12','','atv-veneza');transferTruck(state,'atv-veneza','farm1','2026-10-13','','atv-return');
  app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;farmFilter='';location.hash='#closings';render()");
  const html=app.get('#main').innerHTML,preview=html.slice(html.indexOf('Diárias previstas na quinzena'),html.indexOf('Totais por transportador'));
- assert.equal((preview.match(/class="plate">ATV2C70/g)||[]).length,1);assert.match(preview,/3 período\\(s\\)/);assert.match(preview,/15<span class="secondary">total na quinzena/);assert.match(preview,/R\\$\\s?17\\.500,00/);assert.match(preview,/Detalhes \\(3\\)/);
+ assert.equal((preview.match(/class="plate">ATV2C70/g)||[]).length,1);assert.match(preview,/3 período\(s\)/);assert.match(preview,/15<span class="secondary">total na quinzena/);assert.match(preview,/R\$\s?17\.500,00/);assert.match(preview,/Detalhes \(3\)/);
  await app.action('fortnight-plate-detail','',{plate:'ATV2C70'});const details=app.get('#modal-content').innerHTML;
- assert.match(details,/Fazenda 1 · Fazenda 2/);assert.match(details,/Períodos considerados/);assert.match(details,/11\\/10\\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
+ assert.match(details,/Fazenda 1 · Fazenda 2/);assert.match(details,/Períodos considerados/);assert.match(details,/11\/10\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
 });
 test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
