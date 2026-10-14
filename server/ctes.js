@@ -34,6 +34,12 @@ export function extractNfeVehiclePlate(text){
  const plate=match?.[1].replace(/[^A-Z0-9]/g,'')||'';
  return plate.length===7?plate:'';
 }
+const parseBrazilianWeight=value=>{const token=String(value||'').trim().replace(/\s/g,'');if(!token)return null;const normalized=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,'');const number=Number(normalized);return Number.isFinite(number)&&number>=0?Number(number.toFixed(3)):null;};
+export function extractNfeCargoWeight(text){
+ const lines=String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),folded=lines.map(plain),index=folded.findIndex(line=>line.includes('PESO BRUTO'));if(index<0)return {cargoWeight:null,cargoWeightUnit:null};
+ const block=lines.slice(index,index+3).join(' '),match=block.match(/PESO\s+BRUTO\s*[:=]?\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i);if(!match)return {cargoWeight:null,cargoWeightUnit:null};
+ const value=parseBrazilianWeight(match[1]);if(value===null)return {cargoWeight:null,cargoWeightUnit:null};const isTonne=/^(T|TON|TONELADAS)$/i.test(match[2]||'');return {cargoWeight:Number((value*(isTonne?1000:1)).toFixed(3)),cargoWeightUnit:'kg'};
+}
 const manifestedNotesFromXml=normalized=>{
  const documents=xmlElement(normalized,'infDoc'),notes=[];
  for(const entry of xmlElements(documents,'infNFe')){const accessKey=xmlText(entry,'chave').replace(/\D/g,'');if(accessKey.length===44)notes.push(String(Number(accessKey.slice(25,34))));}
@@ -140,7 +146,7 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    const isMultipart=request.headers.get('Content-Type')?.toLowerCase().includes('multipart/form-data'),data=isMultipart?await boundedFormData(request,20*1024*1024+65536):null;
    const text=isMultipart?String(data.get('payload')||''):await request.text();if(text.length>12000)return backend.responseJson({error:'A solicitação excede o tamanho permitido.'},413);
    const body=JSON.parse(text),truckId=String(body.truckId||'');
-   const invoiceFiles=[];if(data){if(data.getAll('invoiceFiles').some(file=>file&&typeof file.arrayBuffer==='function'&&file.size))throw Error('Esta solicitação aceita somente PDFs das NF-e.');const pdfFiles=data.getAll('invoicePdfs').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size);if(pdfFiles.length>10)throw Error('Anexe no máximo 10 PDFs de NF-e por solicitação.');let total=0;for(const file of pdfFiles){if(file.size>REQUEST_FILE_LIMIT)throw Error('Cada PDF deve ter até 10 MB.');total+=file.size;if(total>REQUEST_TOTAL_FILE_LIMIT)throw Error('A soma dos PDFs deve ter até 20 MB por solicitação.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfePdf(bytes,file.name),text=await readNfePdf(bytes);details.vehiclePlate=extractNfeVehiclePlate(text);if(!details.vehiclePlate)throw Error(`Não consegui localizar a placa do veículo no PDF ${details.name}. Confira se o DANFE informa a placa no campo “Placa do veículo”.`);invoiceFiles.push({bytes,details});}}
+   const invoiceFiles=[];if(data){if(data.getAll('invoiceFiles').some(file=>file&&typeof file.arrayBuffer==='function'&&file.size))throw Error('Esta solicitação aceita somente PDFs das NF-e.');const pdfFiles=data.getAll('invoicePdfs').filter(file=>file&&typeof file.arrayBuffer==='function'&&file.size);if(pdfFiles.length>10)throw Error('Anexe no máximo 10 PDFs de NF-e por solicitação.');let total=0;for(const file of pdfFiles){if(file.size>REQUEST_FILE_LIMIT)throw Error('Cada PDF deve ter até 10 MB.');total+=file.size;if(total>REQUEST_TOTAL_FILE_LIMIT)throw Error('A soma dos PDFs deve ter até 20 MB por solicitação.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectNfePdf(bytes,file.name),text=await readNfePdf(bytes);details.vehiclePlate=extractNfeVehiclePlate(text);Object.assign(details,extractNfeCargoWeight(text));if(!details.vehiclePlate)throw Error(`Não consegui localizar a placa do veículo no PDF ${details.name}. Confira se o DANFE informa a placa no campo “Placa do veículo”.`);invoiceFiles.push({bytes,details});}}
    const invoiceKeys=[];
    if(!/^[\w-]{1,200}$/.test(truckId))throw Error('Selecione o caminhão da solicitação.');
    if(!invoiceFiles.length)throw Error('Anexe ao menos um PDF da NF-e ou DANFE.');
@@ -169,7 +175,7 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    const data=await boundedFormData(request),file=data.get('file');
    if(!file||typeof file.arrayBuffer!=='function'||file.size>CTE_LIMIT)throw Error('Anexe o PDF ou XML do CT-e, de até 20 MB.');
    const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectCte(bytes,file.name),cte=details.extension==='xml'?parseCteXml(bytes):parseCtePdfText(await readPdf(bytes));
-   const dataRequestId=String(data.get('requestId')||'').trim(),cteRequest=dataRequestId?await backend.cteRequests?.find(actor.companyId,dataRequestId):null,confirmPlateCorrection=data.get('confirmPlateCorrection')==='true';
+   const dataRequestId=String(data.get('requestId')||'').trim(),cteRequest=dataRequestId?await backend.cteRequests?.find(actor.companyId,dataRequestId):null,confirmPlateCorrection=data.get('confirmPlateCorrection')==='true',confirmWeightCheck=data.get('confirmWeightCheck')==='true';
    if(dataRequestId&&(!cteRequest||cteRequest.status!=='pending'))throw Error('A solicitação não está mais pendente. Atualize a fila da fazenda.');
    if(cteRequest){const requestedNumbers=cteRequest.invoiceKeys.map(key=>String(Number(String(key).replace(/\D/g,'').slice(25,34)))),manifested=new Set((cte.manifestedNotes||[]).map(note=>String(Number(String(note).replace(/\D/g,'')))));if(requestedNumbers.some(number=>!manifested.has(number)))throw Error('Não encontrei no CT-e todas as NF-e solicitadas pela fazenda. Confira a manifestação das notas ou envie o XML original do CT-e.');}
    const current=await backend.repository.load(actor.companyId),normalizePlate=value=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,''),plateMatches=(current.state.trucks||[]).filter(t=>normalizePlate(t.plate)===cte.plate),dateMatches=plateMatches.filter(t=>(!t.start||t.start<=cte.issuedOn)&&(!t.end||t.end>=cte.issuedOn));
@@ -178,12 +184,25 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
     if(!requestedTruck)throw Error('O caminhão vinculado à solicitação não está mais cadastrado nesta fazenda. Atualize os dados antes de enviar.');
     if(plateMismatch&&(!correctionFiles.length||!confirmPlateCorrection))throw Error( correctionFiles.length?'O CT-e informa a placa '+cte.plate+', mas a solicitação é da placa '+cteRequest.plate+'. Confira a carta de correção e marque a confirmação antes de enviar.':'A placa do CT-e precisa ser a mesma placa informada na solicitação da fazenda.');
    }
+   let weightConference=null;
+   if(cteRequest){
+    const invoiceWeights=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)).map(file=>{const value=Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(unit==='t'?1000:1):null;}),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
+    if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)){
+     const reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':'Não consegui ler o peso de todas as NF-e desta solicitação.';
+     if(!confirmWeightCheck){const error=Error(reason+' Confira os documentos e confirme se deseja enviar mesmo sem a comparação automática.');error.code='CTE_WEIGHT_UNAVAILABLE';throw error;}
+     weightConference={status:'unavailable',cteWeightKg,nfeWeightKg:null,confirmedBy:actor.userId,confirmedAt:new Date().toISOString()};
+    }else{
+     const nfeWeightKg=Number(invoiceWeights.reduce((sum,value)=>sum+value,0).toFixed(3)),differenceKg=Number(Math.abs(cteWeightKg-nfeWeightKg).toFixed(3)),matches=differenceKg<=Math.max(1,nfeWeightKg*0.00001);
+     if(!matches&&!confirmWeightCheck){const error=Error(`Peso diferente: CT-e ${cteWeightKg.toLocaleString('pt-BR')} kg; NF-e ${nfeWeightKg.toLocaleString('pt-BR')} kg (diferença de ${differenceKg.toLocaleString('pt-BR')} kg). Confira os documentos e confirme se deseja enviar mesmo assim.`);error.code='CTE_WEIGHT_MISMATCH';throw error;}
+     weightConference={status:matches?'match':'different',cteWeightKg,nfeWeightKg,differenceKg,...(!matches?{confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}:{})};
+    }
+   }
    const truck=cteRequest?requestedTruck:dateMatches.length===1?dateMatches[0]:dateMatches.length===0&&plateMatches.length===1?plateMatches[0]:null;
    if(!cteRequest&&!plateMatches.length)throw Error('Não encontrei a placa '+cte.plate+' cadastrada. Confira a placa no cadastro do caminhão e tente novamente.');
    if(!truck)throw Error('Encontrei mais de um cadastro para a placa '+cte.plate+' e não consigo identificar a fazenda com segurança. Confira os períodos e as transferências desse caminhão.');
    const farm=current.state.farms?.find(f=>f.id===truck.farmId);if(!farm)throw Error('A fazenda vinculada à placa não foi encontrada.');
    if(cteRequest&&farm.id!==cteRequest.farmId)throw Error('O CT-e não corresponde à fazenda da solicitação.');
-   const linkedPlate=truck.plate,participantDetails={...(cte.participantDetails||{}),...(plateMismatch?{plateCorrection:{documentPlate:cte.plate,linkedPlate,files:correctionFiles.map(file=>file.name),confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}}:{})},metadata={...cte,plate:linkedPlate,participantDetails,truckId:truck.id,farmId:farm.id,...(cteRequest?{requestId:cteRequest.id}:{})};
+   const linkedPlate=truck.plate,participantDetails={...(cte.participantDetails||{}),...(weightConference?{weightConference}:{}),...(plateMismatch?{plateCorrection:{documentPlate:cte.plate,linkedPlate,files:correctionFiles.map(file=>file.name),confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}}:{})},metadata={...cte,plate:linkedPlate,participantDetails,truckId:truck.id,farmId:farm.id,...(cteRequest?{requestId:cteRequest.id}:{})};
    const saved=await backend.ctes.upload(actor,metadata,bytes,details,{plate:linkedPlate,driver:truck.driver,farmName:farm.name});
    return backend.responseJson(saved,201);
   }
