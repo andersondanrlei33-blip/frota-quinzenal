@@ -50,8 +50,8 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
  };
  return {api:createCteApi({backend,readPdf:async()=>pdfText,readNfePdf}),calls};
 }
-const formRequest=({fileName='cte.xml',bytes=xml}={})=>{
- const form=new FormData();form.append('file',new Blob([bytes],{type:fileName.endsWith('.xml')?'application/xml':'application/pdf'}),fileName);
+const formRequest=({fileName='cte.xml',bytes=xml,confirmHighValue=false}={})=>{
+ const form=new FormData();if(confirmHighValue)form.append('confirmHighValue','true');form.append('file',new Blob([bytes],{type:fileName.endsWith('.xml')?'application/xml':'application/pdf'}),fileName);
  return new Request('https://example.test/api/ctes',{method:'POST',body:form});
 };
 
@@ -114,14 +114,26 @@ test('somente operador da transportadora envia e o servidor associa os dados ext
  await assert.rejects(()=>noMatchApi(formRequest()),/Não encontrei a placa ABC1D23/);
 });
 
+test('CT-e acima de R$ 10.000 exige confirmação explícita e registra quem conferiu',async()=>{
+ const highValueXml=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<vTPrest>1250.75</vTPrest>','<vTPrest>10000.01</vTPrest>'));
+ const makeForm=confirm=>{const form=new FormData();if(confirm)form.append('confirmHighValue','true');form.append('file',new Blob([highValueXml],{type:'application/xml'}),'cte.xml');return new Request('https://example.test/api/ctes',{method:'POST',body:form});};
+ const blocked=setup({party:'carrier'});await assert.rejects(blocked.api(makeForm(false)),error=>error.code==='CTE_HIGH_VALUE'&&/10\.000,01.*acima de R\$ 10\.000,00/.test(error.message));assert.equal(blocked.calls.upload,undefined);
+ const accepted=setup({party:'carrier'}),response=await accepted.api(makeForm(true));assert.equal(response.status,201);assert.equal(accepted.calls.upload.metadata.totalValue,10000.01);assert.equal(accepted.calls.upload.metadata.participantDetails.highValueAlert.threshold,10000);assert.equal(accepted.calls.upload.metadata.participantDetails.highValueAlert.confirmedBy,userId);assert.ok(accepted.calls.upload.metadata.participantDetails.highValueAlert.confirmedAt);
+});
+
+test('CT-e exatamente em R$ 10.000 não exige confirmação adicional',async()=>{
+ const tenThousandXml=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<vTPrest>1250.75</vTPrest>','<vTPrest>10000.00</vTPrest>'));
+ const {api,calls}=setup({party:'carrier'}),response=await api(formRequest({bytes:tenThousandXml}));assert.equal(response.status,201);assert.equal(calls.upload.metadata.totalValue,10000);assert.equal(calls.upload.metadata.participantDetails.highValueAlert,undefined);
+});
+
 test('transportadora envia PDF do DACTE e associa pela placa mesmo quando emissão antecede início cadastrado',async()=>{
- const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf}));
+ const {api,calls}=setup(),response=await api(formRequest({fileName:'cte.pdf',bytes:pdf,confirmHighValue:true}));
  assert.equal(response.status,201);assert.equal(calls.upload.metadata.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(calls.upload.metadata.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.shipper,'MORENA SEMENTES LTDA');assert.equal(calls.upload.metadata.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(calls.upload.metadata.totalValue,46875.32);assert.equal(calls.upload.metadata.issuedOn,'2026-09-22');assert.equal(calls.upload.metadata.plate,'BCD5C56');assert.equal(calls.upload.metadata.cargoWeight,44222);assert.equal(calls.upload.metadata.cargoWeightUnit,'kg');assert.deepEqual(calls.upload.metadata.manifestedNotes,['857','858']);assert.equal(calls.upload.details.mime,'application/pdf');
 });
 
 test('não escolhe uma fazenda arbitrariamente quando existem vários cadastros sem correspondência de período',async()=>{
  const duplicate={...state.trucks[1],id:'truck-c',farmId:'farm-b'},trucks=[...state.trucks,duplicate],{api}=setup({trucks});
- await assert.rejects(()=>api(formRequest({fileName:'cte.pdf',bytes:pdf})),/mais de um cadastro para a placa BCD5C56/);
+ await assert.rejects(()=>api(formRequest({fileName:'cte.pdf',bytes:pdf,confirmHighValue:true})),/mais de um cadastro para a placa BCD5C56/);
 });
 
 test('portal lista os documentos da empresa e fornece download privado por tempo limitado',async()=>{
