@@ -100,13 +100,13 @@ export function executeCommand(input,command,actor,context={}){
         return farm;
       });
       const normalizeStateRegistration=value=>String(value||'').toLocaleUpperCase('pt-BR').replace(/[\s./-]/g,'');
-      const registrations=new Map();
       for(const farm of farms){
         const registration=normalizeStateRegistration(farm.stateRegistration);
         if(!registration||['ISENTO','NAOCONTRIBUINTE'].includes(registration))continue;
-        const other=registrations.get(registration);
+        const previous=state.farms.find(saved=>saved.id===farm.id),previousRegistration=normalizeStateRegistration(previous?.stateRegistration);
+        if(registration===previousRegistration)continue;
+        const other=farms.find(saved=>saved.id!==farm.id&&normalizeStateRegistration(saved.stateRegistration)===registration);
         if(other)throw Error(`A inscrição estadual já está cadastrada para ${other.name}. Confira o cadastro das fazendas.`);
-        registrations.set(registration,farm);
       }
       if(farms.some(item=>!item.name)||new Set(farms.map(item=>item.name.toLocaleLowerCase('pt-BR'))).size!==farms.length)throw Error('Preencha nomes diferentes para cada fazenda.');state.farms=farms;break;
     }

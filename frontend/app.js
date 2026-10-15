@@ -1,6 +1,6 @@
 import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,undoTransferBlockReason,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=122';
 import {createReport,reportMarkup} from './reports.js?v=119';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=124';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=125';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
 let teamMembers=[],farmEditSnapshots=new Map();
@@ -940,7 +940,8 @@ document.addEventListener('submit',async ev=>{
       if(farm.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(farm.contactEmail))throw Error('Confira o e-mail de contato da fazenda.');
       const normalizeStateRegistration=value=>String(value||'').toLocaleUpperCase('pt-BR').replace(/[\s./-]/g,'');
       const registration=normalizeStateRegistration(farm.stateRegistration);
-      if(registration&&!['ISENTO','NAOCONTRIBUINTE'].includes(registration)){
+      const priorRegistration=normalizeStateRegistration(state.farms.find(saved=>saved.id===id)?.stateRegistration);
+      if(registration&&registration!==priorRegistration&&!['ISENTO','NAOCONTRIBUINTE'].includes(registration)){
         const duplicate=state.farms.find(saved=>saved.id!==id&&normalizeStateRegistration(saved.stateRegistration)===registration);
         if(duplicate)throw Error(`A inscrição estadual já está cadastrada para ${duplicate.name}. Confira o cadastro das fazendas.`);
       }

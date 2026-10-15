@@ -23,6 +23,11 @@ test('farm registry rejects a state registration already used by another farm',(
  assert.throws(()=>executeCommand(state,{type:'farms.save',payload:{farms:[state.farms[0],{...state.farms[1],stateRegistration:'133256820'},...state.farms.slice(2)]}},actor),/já está cadastrada para Fazenda 1/);
  const edited=executeCommand(state,{type:'farms.save',payload:{farms:[{...state.farms[0],name:'Fazenda 1 atualizada'},...state.farms.slice(1)]}},actor).state;
  assert.equal(edited.farms[0].stateRegistration,'13.325.682-0');
+ const legacyDuplicate={...state,farms:[state.farms[0],{...state.farms[1],stateRegistration:'133256820'},...state.farms.slice(2)]};
+ const corrected=executeCommand(legacyDuplicate,{type:'farms.save',payload:{farms:[{...legacyDuplicate.farms[0],stateRegistration:'123456789'},...legacyDuplicate.farms.slice(1)]}},actor).state;
+ assert.equal(corrected.farms[0].stateRegistration,'123456789');
+ const unrelatedEdit=executeCommand(legacyDuplicate,{type:'farms.save',payload:{farms:[{...legacyDuplicate.farms[0],address:'Endereço corrigido'},...legacyDuplicate.farms.slice(1)]}},actor).state;
+ assert.equal(unrelatedEdit.farms[0].address,'Endereço corrigido');
 });
 test('server commands calculate amounts themselves and reject client supplied paid values',()=>{
   let state=initialState();state=executeCommand(state,{type:'truck.save',payload:{...truck,net:1,paid:{date:'2026-10-01'}}},actor).state;
