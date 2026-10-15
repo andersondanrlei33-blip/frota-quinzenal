@@ -102,8 +102,13 @@ export function assertNfeMatchesFarm(text,farm,name){return assertNfePartiesMatc
 const parseBrazilianWeight=value=>{const token=String(value||'').trim().replace(/\s/g,'');if(!token)return null;const normalized=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,'');const number=Number(normalized);return Number.isFinite(number)&&number>=0?Number(number.toFixed(3)):null;};
 export function extractNfeCargoWeight(text){
  const lines=String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),folded=lines.map(plain),index=folded.findIndex(line=>line.includes('PESO BRUTO'));if(index<0)return {cargoWeight:null,cargoWeightUnit:null};
- const block=lines.slice(index,index+3).join(' '),match=block.match(/PESO\s+BRUTO\s*[:=]?\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i);if(!match)return {cargoWeight:null,cargoWeightUnit:null};
- const value=parseBrazilianWeight(match[1]);if(value===null)return {cargoWeight:null,cargoWeightUnit:null};const isTonne=/^(T|TON|TONELADAS)$/i.test(match[2]||'');return {cargoWeight:Number((value*(isTonne?1000:1)).toFixed(3)),cargoWeightUnit:'kg'};
+ const header=folded[index],block=lines.slice(index,index+5).join(' '),direct=block.match(/PESO\s+BRUTO[\s\S]{0,120}?([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i),numberFrom=value=>parseBrazilianWeight(value),unitFrom=value=>/^(T|TON|TONELADAS)$/i.test(value||'')?'t':'kg';
+ if(direct){const value=numberFrom(direct[1]);if(value!==null)return {cargoWeight:Number((value*(unitFrom(direct[2])==='t'?1000:1)).toFixed(3)),cargoWeightUnit:'kg'};}
+ for(const row of lines.slice(index+1,index+4)){
+  const tokens=[...row.matchAll(/(?<![A-Z0-9])\d[\d.,]*(?![A-Z0-9])/g)].map(match=>match[0]);if(!tokens.length)continue;
+  const token=header.includes('PESO LIQUIDO')&&tokens.length>1?tokens[1]:tokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg'};
+ }
+ return {cargoWeight:null,cargoWeightUnit:null};
 }
 const manifestedNotesFromXml=normalized=>{
  const documents=xmlElement(normalized,'infDoc'),notes=[];
@@ -317,9 +322,9 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    }
    let weightConference=null;
    if(cteRequest){
-    const invoiceWeights=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)).map(file=>{const value=Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(unit==='t'?1000:1):null;}),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
+    const invoiceWeightFiles=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)),invoiceWeights=invoiceWeightFiles.map(file=>{const value=Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(unit==='t'?1000:1):null;}),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
     if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)){
-     const reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':'Não consegui ler o peso de todas as NF-e desta solicitação.';
+     const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
      if(!confirmWeightCheck){const error=Error(reason+' Confira os documentos e confirme se deseja enviar mesmo sem a comparação automática.');error.code='CTE_WEIGHT_UNAVAILABLE';throw error;}
      weightConference={status:'unavailable',cteWeightKg,nfeWeightKg:null,confirmedBy:actor.userId,confirmedAt:new Date().toISOString()};
     }else{
