@@ -39,9 +39,23 @@ test('farm inactivation preserves contracts, discounts and paid snapshots while 
   setFarmActive(s,'farm1',true);validateTruck({...truck,id:'new',plate:'XYZ9B87',end:''},s);assert.deepEqual(s.closings[0],snapshot);
 });
 test('inactive farms with pending trucks can close their period while inactive empty farms are excluded',()=>{
-  const s=initialState();s.trucks=[{...truck,end:''}];setFarmActive(s,'farm1',false);setFarmActive(s,'farm3',false);const p=period('2026-10',2);
+  const s=initialState();s.trucks=[{...truck,end:''}];saveClosing(s,period('2026-10',1),'farm1','first-closed','2026-10-15');setFarmActive(s,'farm1',false);setFarmActive(s,'farm3',false);const p=period('2026-10',2);
   assert.ok(openFarmIds(s,p).includes('farm1'));assert.ok(!openFarmIds(s,p).includes('farm3'));assert.throws(()=>saveClosing(s,p,'farm3'),/inativa/);
   const c=saveClosing(s,p,'farm1','closed','2026-10-31');assert.equal(c.rows.length,1);assert.equal(c.rows[0].net,20000);assert.deepEqual(validateState(JSON.parse(JSON.stringify(s))),s);
+});
+test('the second fortnight cannot close until the first fortnight is closed for the same farm',()=>{
+  const s=initialState(),first=period('2026-10',1),second=period('2026-10',2);s.farms=s.farms.slice(0,2);
+  s.trucks=[{...truck,id:'farm1-truck',farmId:'farm1',start:'2026-10-01',end:''},{...truck,id:'farm2-truck',plate:'DEF1G23',farmId:'farm2',start:'2026-10-01',end:''}];
+  saveClosing(s,first,'farm1','first-farm1','2026-10-15');
+  const before=structuredClone(s);
+  assert.throws(()=>saveClosing(s,second,'','second-all','2026-10-31'),/1ª quinzena de Fazenda 2 ainda está aberta/);
+  assert.deepEqual(s,before);
+  saveClosing(s,first,'farm2','first-farm2','2026-10-15');
+  const closed=saveClosing(s,second,'','second-all','2026-10-31');
+  assert.equal(closed.rows.length,2);
+  reopenClosing(s,second,'farm1');reopenClosing(s,first,'farm1');
+  assert.throws(()=>saveClosing(s,second,'farm1','second-again','2026-10-31'),/1ª quinzena de Fazenda 1 ainda está aberta/);
+  assert.deepEqual(validateState(s),s);
 });
 test('current fixed monthly rule pays the agreed amount in 28, 29, 30 and 31 day months',()=>{
   for(const month of ['2026-02','2028-02','2026-04','2026-10'])for(const monthly of [30000,35000.01,.01]){
@@ -60,6 +74,7 @@ test('partial service and discounts use the actual days of their fixed monthly f
 });
 test('switching to fixed monthly recalculates unpaid snapshots, audits prior values and preserves paid rows',()=>{
   const s=initialState();s.settings={...settings};s.trucks=[{...truck,monthly:30000,start:'2026-10-01',end:''},{...truck,id:'b',plate:'XYZ9B87',farmId:'farm2',monthly:30000,start:'2026-10-01',end:''}];
+  saveClosing(s,period('2026-10',1),'','first','2026-10-15');
   const c=saveClosing(s,period('2026-10',2),'','legacy','2026-10-31');c.rows.find(r=>r.truckId==='b').paid={date:'2026-10-31',note:'Original'};
   const paid=structuredClone(c.rows.find(r=>r.truckId==='b'));
   applyFixedMonthlyRule(s);
@@ -367,4 +382,5 @@ test('a zero-day ending remains explicitly closed and repeated confirmation does
   const before=structuredClone(s);endActivities(s,'a','2026-10-01','Nota','again','2026-10-06');assert.deepEqual(s,before);assert.deepEqual(validateState(s),s);
   assert.throws(()=>previewEndActivities(s,'a','2026-09-30'),/posterior/);
 });
+
 
