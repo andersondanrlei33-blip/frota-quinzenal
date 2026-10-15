@@ -102,12 +102,15 @@ export function assertNfeMatchesFarm(text,farm,name){return assertNfePartiesMatc
 const parseBrazilianWeight=value=>{const token=String(value||'').trim().replace(/\s/g,'');if(!token)return null;const normalized=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,'');const number=Number(normalized);return Number.isFinite(number)&&number>=0?Number(number.toFixed(3)):null;};
 export function extractNfeCargoWeight(text){
  const lines=String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),folded=lines.map(plain),index=folded.findIndex(line=>line.includes('PESO BRUTO'));if(index<0)return {cargoWeight:null,cargoWeightUnit:null};
- const header=folded[index],block=lines.slice(index,index+5).join(' '),direct=block.match(/PESO\s+BRUTO[\s\S]{0,120}?([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i),numberFrom=value=>parseBrazilianWeight(value),unitFrom=value=>/^(T|TON|TONELADAS)$/i.test(value||'')?'t':'kg';
+ const header=folded[index],hasLiquidWeight=/PESO\s+L.{0,2}QUIDO/.test(header),direct=lines[index].match(/PESO\s+BRUTO\s*[:=]\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i),numberFrom=value=>parseBrazilianWeight(value),unitFrom=value=>/^(T|TON|TONELADAS)$/i.test(value||'')?'t':'kg';
  if(direct){const value=numberFrom(direct[1]);if(value!==null)return {cargoWeight:Number((value*(unitFrom(direct[2])==='t'?1000:1)).toFixed(3)),cargoWeightUnit:'kg'};}
- for(const row of lines.slice(index+1,index+4)){
-  const tokens=[...row.matchAll(/(?<![A-Z0-9])\d[\d.,]*(?![A-Z0-9])/g)].map(match=>match[0]);if(!tokens.length)continue;
-  const token=header.includes('PESO LIQUIDO')&&tokens.length>1?tokens[1]:tokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg'};
+ const rowTokens=[];
+ for(const row of lines.slice(index+1,index+6)){
+  const foldedRow=plain(row);if(/DADOS DOS PRODUTOS|FATURA|CALCULO DO IMPOSTO|DADOS ADICIONAIS/.test(foldedRow))break;
+  const tokens=[...row.matchAll(/(?<![A-Z0-9])\d[\d.,]*(?![A-Z0-9])/g)].map(match=>match[0]);
+  if(tokens.length&&/^[\d.,\s-]+$/.test(row))rowTokens.push(...tokens);else if(rowTokens.length)break;
  }
+ if(rowTokens.length){const token=hasLiquidWeight&&rowTokens.length>1?rowTokens[1]:rowTokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg'};}
  const productStart=folded.findIndex(line=>line.includes('DADOS DOS PRODUTOS')),productEnd=productStart>=0?folded.findIndex((line,lineIndex)=>lineIndex>productStart&&/(CALCULO DO ISSQN|INFORMACOES COMPLEMENTARES)/.test(line)):-1,productLines=productStart>=0?lines.slice(productStart+1,productEnd>=0?productEnd:productStart+80):[];
  let productKg=0,productKgFound=false;
  for(const row of productLines){
