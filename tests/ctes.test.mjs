@@ -39,6 +39,7 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
    saveWeight:async(company,id,weight,unit)=>{calls.savedWeight={company,id,weight,unit};},
    upload:async(actor,metadata,bytes,details,snapshot)=>{calls.upload={actor,metadata,bytes,details,snapshot};return {id:documentId,name:details.name,mime:details.mime,size:details.size};},
    recordPayment:async(actor,id,bytes,details)=>{calls.payment={actor,id,bytes,details};return {id,farmId:actor.farmId,paymentReceipt:{id:'77777777-7777-4777-8777-777777777777',name:details.name,mime:details.mime,size:details.size,uploadedBy:actor.userId,paidAt:'2026-10-14T18:00:00.000Z',objectKey:companyId+'/cte-billing/'+id+'/receipt.pdf'}};},
+   recordPaymentBatch:async(actor,ids,bytes,details)=>{calls.paymentBatch={actor,ids,bytes,details};return ids.map(id=>({id,farmId:actor.farmId,paymentReceipt:{id:'77777777-7777-4777-8777-777777777777',name:details.name,mime:details.mime,size:details.size,uploadedBy:actor.userId,paidAt:'2026-10-14T18:00:00.000Z',objectKey:companyId+'/cte-billing/batches/receipt.pdf'}}));},
    signPaymentProof:async()=> 'https://storage.example/signed?download=receipt.pdf',
    find:async(idCompany,id)=>idCompany===companyId&&id===documentId?{name:'cte.xml',mime:'application/xml',objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}:null,
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
@@ -266,6 +267,14 @@ test('fazenda anexa comprovante para marcar CT-e como pago; outros acessos são 
  const farm=setup({party:'farm',role:'operator'}),response=await farm.api(new Request('https://example.test/api/ctes/'+documentId+'/payment-proof',{method:'POST',body:form}));
  assert.equal(response.status,201);assert.equal(farm.calls.payment.id,documentId);assert.equal(farm.calls.payment.actor.farmId,'farm-a');assert.equal(farm.calls.payment.details.mime,'application/pdf');assert.equal((await response.json()).document.paymentReceipt.name,'comprovante.pdf');
  const carrier=await setup({party:'carrier'}).api(new Request('https://example.test/api/ctes/'+documentId+'/payment-proof',{method:'POST',body:form}));assert.equal(carrier.status,403);
+});
+
+test('fazenda paga uma seleção de CT-es usando um único comprovante',async()=>{
+ const form=new FormData(),secondId='44444444-4444-4444-8444-444444444444';form.append('documentIds',JSON.stringify([documentId,secondId]));form.append('paymentProof',new Blob(['%PDF-1.7\nrecibo conjunto'],{type:'application/pdf'}),'comprovante-lote.pdf');
+ const farm=setup({party:'farm',role:'operator'}),response=await farm.api(new Request('https://example.test/api/cte-payment-batches',{method:'POST',body:form}));
+ assert.equal(response.status,201);assert.deepEqual(farm.calls.paymentBatch.ids,[documentId,secondId]);assert.equal(farm.calls.paymentBatch.details.mime,'application/pdf');assert.equal((await response.json()).documents.length,2);
+ const carrier=await setup({party:'carrier'}).api(new Request('https://example.test/api/cte-payment-batches',{method:'POST',body:form}));assert.equal(carrier.status,403);
+ const duplicateForm=new FormData();duplicateForm.append('documentIds',JSON.stringify([documentId,documentId]));duplicateForm.append('paymentProof',new Blob(['%PDF-1.7\nrecibo'],{type:'application/pdf'}),'comprovante.pdf');const duplicate=await setup({party:'farm'}).api(new Request('https://example.test/api/cte-payment-batches',{method:'POST',body:duplicateForm}));assert.equal(duplicate.status,400);
 });
 
 test('comprovante de pagamento valida assinatura real e extensão',()=>{

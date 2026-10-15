@@ -180,6 +180,15 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    return backend.responseJson({name:invoiceFile.name,mime:invoiceFile.mime,signedUrl:await backend.cteRequests.signFile(invoiceFile),expiresIn:120});
   }
   const paymentProofMatch=path.match(/\/api\/ctes\/([0-9a-f-]{36})\/payment-proof$/i);
+  if(request.method==='POST'&&path.endsWith('/api/cte-payment-batches')){
+   if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente um usuário autorizado da fazenda pode enviar o comprovante.'},403);
+   const data=await boundedFormData(request,REQUEST_FILE_LIMIT+65536),file=data.get('paymentProof');let documentIds=[];
+   try{documentIds=JSON.parse(String(data.get('documentIds')||''));}catch{}
+   if(!Array.isArray(documentIds)||!documentIds.length||documentIds.length>50||documentIds.some(id=>typeof id!=='string'||! /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))||new Set(documentIds).size!==documentIds.length)return backend.responseJson({error:'Selecione de 1 a 50 CT-es diferentes para pagar.'},400);
+   if(!file||typeof file.arrayBuffer!=='function'||!file.size)throw Error('Anexe o comprovante de pagamento.');
+   const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectCtePaymentProof(bytes,file.name),documents=await backend.ctes.recordPaymentBatch(actor,documentIds,bytes,details);
+   return backend.responseJson({documents:documents.map(document=>({id:document.id,paidAt:document.paymentReceipt?.paidAt,paymentReceipt:(({objectKey,uploadedBy,...receipt})=>receipt)(document.paymentReceipt)}))},201);
+  }
   if(request.method==='POST'&&paymentProofMatch){
    if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente um usuário autorizado da fazenda pode enviar o comprovante.'},403);
    const data=await boundedFormData(request,REQUEST_FILE_LIMIT+65536),file=data.get('paymentProof');if(!file||typeof file.arrayBuffer!=='function'||!file.size)throw Error('Anexe o comprovante de pagamento.');
