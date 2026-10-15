@@ -50,22 +50,51 @@ export function extractNfeVehiclePlate(text){
  return '';
 }
 const nfeDocuments=section=>[...String(section||'').matchAll(/\b(?:\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{14}|\d{11})\b/g)].map(match=>digits(match[0]));
-function nfeParty(section){
- const lines=String(section||'').split(/\r?\n/),document=nfeDocuments(section)[0]||'',label=lines.findIndex(line=>line.includes('INSCRICAO ESTADUAL'));
- const nearby=label<0?'':lines.slice(label,label+4).join(' '),stateRegistration=[...nearby.matchAll(/(?<!\d)\d{8,14}(?!\d)/g)].map(match=>match[0]).find(value=>value!==document)||'';
- return {document,stateRegistration};
+const nfeFieldDigits=(section,labels)=>{
+ const source=String(section||''),labelPattern=labels.map(label=>label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+ for(const match of source.matchAll(new RegExp(`(?:${labelPattern})\\s*(?:[:=]|\\s)?\\s*((?:\\d[.\\-/ ]?){11,18})`,'gi'))){
+  const value=digits(match[1]);
+  if(value.length===11||value.length===14)return value;
+ }
+ return '';
+};
+const nfeFieldStateRegistration=(section)=>{
+ const source=String(section||''),labels='(?:INSCRI(?:CAO|ÇAO)|INSCR(?:ICAO|\.?)|I\\.?E\\.?)\\s*(?:ESTADUAL)?';
+ for(const match of source.matchAll(new RegExp(`${labels}\\s*(?:[:=]|\\s)?\\s*((?:\\d[.\\-/ ]?){8,18})`,'gi'))){
+  const value=digits(match[1]);
+  if(value.length>=8&&value.length<=14)return value;
+ }
+ return '';
+};
+const nfeStateRegistrationCandidates=(section,document)=>{
+ const lines=String(section||'').split(/\r?\n/),values=[];
+ for(let index=0;index<lines.length;index++){
+  const line=plain(lines[index]).replace(/�/g,' ');
+  if(!/(?:INSCRI|INSCR|\bIE\b).*ESTADUAL|\bIE\b/.test(line))continue;
+  const nearby=lines.slice(index,index+4).join(' ');
+  for(const match of nearby.matchAll(/(?<!\d)(?:\d[.\-/]?){8,14}(?!\d)/g)){
+   const value=digits(match[0]);
+   if(value.length>=8&&value.length<=14&&value!==document&&!values.includes(value))values.push(value);
+  }
+ }
+ return values;
+};
+ function nfeParty(section){
+ const document=nfeFieldDigits(section,['CNPJ OU CPF','CNPJ / CPF','CPF / CNPJ','CNPJ','CPF'])||nfeDocuments(section).find(value=>value.length===11||value.length===14)||'';
+ const stateRegistrations=nfeStateRegistrationCandidates(section,document),stateRegistration=stateRegistrations[0]||nfeFieldStateRegistration(section)||nfeDocuments(section).find(value=>value.length>=8&&value.length<=14&&value!==document)||'';
+ return {document,stateRegistration,stateRegistrations};
 }
 export function extractNfeParties(text){
- const normalized=plain(text),start=normalized.search(/DESTINATARIO\s*(?:\/\s*REMETENTE)?/);
- if(!normalized.includes('DANFE')||start<0)return {issuer:{document:'',stateRegistration:''},recipient:{document:'',stateRegistration:''}};
- const end=normalized.slice(start).search(/CALCULO DO (?:IMPOSTO|ICMS)|TRANSPORTADOR\s*\/\s*VOLUMES/),recipientEnd=end<0?start+2500:start+end;
+ const normalized=plain(text).replace(/�/g,' '),hasDanfe=normalized.includes('DANFE'),startMatch=normalized.match(/DESTINAT\s*RIO\s*(?:\/\s*REMETENTE)?|DESTINATARIO\s*(?:\/\s*REMETENTE)?|REMETENTE\s*\/\s*DESTINATARIO/),start=startMatch?.index??-1;
+ if(!hasDanfe||start<0)return {issuer:{document:'',stateRegistration:''},recipient:{document:'',stateRegistration:''}};
+ const end=normalized.slice(start).search(/CALCULO DO (?:IMPOSTO|ICMS)|TRANSPORTADOR\s*\/\s*VOLUMES|TRANSPORTADOR\s*VOLUMES/),recipientEnd=end<0?start+3000:start+end;
  return {issuer:nfeParty(normalized.slice(0,start)),recipient:nfeParty(normalized.slice(start,recipientEnd))};
 }
 function assertNfePartiesMatchFarm(parties,farm,name){
  const document=digits(farm.cnpj||farm.cpf||farm.document),stateRegistration=digits(farm.stateRegistration);
  if(![11,14].includes(document.length)||stateRegistration.length<8)throw Error(`Complete o CPF/CNPJ e a inscrição estadual da ${farm.name} antes de solicitar CT-e.`);
  const candidates=[parties.issuer,parties.recipient];
- if(candidates.some(party=>party?.document===document&&party.stateRegistration===stateRegistration))return parties;
+ if(candidates.some(party=>party?.document===document&&(party.stateRegistration===stateRegistration||party.stateRegistrations?.includes(stateRegistration))))return parties;
  if(candidates.some(party=>!party?.document||party.document===document&&!party.stateRegistration))throw Error(`Não consegui conferir o CPF/CNPJ e a inscrição estadual no PDF ${name}. Anexe um DANFE legível.`);
  throw Error(`A NF-e ${name} não corresponde à ${farm.name}: CPF/CNPJ e inscrição estadual do emitente ou destinatário devem ser os da fazenda vinculada ao acesso.`);
 }
@@ -317,3 +346,4 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
   return backend.responseJson({error:'Método não permitido.'},405);
  };
 }
+
