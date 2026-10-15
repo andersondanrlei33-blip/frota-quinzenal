@@ -276,6 +276,23 @@ test('farm registration accepts a CNPJ and displays it after saving',async()=>{
  const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.cnpj,'12.345.678/0001-95');assert.equal(saved.cpf,'');assert.match(app.get('#main').innerHTML,/CNPJ 12\.345\.678\/0001-95/);
  await app.action('edit-farm',id);assert.match(app.get('#modal-content').innerHTML,/value="12\.345\.678\/0001-95"/);
 });
+test('farm registration blocks a state registration already used by another farm',async()=>{
+ const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});
+ app.mutateState(state=>{state.farms[1].stateRegistration='13.325.682-0';});
+ await app.action('cloud-refresh');
+ await app.action('edit-farm','farm1');
+ const result=await app.submit('farm-form',{name:'Fazenda 1',legalName:'',document:'',stateRegistration:'133256820',address:'',contactName:'',contactEmail:'',contactPhone:''},{id:'farm1'});
+ assert.match(result,/já está cadastrada para Fazenda 2/);assert.equal(app.state().state.farms[0].stateRegistration||'','');
+});
+test('farm edit refreshes stale server revision while keeping the form changes',async()=>{
+ const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});
+ await app.action('edit-farm','farm1');
+ app.mutateState(state=>{state.farms[1].contactName='Contato atualizado em paralelo';});
+ assert.equal(await app.submit('farm-form',{name:'Fazenda 1 corrigida',legalName:'Titular corrigido',document:'',stateRegistration:'123456',address:'Endereço corrigido',contactName:'',contactEmail:'',contactPhone:''},{id:'farm1'}),'');
+ assert.equal(app.state().state.farms[0].name,'Fazenda 1 corrigida');
+ assert.equal(app.state().state.farms[0].legalName,'Titular corrigido');
+ assert.equal(app.state().state.farms[1].contactName,'Contato atualizado em paralelo');
+});
 test('farm contact phone formats DDD and landline or mobile numbers while typing',async()=>{
  const app=await boot();
  const field={id:'farm-contactPhone',value:'66999995976',selectionStart:11,selectionEnd:11,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};

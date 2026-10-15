@@ -1,9 +1,9 @@
 import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,undoTransferBlockReason,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=122';
 import {createReport,reportMarkup} from './reports.js?v=119';
-import {cloud,authErrorMessage} from './cloud-ui.js?v=123';
+import {cloud,authErrorMessage} from './cloud-ui.js?v=124';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
-let teamMembers=[];
+let teamMembers=[],farmEditSnapshots=new Map();
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let portalRequests=[],portalPeriod='',portalFarm='',portalInvoice='',portalSearch='',selectedPaymentRequests=new Set();
 let cteDocuments=[],cteRequests=[],cteTrucks=[],cteFarms=[],billingInvoices=[],cteFarmFilter='',cteColumnFilters={},cteFilterFieldOpen='',cteFilterDraft=[],cteFilterOptions=[],cteFilterSearch='',cteFilterAnchor={top:0,left:0},cteLoading=false,cteSummaryLoaded=false,ctePreferences={visibleColumns:[],columnOrder:[]},ctePreferenceDraft=null,cteRequestForUpload='',farmCteTab='request';
@@ -73,6 +73,7 @@ const farmField=(farm,index)=>{
 function farmForm(id='') {
  const saved=state.farms.find(farm=>farm.id===id),farm=saved||{id:uid(),name:''},farmDocument=farm.cnpj&&String(farm.cnpj).replace(/\D/g,'').length===14?farm.cnpj:farm.cpf||farm.cnpj||'',profile=(key,label,type='text',placeholder='',max=120,value=farm[key]||'')=>`<div class="field"><label for="farm-${key}">${label}</label><input id="farm-${key}" name="${key}" type="${type}" value="${e(value)}" maxlength="${max}" placeholder="${placeholder}" ${key==='document'?'inputmode="numeric" autocomplete="off"':''}></div>`;
  openModal(saved?'Editar fazenda':'Cadastrar fazenda','Informe os dados desta unidade.',`<form id="farm-form" data-id="${e(farm.id)}">${errBox()}<div class="field"><label for="farm-name">Nome para identificar *</label><input id="farm-name" name="name" value="${e(farm.name)}" maxlength="80" placeholder="Ex.: Fazenda Santa Clara" required></div><div class="farm-profile-fields">${profile('legalName','Nome ou razão social do titular','text','Nome ou razão social')}${profile('document','CPF ou CNPJ do titular','text','CPF ou CNPJ',18,formatPaymentDocumentInput(farmDocument))}${profile('stateRegistration','Inscrição estadual','text','Inscrição estadual',30)}${profile('address','Endereço','text','Endereço da unidade',180)}${profile('contactName','Pessoa de contato','text','Nome do responsável',100)}${profile('contactEmail','E-mail de contato','email','contato@fazenda.com.br',160)}${profile('contactPhone','Telefone de contato','tel','(00) 00000-0000',30,formatFarmPhoneInput(farm.contactPhone||''))}</div><div class="form-note">Os caminhões, faturas, funcionários e pedidos de CT-e serão vinculados a esta fazenda.</div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Salvar fazenda</button></div></form>`,{wide:true});
+ farmEditSnapshots.set(farm.id,JSON.parse(JSON.stringify(saved||null)));
  document.querySelector('#farm-name')?.focus();
 }
 function addFarmInput(){farmForm();}
@@ -937,8 +938,27 @@ document.addEventListener('submit',async ev=>{
       if(digits&&![11,14].includes(digits.length))throw Error('O CPF deve ter 11 dígitos ou o CNPJ deve ter 14 dígitos.');
       const farm={...(state.farms.find(saved=>saved.id===id)||{}),id,name,legalName:String(data.get('legalName')||'').trim(),cpf:digits.length===11?formatPaymentDocument(digits):'',cnpj:digits.length===14?formatPaymentDocument(digits):'',stateRegistration:String(data.get('stateRegistration')||'').trim(),address:String(data.get('address')||'').trim(),contactName:String(data.get('contactName')||'').trim(),contactEmail:String(data.get('contactEmail')||'').trim(),contactPhone:String(data.get('contactPhone')||'').trim()};
       if(farm.contactEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(farm.contactEmail))throw Error('Confira o e-mail de contato da fazenda.');
+      const normalizeStateRegistration=value=>String(value||'').toLocaleUpperCase('pt-BR').replace(/[\s./-]/g,'');
+      const registration=normalizeStateRegistration(farm.stateRegistration);
+      if(registration&&!['ISENTO','NAOCONTRIBUINTE'].includes(registration)){
+        const duplicate=state.farms.find(saved=>saved.id!==id&&normalizeStateRegistration(saved.stateRegistration)===registration);
+        if(duplicate)throw Error(`A inscrição estadual já está cadastrada para ${duplicate.name}. Confira o cadastro das fazendas.`);
+      }
       const farms=editing?state.farms.map(saved=>saved.id===id?farm:saved):[...state.farms,farm];
-      await remoteCommand('farms.save',{farms});modal.close();render();notify(editing?'Cadastro da fazenda atualizado.':'Fazenda cadastrada.');
+      try{await remoteCommand('farms.save',{farms});}
+      catch(error){
+        if(error.status!==409)throw error;
+        const latest=await cloud.load(),latestFarm=latest.state?.farms?.find(saved=>saved.id===id)||null,original=farmEditSnapshots.get(id)||null;
+        adoptServerData(latest);stale=false;updateCloudStatus();
+        if(editing&&(!latestFarm||JSON.stringify(latestFarm)!==JSON.stringify(original))){
+          farmEditSnapshots.set(id,latestFarm?JSON.parse(JSON.stringify(latestFarm)):null);
+          throw Error(latestFarm?'Esta fazenda também foi atualizada por outra pessoa. Os dados atuais foram carregados; confira as informações e salve novamente.':'Esta fazenda foi removida por outra pessoa. Os dados foram atualizados; feche e abra o cadastro novamente.');
+        }
+        const refreshedFarm={...(latestFarm||farm),...farm};
+        const refreshedFarms=editing?state.farms.map(saved=>saved.id===id?refreshedFarm:saved):[...state.farms,refreshedFarm];
+        await remoteCommand('farms.save',{farms:refreshedFarms});
+      }
+      farmEditSnapshots.delete(id);modal.close();render();notify(editing?'Cadastro da fazenda atualizado.':'Fazenda cadastrada.');
     }
   }catch(err){formError(f,err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.');}
 });

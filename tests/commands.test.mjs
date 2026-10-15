@@ -18,6 +18,12 @@ test('farm registry saves CNPJ and can switch between CNPJ and CPF',()=>{
  assert.equal(state.farms[0].cpf,'330.803.640-15');assert.equal('cnpj' in state.farms[0],false);
  assert.throws(()=>executeCommand(state,{type:'farms.save',payload:{farms:[{...state.farms[0],cpf:'',cnpj:'12.345'},...state.farms.slice(1)]}},actor),/CNPJ válido/);
 });
+test('farm registry rejects a state registration already used by another farm',()=>{
+ const state=initialState();state.farms[0].stateRegistration='13.325.682-0';
+ assert.throws(()=>executeCommand(state,{type:'farms.save',payload:{farms:[state.farms[0],{...state.farms[1],stateRegistration:'133256820'},...state.farms.slice(2)]}},actor),/já está cadastrada para Fazenda 1/);
+ const edited=executeCommand(state,{type:'farms.save',payload:{farms:[{...state.farms[0],name:'Fazenda 1 atualizada'},...state.farms.slice(1)]}},actor).state;
+ assert.equal(edited.farms[0].stateRegistration,'13.325.682-0');
+});
 test('server commands calculate amounts themselves and reject client supplied paid values',()=>{
   let state=initialState();state=executeCommand(state,{type:'truck.save',payload:{...truck,net:1,paid:{date:'2026-10-01'}}},actor).state;
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);

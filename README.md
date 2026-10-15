@@ -54,6 +54,8 @@ Entrada, encerramento, falta e oficina são proporcionais aos dias efetivos de c
 
 Em **Caminhões → Detalhes**, a última transferência pode ser desfeita após confirmação se o período na fazenda de destino não tiver movimentação. O estorno restaura o período anterior da placa; solicitações ou documentos de CT-e, descontos, fechamentos, pagamentos, repasses e alterações no cadastro de destino impedem a operação. Havendo várias transferências, desfaça primeiro a mais recente.
 
+O cadastro de fazendas não aceita a mesma inscrição estadual em mais de uma unidade, mesmo quando a pontuação muda. Se outra gravação deixar a edição desatualizada, o formulário atualiza os dados e reaplica a alteração quando a mesma fazenda continua sem mudanças concorrentes.
+
 Em **Lançar desconto**, escolha **Desconto por dias** ou **Desconto por valor (R$)**. Para valor, informe uma data, o valor em reais e o motivo obrigatório. O desconto entra uma única vez na quinzena dessa data, somado aos descontos por dias, sem reduzir os dias trabalhados. O total não pode exceder o saldo da placa na quinzena. Valor e motivo ficam preservados no fechamento e no relatório.
 
 Cada quinzena pode ter várias faturas. Se caminhões ficarem fora de um fechamento, o grupo emite uma fatura complementar pelo histórico da quinzena, confere a prévia e confirma somente as placas pendentes daquela fazenda. As faturas e os pagamentos anteriores continuam fechados. Relatórios permitem selecionar mês, quinzena, fazenda, placa e somente pagos, com paginação por fazenda para 40 caminhões.
