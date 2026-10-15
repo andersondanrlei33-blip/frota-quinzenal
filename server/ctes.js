@@ -34,11 +34,20 @@ const billableTons=(weight,unit)=>{const value=Number(weight);if(!Number.isFinit
 const billingAmount=(tons,rate=CTE_BILLING_RATE_PER_TON)=>tons==null?null:Number((tons*rate).toFixed(2));
 export function extractNfeVehiclePlate(text){
  const normalized=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
- const label=normalized.match(/PLACA(?:\s+DO)?\s+VEICULO/),header=label?.index??-1;if(header<0)return '';
- const section=normalized.slice(header+label[0].length).split(/\b(?:ENDERECO|DADOS DOS PRODUTOS)\b/,1)[0].slice(0,1600);
- const match=section.match(/\b([A-Z]{3}\s*-?\s*[A-Z0-9]{4})\b/);
- const plate=match?.[1].replace(/[^A-Z0-9]/g,'')||'';
- return plate.length===7?plate:'';
+ const platePattern=/(?:^|[\s:;|/])([A-Z]{3}\s*[-/]?\s*(?:\d[A-Z0-9]\d{2}|\d{4}))(?![A-Z0-9])/g;
+ const firstPlate=source=>{
+  for(const match of String(source||'').matchAll(platePattern)){
+   const plate=match[1].replace(/[^A-Z0-9]/g,'');
+   if(/^[A-Z]{3}(?:\d[A-Z0-9]\d{2}|\d{4})$/.test(plate))return plate;
+  }
+  return '';
+ };
+ const sources=[],transportStart=normalized.search(/\b(?:TRANSPORTADOR|DADOS\s+DO\s+TRANSPORTADOR|VOLUMES\s+TRANSPORTADOS)\b/);
+ if(transportStart>=0)sources.push(normalized.slice(transportStart,transportStart+2600));
+ for(const label of normalized.matchAll(/\bPLACA(?:\s+DO)?\s+(?:VEICULO|VEICULO\/UF)|\bPLACA\s*\/\s*UF\b|\bPLACA\b/g))sources.push(normalized.slice(label.index+label[0].length,label.index+label[0].length+500));
+ sources.push(normalized);
+ for(const source of sources){const plate=firstPlate(source);if(plate)return plate;}
+ return '';
 }
 const nfeDocuments=section=>[...String(section||'').matchAll(/\b(?:\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{14}|\d{11})\b/g)].map(match=>digits(match[0]));
 function nfeParty(section){
