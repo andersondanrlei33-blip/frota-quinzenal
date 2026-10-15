@@ -70,7 +70,7 @@ const nfeStateRegistrationCandidates=(section,document)=>{
  const lines=String(section||'').split(/\r?\n/),values=[];
  for(let index=0;index<lines.length;index++){
   const line=plain(lines[index]).replace(/�/g,' ');
-  if(!/(?:INSCRI|INSCR|\bIE\b).*ESTADUAL|\bIE\b/.test(line))continue;
+  if(!/(?:INSCRI|INSCR|\bIE\b)/.test(line))continue;
   const nearby=lines.slice(index,index+4).join(' ');
   for(const match of nearby.matchAll(/(?<!\d)(?:\d[.\-/]?){8,14}(?!\d)/g)){
    const value=digits(match[0]);
@@ -85,8 +85,8 @@ const nfeStateRegistrationCandidates=(section,document)=>{
  return {document,stateRegistration,stateRegistrations};
 }
 export function extractNfeParties(text){
- const normalized=plain(text).replace(/�/g,' '),hasDanfe=normalized.includes('DANFE'),startMatch=normalized.match(/DESTINAT\s*RIO\s*(?:\/\s*REMETENTE)?|DESTINATARIO\s*(?:\/\s*REMETENTE)?|REMETENTE\s*\/\s*DESTINATARIO/),start=startMatch?.index??-1;
- if(!hasDanfe||start<0)return {issuer:{document:'',stateRegistration:''},recipient:{document:'',stateRegistration:''}};
+ const normalized=plain(text).replace(/�/g,' '),startMatch=normalized.match(/DESTINAT\s*RIO\s*(?:\/\s*REMETENTE)?|DESTINATARIO\s*(?:\/\s*REMETENTE)?|REMETENTE\s*\/\s*DESTINATARIO/),start=startMatch?.index??-1;
+ if(start<0)return {issuer:{document:'',stateRegistration:''},recipient:{document:'',stateRegistration:''}};
  const end=normalized.slice(start).search(/CALCULO DO (?:IMPOSTO|ICMS)|TRANSPORTADOR\s*\/\s*VOLUMES|TRANSPORTADOR\s*VOLUMES/),recipientEnd=end<0?start+3000:start+end;
  return {issuer:nfeParty(normalized.slice(0,start)),recipient:nfeParty(normalized.slice(start,recipientEnd))};
 }
