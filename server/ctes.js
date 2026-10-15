@@ -101,22 +101,25 @@ function assertNfePartiesMatchFarm(parties,farm,name){
 export function assertNfeMatchesFarm(text,farm,name){return assertNfePartiesMatchFarm(extractNfeParties(text),farm,name);}
 const parseBrazilianWeight=value=>{const token=String(value||'').trim().replace(/\s/g,'');if(!token)return null;const normalized=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,'');const number=Number(normalized);return Number.isFinite(number)&&number>=0?Number(number.toFixed(3)):null;};
 export function extractNfeCargoWeight(text){
- const lines=String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),folded=lines.map(plain),index=folded.findIndex(line=>line.includes('PESO BRUTO'));if(index<0)return {cargoWeight:null,cargoWeightUnit:null};
- const header=folded[index],hasLiquidWeight=/PESO\s+L.{0,2}QUIDO/.test(header),direct=lines[index].match(/PESO\s+BRUTO\s*[:=]\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i),numberFrom=value=>parseBrazilianWeight(value),unitFrom=value=>/^(T|TON|TONELADAS)$/i.test(value||'')?'t':'kg';
+ const lines=String(text||'').split(/\r?\n/).map(line=>line.trim()).filter(Boolean),folded=lines.map(plain),index=folded.findIndex(line=>line.includes('PESO BRUTO'));
+ const header=index>=0?folded[index]:'',hasLiquidWeight=/PESO\s+L.{0,2}QUIDO/.test(header),direct=index>=0?lines[index].match(/PESO\s+BRUTO\s*[:=]\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i):null,numberFrom=value=>parseBrazilianWeight(value),unitFrom=value=>/^(T|TON|TONELADAS)$/i.test(value||'')?'t':'kg';
  if(direct){const value=numberFrom(direct[1]);if(value!==null)return {cargoWeight:Number((value*(unitFrom(direct[2])==='t'?1000:1)).toFixed(3)),cargoWeightUnit:'kg'};}
+ const productStart=folded.findIndex(line=>/DADOS DO PRODUTO|DADOS DOS PRODUTOS/.test(line)),productEnd=productStart>=0?folded.findIndex((line,lineIndex)=>lineIndex>productStart&&/(CALCULO DO ISSQN|INFORMACOES COMPLEMENTARES|DADOS DO ISSQN|DADOS ADICIONAIS)/.test(line)):-1,productLines=productStart>=0?lines.slice(productStart+1,productEnd>=0?productEnd:productStart+80):[],productCandidates=[];let productHasOtherUnit=false;
+ for(let rowIndex=0;rowIndex<productLines.length;rowIndex++){
+  const unitMatch=productLines[rowIndex].match(/\b(KG|KGS|TO|TON|TONELADAS|LT|L|SC|UN|UND|M3|M²)\b/i),context=productLines.slice(rowIndex,rowIndex+3).join(' ');if(!unitMatch)continue;
+  const unit=unitMatch[1].toUpperCase();if(/^(LT|L|SC|UN|UND|M3|M²)$/.test(unit))productHasOtherUnit=true;
+  if(!/^(KG|KGS|TO|TON|TONELADAS)$/.test(unit))continue;
+  const quantity=context.match(/(?<![A-Z0-9])(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2,6}(?![A-Z0-9])/);if(!quantity)continue;
+  const value=numberFrom(quantity[0]);if(value===null)continue;const cargoWeight=/^(TO|TON|TONELADAS)$/.test(unit)?value*1000:value;productCandidates.push({cargoWeight:Number(cargoWeight.toFixed(3)),cargoWeightUnit:'kg',cargoWeightSource:'product-quantity'});
+ }
  const rowTokens=[];
- for(const row of lines.slice(index+1,index+6)){
+ for(const row of lines.slice(index>=0?index+1:0,index>=0?index+6:0)){
   const foldedRow=plain(row);if(/DADOS DOS PRODUTOS|FATURA|CALCULO DO IMPOSTO|DADOS ADICIONAIS/.test(foldedRow))break;
   const tokens=[...row.matchAll(/(?<![A-Z0-9])\d[\d.,]*(?![A-Z0-9])/g)].map(match=>match[0]);
   if(tokens.length&&/^[\d.,\s-]+$/.test(row))rowTokens.push(...tokens);else if(rowTokens.length)break;
  }
- if(rowTokens.length){const token=hasLiquidWeight&&rowTokens.length>1?rowTokens[1]:rowTokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg'};}
- const productStart=folded.findIndex(line=>line.includes('DADOS DOS PRODUTOS')),productEnd=productStart>=0?folded.findIndex((line,lineIndex)=>lineIndex>productStart&&/(CALCULO DO ISSQN|INFORMACOES COMPLEMENTARES)/.test(line)):-1,productLines=productStart>=0?lines.slice(productStart+1,productEnd>=0?productEnd:productStart+80):[];
- let productKg=0,productKgFound=false;
- for(const row of productLines){
-  for(const match of row.matchAll(/\b(?:KG|KGS)\s+([\d.,]+)/gi)){const value=numberFrom(match[1]);if(value!==null){productKg+=value;productKgFound=true;}}
- }
- if(productKgFound)return {cargoWeight:Number(productKg.toFixed(3)),cargoWeightUnit:'kg',cargoWeightSource:'product-quantity',cargoWeightComplete:false};
+ if(rowTokens.length){const token=hasLiquidWeight&&rowTokens.length>1?rowTokens[1]:rowTokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg',...(productCandidates.length?{cargoWeightAlternatives:productCandidates}:{})};}
+ if(productCandidates.length){const productKg=productCandidates.reduce((sum,item)=>sum+item.cargoWeight,0);return {cargoWeight:Number(productKg.toFixed(3)),cargoWeightUnit:'kg',cargoWeightSource:'product-quantity',cargoWeightComplete:!productHasOtherUnit};}
  return {cargoWeight:null,cargoWeightUnit:null};
 }
 const manifestedNotesFromXml=normalized=>{
@@ -327,20 +330,20 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
     if(plateMismatch&&(!correctionFiles.length||!confirmPlateCorrection))throw Error( correctionFiles.length?'O CT-e informa a placa '+cte.plate+', mas a solicitação é da placa '+cteRequest.plate+'. Confira a carta de correção e marque a confirmação antes de enviar.':'A placa do CT-e precisa ser a mesma placa informada na solicitação da fazenda.');
     const requestFarm=(current.state.farms||[]).find(item=>item.id===cteRequest.farmId),notes=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file));
     if(!requestFarm||!notes.length)throw Error('A solicitação não tem fazenda e NF-e válidas para conferência. Solicite um novo pedido.');
-    for(const note of notes){let noteText='';if(!note.parties||note.cargoWeight==null){noteText=await readNfePdf(await backend.cteRequests.downloadFile(note));if(!note.parties)note.parties=extractNfeParties(noteText);if(note.cargoWeight==null)Object.assign(note,extractNfeCargoWeight(noteText));}assertNfePartiesMatchFarm(note.parties,requestFarm,note.name);}
+    for(const note of notes){let noteText='';const hasAlternatives=Object.prototype.hasOwnProperty.call(note,'cargoWeightAlternatives');if(!note.parties||note.cargoWeight==null||(!hasAlternatives&&Number(note.cargoWeight)===0)){noteText=await readNfePdf(await backend.cteRequests.downloadFile(note));if(!note.parties)note.parties=extractNfeParties(noteText);if(note.cargoWeight==null||(!hasAlternatives&&Number(note.cargoWeight)===0))Object.assign(note,extractNfeCargoWeight(noteText));}assertNfePartiesMatchFarm(note.parties,requestFarm,note.name);}
    }
    let weightConference=null;
    if(cteRequest){
-    const invoiceWeightFiles=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)),invoiceWeights=invoiceWeightFiles.map(file=>{const value=Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(unit==='t'?1000:1):null;}),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
+    const invoiceWeightFiles=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)),invoiceWeightCandidates=invoiceWeightFiles.map(file=>{const primary=file.cargoWeight==null?null:Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg',primaryKg=Number.isFinite(primary)&&primary>=0?primary*(unit==='t'?1000:1):null,alternatives=(Array.isArray(file.cargoWeightAlternatives)?file.cargoWeightAlternatives:[]).map(item=>{const value=item?.cargoWeight==null?null:Number(item.cargoWeight),itemUnit=item?.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(itemUnit==='t'?1000:1):null;}).filter(value=>value!==null),values=[primaryKg,...alternatives].filter(value=>value!==null);return [...new Set(values)];}),invoiceWeights=invoiceWeightCandidates.map(values=>values[0]??null),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
     const partial=invoiceWeightFiles.filter(file=>file.cargoWeightSource==='product-quantity'||file.cargoWeightComplete===false).map(file=>file.name).filter(Boolean);
     if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)||partial.length){
      const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:partial.length?`A NF-e ${partial.join(', ')} tem quantidade em KG nos produtos, mas não informa o peso bruto total.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
      if(!confirmWeightCheck){const error=Error(reason+' Confira os documentos e confirme se deseja enviar mesmo sem a comparação automática.');error.code='CTE_WEIGHT_UNAVAILABLE';throw error;}
      weightConference={status:'unavailable',cteWeightKg,nfeWeightKg:null,confirmedBy:actor.userId,confirmedAt:new Date().toISOString()};
     }else{
-     const nfeWeightKg=Number(invoiceWeights.reduce((sum,value)=>sum+value,0).toFixed(3)),differenceKg=Number(Math.abs(cteWeightKg-nfeWeightKg).toFixed(3)),matches=differenceKg<=Math.max(1,nfeWeightKg*0.00001);
+     const primaryNfeWeightKg=Number(invoiceWeights.reduce((sum,value)=>sum+value,0).toFixed(3)),candidateTotals=invoiceWeightCandidates.reduce((totals,candidates)=>totals.flatMap(total=>candidates.map(value=>Number((total+value).toFixed(3)))),[0]),matchingTotal=candidateTotals.find(total=>Math.abs(cteWeightKg-total)<=Math.max(1,total*0.00001)),nfeWeightKg=matchingTotal===undefined?primaryNfeWeightKg:matchingTotal,differenceKg=Number(Math.abs(cteWeightKg-nfeWeightKg).toFixed(3)),matches=matchingTotal!==undefined;
      if(!matches&&!confirmWeightCheck){const error=Error(`Peso diferente: CT-e ${cteWeightKg.toLocaleString('pt-BR')} kg; NF-e ${nfeWeightKg.toLocaleString('pt-BR')} kg (diferença de ${differenceKg.toLocaleString('pt-BR')} kg). Confira os documentos e confirme se deseja enviar mesmo assim.`);error.code='CTE_WEIGHT_MISMATCH';throw error;}
-     weightConference={status:matches?'match':'different',cteWeightKg,nfeWeightKg,differenceKg,...(!matches?{confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}:{})};
+     weightConference={status:matches?'match':'different',cteWeightKg,nfeWeightKg,differenceKg,...(matches&&nfeWeightKg!==primaryNfeWeightKg?{matchedAlternative:true,primaryNfeWeightKg}:{ }),...(!matches?{confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}:{})};
     }
    }
    const truck=cteRequest?requestedTruck:dateMatches.length===1?dateMatches[0]:dateMatches.length===0&&plateMatches.length===1?plateMatches[0]:null;
