@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,CTE_BILLING_RATE_PER_TON,CTE_REPORT_COLUMNS,extractNfeCargoWeight,extractNfeVehiclePlate,inspectCte,inspectCtePaymentProof,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {assertNfeMatchesFarm,createCteApi,CTE_BILLING_RATE_PER_TON,CTE_REPORT_COLUMNS,extractNfeCargoWeight,extractNfeParties,extractNfeVehiclePlate,inspectCte,inspectCtePaymentProof,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infCarga><vCarga>1000</vCarga><proPred>Soja</proPred><infQ><cUnid>01</cUnid><tpMed>PESO BRUTO</tpMed><qCarga>44222.000</qCarga></infQ></infCarga><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -24,8 +24,18 @@ PESO BRUTO: 44.222,000 KG
 Transporte Subcontratado com LANZA TRANSP DE CARGAS LTDA
 SCANIA,Placas:BCD5C56,UF PR/Carreta:MLX6C23.
 Motorista: JADSON LUCINDO DA SILVA,Placas: BCD5C56,Ano Fab.:2018`;
-const state={farms:[{id:'farm-a',name:'Fazenda A',active:true},{id:'farm-b',name:'Fazenda B',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
-function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,repositoryState=null,request=null,documents=null,downloadCte=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR'}={}){
+const nfeIdentity=`DANFE
+INSCRIÇÃO ESTADUAL INSC. ESTADUAL DO SUBST. TRIBUTÁRIO CNPJ
+132603632 06.338.525/0001-18
+DESTINATÁRIO/REMETENTE
+NOME/RAZÃO SOCIAL CPF DATA DA EMISSÃO
+FAZENDA A 123.456.789-01 08/10/2026
+MUNICÍPIO FONE / FAX UF INSCRIÇÃO ESTADUAL
+Nobres MT 133256820
+CALCULO DO IMPOSTO`;
+const foreignNfeIdentity=nfeIdentity.replace('FAZENDA A 123.456.789-01','FAZENDA ESTRANHA 89.971.568/0002-44').replace('133256820','133267750');
+const state={farms:[{id:'farm-a',name:'Fazenda A',cpf:'123.456.789-01',stateRegistration:'133256820',active:true},{id:'farm-b',name:'Fazenda B',cnpj:'89.971.568/0002-44',stateRegistration:'133267750',active:true}],trucks:[{id:'truck-a',plate:'ABC1D23',driver:'João',farmId:'farm-a',start:'2026-10-01',end:''},{id:'truck-b',plate:'BCD5C56',driver:'Jadson',farmId:'farm-a',start:'2026-10-08',end:''}]};
+function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.trucks,repositoryState=null,request=null,documents=null,downloadCte=null,readNfePdf=async()=> 'DADOS DO TRANSPORTADOR\nPLACA DO VEÍCULO ABC1D23\nUF PR',nfeIdentityText=nfeIdentity}={}){
  const calls={};
  const backend={
   actor:async()=>({userId,email:'user@example.com',companyId,party,role,farmId}),
@@ -48,10 +58,12 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
    list:async(_company,farm)=>{calls.requestListFarm=farm;return request?[request]:[];},
    find:async(_company,id)=>request?.id===id?request:null,
    create:async(actor,truck,farm,invoiceKeys,note,invoiceFiles)=>{calls.request={actor,truck,farm,invoiceKeys,note,invoiceFiles};return {id:'55555555-5555-4555-8555-555555555555',farmId:farm.id,plate:truck.plate,invoiceKeys,status:'pending'};},
-   signFile:async()=> 'https://storage.example/signed?download=nota.xml'
+   signFile:async()=> 'https://storage.example/signed?download=nota.xml',
+   downloadFile:async()=>pdf,
+   cancel:async(_company,id)=>{calls.cancelledRequestId=id;return {...request,status:'cancelled'};}
   }
  };
- return {api:createCteApi({backend,readPdf:async()=>pdfText,readNfePdf}),calls};
+ return {api:createCteApi({backend,readPdf:async()=>pdfText,readNfePdf:async bytes=>(await readNfePdf(bytes))+'\n'+nfeIdentityText}),calls};
 }
 const formRequest=({fileName='cte.xml',bytes=xml,confirmHighValue=false}={})=>{
  const form=new FormData();if(confirmHighValue)form.append('confirmHighValue','true');form.append('file',new Blob([bytes],{type:fileName.endsWith('.xml')?'application/xml':'application/pdf'}),fileName);
@@ -103,6 +115,14 @@ test('valida PDF da NF-e sem exigir leitura da chave pelo PDF',()=>{
  assert.equal(inspectNfePdf(bytes,'51260956023496000173550010000008571135775140.pdf').accessKey,'51260956023496000173550010000008571135775140');
  assert.throws(()=>inspectNfePdf(new TextEncoder().encode('nao e pdf'),'danfe.pdf'),/PDF válidos/);
  assert.throws(()=>inspectNfePdf(bytes,'danfe.xml'),/PDF válidos/);
+});
+test('confere CPF/CNPJ e inscrição estadual da fazenda no emitente ou destinatário do DANFE',()=>{
+ const parties=extractNfeParties(nfeIdentity);
+ assert.deepEqual(parties,{issuer:{document:'06338525000118',stateRegistration:'132603632'},recipient:{document:'12345678901',stateRegistration:'133256820'}});
+ assert.deepEqual(assertNfeMatchesFarm(nfeIdentity,state.farms[0],'nota.pdf'),parties);
+ assert.deepEqual(assertNfeMatchesFarm(nfeIdentity,{name:'Fornecedor',cnpj:'06.338.525/0001-18',stateRegistration:'132603632'},'nota.pdf'),parties);
+ assert.throws(()=>assertNfeMatchesFarm(foreignNfeIdentity,state.farms[0],'nota.pdf'),/não corresponde à Fazenda A/);
+ assert.throws(()=>assertNfeMatchesFarm('PLACA DO VEÍCULO ABC1D23',state.farms[0],'nota.pdf'),/DANFE legível/);
 });
 test('peso bruto da NF-e é lido e normalizado para kg',()=>{
  assert.deepEqual(extractNfeCargoWeight('PESO BRUTO\n44.222,000'),{cargoWeight:44222,cargoWeightUnit:'kg'});
@@ -166,6 +186,13 @@ test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para 
  assert.equal((await setup({party:'farm',role:'viewer'}).api(request)).status,403);
 });
 
+test('recusa NF-e de outra fazenda mesmo quando o funcionário e a placa pertencem à fazenda do pedido',async()=>{
+ const {api,calls}=setup({party:'farm',nfeIdentityText:foreignNfeIdentity}),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'marape.pdf');
+ await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form})),/não corresponde à Fazenda A/);
+ assert.equal(calls.request,undefined);
+});
+
 test('funcionário envia uma ou mais NF-e somente em PDF, sem XML nem chave',async()=>{
  const {api,calls}=setup({party:'farm',role:'operator',readNfePdf:async()=> 'PLACA DO VEÍCULO ABC1D23\nPESO BRUTO\n44.222,000\nPESO LÍQUIDO\n44.222,000'}),pdf=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
  form.append('payload',JSON.stringify({truckId:'truck-a',note:'Enviar as notas anexas'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-1.pdf');form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-2.pdf');
@@ -203,6 +230,22 @@ test('XML anexado fica acessível somente à fazenda da solicitação e à equip
 test('a listagem de solicitações nunca expõe os caminhos privados do Storage',async()=>{
  const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',invoiceKeys:[],invoiceFiles:[{id:'66666666-6666-4666-8666-666666666666',name:'nota.xml',objectKey:companyId+'/privado/nota.xml'}]},listed=await setup({party:'carrier',role:'operator',request}).api(new Request('https://example.test/api/ctes'));
  assert.equal(listed.status,200);assert.equal((await listed.json()).requests[0].invoiceFiles[0].objectKey,undefined);
+});
+
+test('cancela somente pedido pendente da própria fazenda e preserva a autorização da transportadora',async()=>{
+ const requestId='55555555-5555-4555-8555-555555555555',request={id:requestId,status:'pending',farmId:'farm-a',invoiceKeys:[],invoiceFiles:[]},url=`https://example.test/api/cte-requests/${requestId}/cancel`;
+ const own=setup({party:'farm',request}),response=await own.api(new Request(url,{method:'POST'}));assert.equal(response.status,200);assert.equal((await response.json()).request.status,'cancelled');assert.equal(own.calls.cancelledRequestId,requestId);
+ assert.equal((await setup({party:'farm',farmId:'farm-b',request}).api(new Request(url,{method:'POST'}))).status,403);
+ assert.equal((await setup({party:'farm',role:'viewer',request}).api(new Request(url,{method:'POST'}))).status,403);
+ assert.equal((await setup({party:'carrier',request}).api(new Request(url,{method:'POST'}))).status,200);
+});
+
+test('impede devolver CT-e para pedido antigo cuja NF-e pertence a outra fazenda',async()=>{
+ const requestId='55555555-5555-4555-8555-555555555555',request={id:requestId,status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[],invoiceFiles:[{name:'marape.pdf',mime:'application/pdf',objectKey:companyId+'/'+requestId+'/marape.pdf',cargoWeight:44222,cargoWeightUnit:'kg'}]},form=new FormData();
+ form.append('requestId',request.id);form.append('file',new Blob([xml],{type:'application/xml'}),'cte.xml');
+ const {api,calls}=setup({party:'carrier',request,nfeIdentityText:foreignNfeIdentity});
+ await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),/não corresponde à Fazenda A/);
+ assert.equal(calls.upload,undefined);
 });
 
 test('acesso fiscal de funcionário só lista e baixa CT-es da fazenda vinculada',async()=>{

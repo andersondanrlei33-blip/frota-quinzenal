@@ -49,6 +49,7 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
     async ctes(filters={}){const query=new URLSearchParams(filters);return api('/api/ctes'+(query.size?'?'+query.toString():''));},
     async requestCte(payload){if(payload instanceof FormData)return request(url+'/functions/v1/'+functionName+'/api/cte-requests',{method:'POST',body:payload,token:await getToken(),company:true,raw:true});return api('/api/cte-requests',payload);},
+    async cancelCteRequest(requestId){return api('/api/cte-requests/'+encodeURIComponent(requestId)+'/cancel',{});},
     async cteRequestFileLink(requestId,fileId){return api('/api/cte-requests/'+encodeURIComponent(requestId)+'/files/'+encodeURIComponent(fileId));},
     async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
     async uploadCte({file,requestId='',confirmPlateCorrection=false,confirmWeightCheck=false,confirmHighValue=false}){const body=new FormData();body.append('file',file,file.name);if(requestId)body.append('requestId',requestId);if(confirmPlateCorrection)body.append('confirmPlateCorrection','true');if(confirmWeightCheck)body.append('confirmWeightCheck','true');if(confirmHighValue)body.append('confirmHighValue','true');return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
