@@ -34,8 +34,8 @@ const billableTons=(weight,unit)=>{const value=Number(weight);if(!Number.isFinit
 const billingAmount=(tons,rate=CTE_BILLING_RATE_PER_TON)=>tons==null?null:Number((tons*rate).toFixed(2));
 export function extractNfeVehiclePlate(text){
  const normalized=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
- const header=normalized.indexOf('PLACA DO VEICULO');if(header<0)return '';
- const section=normalized.slice(header+'PLACA DO VEICULO'.length).split(/\b(?:ENDERECO|DADOS DOS PRODUTOS)\b/,1)[0].slice(0,1600);
+ const label=normalized.match(/PLACA(?:\s+DO)?\s+VEICULO/),header=label?.index??-1;if(header<0)return '';
+ const section=normalized.slice(header+label[0].length).split(/\b(?:ENDERECO|DADOS DOS PRODUTOS)\b/,1)[0].slice(0,1600);
  const match=section.match(/\b([A-Z]{3}\s*-?\s*[A-Z0-9]{4})\b/);
  const plate=match?.[1].replace(/[^A-Z0-9]/g,'')||'';
  return plate.length===7?plate:'';
