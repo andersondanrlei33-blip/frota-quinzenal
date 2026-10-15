@@ -310,13 +310,16 @@ test('truck list groups transfers and returns into one plate with a consolidated
  state.trucks=[
   {id:'period-a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'period-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},
   {id:'period-b',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-03',end:'2026-10-04',transferIn:{fromTruckId:'period-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'},transferOut:{toTruckId:'period-c',toFarmId:'farm1',toFarmName:'Fazenda 1',date:'2026-10-05'}},
-  {id:'period-c',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-05',end:'',transferIn:{fromTruckId:'period-b',fromFarmId:'farm2',fromFarmName:'Fazenda 2',date:'2026-10-05'}},
-  {id:'other',plate:'DEF1G23',driver:'Outro motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:''}
+   {id:'period-c',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-05',end:'',paymentAccountId:'account-1',transferIn:{fromTruckId:'period-b',fromFarmId:'farm2',fromFarmName:'Fazenda 2',date:'2026-10-05'}},
+   {id:'other',plate:'DEF1G23',driver:'Outro motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Caçamba',axles:9,monthly:40000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Outro titular',document:'12345678901',pixKey:'chave@exemplo.test'}}
  ];
+  state.paymentAccounts=[{id:'account-1',name:'Conta conjunta',details:{method:'bank',holder:'Titular Exemplo',document:'12345678901',bankName:'Banco Teste',agency:'0001',account:'12345-6',accountType:'corrente'}}];
  app.mutateState(saved=>Object.assign(saved,state));await app.poll();
  app.run("location.hash='#trucks';render()");
  const all=app.get('#main').innerHTML;assert.match(all,/2 placa\(s\) · 4 período\(s\)/);assert.equal((all.match(/data-action="truck-history"/g)||[]).length,2);
  app.run("farmFilter='farm1';render()");const html=app.get('#main').innerHTML;assert.match(html,/1 placa\(s\) · 3 período\(s\)/);assert.match(html,/Passou por 2 fazendas/);assert.match(html,/Detalhes/);
- await app.action('truck-history','period-c');const details=app.get('#modal-content').innerHTML;assert.match(details,/Períodos de trabalho/);assert.match(details,/Fazenda 2/);assert.match(details,/Transferir fazenda/);assert.match(details,/Editar período atual/);
+  await app.action('truck-history','period-c');const details=app.get('#modal-content').innerHTML;assert.match(details,/Períodos de trabalho/);assert.match(details,/Fazenda 2/);assert.match(details,/Transferir fazenda/);assert.match(details,/Editar período atual/);
+  assert.match(details,/Conta conjunta/);assert.match(details,/Titular Exemplo/);assert.match(details,/Banco Teste/);assert.match(details,/12345-6/);
+  await app.action('truck-history','other');const pixDetails=app.get('#modal-content').innerHTML;assert.match(pixDetails,/Chave Pix/);assert.match(pixDetails,/chave@exemplo.test/);
 })
 
