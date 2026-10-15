@@ -98,4 +98,5 @@ body.report-open{overflow:hidden}
 @media(max-width:700px){.team-farm-section{padding:13px}.team-member{grid-template-columns:1fr auto;gap:8px}.team-member .team-controls{grid-column:1/-1;justify-content:flex-start}.team-controls select{flex:1;min-width:0;max-width:none}.invite-fields{grid-template-columns:1fr;gap:0}.invite-fields .field:first-child{grid-column:auto}}
 
 .billing-payment-form{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 20px;border-bottom:1px solid var(--line);background:#fbfcfa}.billing-payment-form>div{display:grid;gap:3px;min-width:220px;margin-right:auto}.billing-payment-form input{max-width:360px;padding:8px}.billing-payment-form .form-error{flex-basis:100%}
+.billing-month-toolbar label{font-weight:600}.billing-month-toolbar input{max-width:220px}
 @media(max-width:700px){.billing-payment-form{align-items:stretch;flex-direction:column}.billing-payment-form input,.billing-payment-form .btn{width:100%;max-width:none}}
