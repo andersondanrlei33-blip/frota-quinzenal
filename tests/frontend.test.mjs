@@ -173,6 +173,12 @@ test('CT-e report shows the cargo weight and adds it to existing saved preferenc
   assert.match(app.get('#main').innerHTML,/PESO DA CARGA/);assert.match(app.get('#main').innerHTML,/44\.222\s?kg/);
   app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Peso da carga/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="cargoWeight" checked/);
 });
+test('farm tonnage billing lists each manifested CT-e and lets the farm attach proof per document',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+  app.run("currentUser={party:'farm',role:'operator',farmId:'farm1'};cteFarms=[{id:'farm1',name:'Fazenda 1'}];cteDocuments=[{id:'cte-paid',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-1',plate:'ABC1D23',driver:'Motorista A',issuedOn:'2026-10-08',billableTons:44.222,billingRate:2.7,billingAmount:119.4,paymentReceipt:{paidAt:'2026-10-10T12:00:00.000Z',name:'pix.pdf'}},{id:'cte-open',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-2',plate:'DEF4G56',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:10,billingRate:2.7,billingAmount:27,paymentReceipt:null}];main.innerHTML=cteBillingView()");
+  const html=app.get('#main').innerHTML;assert.match(html,/R\$\s?146,40/);assert.match(html,/54,222 t/);assert.match(html,/CTE-1/);assert.match(html,/CTE-2/);assert.match(html,/Enviar comprovante/);assert.match(html,/Pago/);assert.match(html,/Em aberto/);assert.equal((html.match(/class="billing-proof-form"/g)||[]).length,1);
+  app.run("currentUser={party:'carrier',role:'operator'};main.innerHTML=cteBillingView()");assert.doesNotMatch(app.get('#main').innerHTML,/class="billing-proof-form"/);
+});
 test('CT-e report columns can be dragged to any position in the saved order',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   app.run("ctePreferences={visibleColumns:['number','shipper','plate'],columnOrder:['number','shipper','plate']};ctePreferencesForm()");

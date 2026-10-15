@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCteApi,CTE_REPORT_COLUMNS,extractNfeCargoWeight,extractNfeVehiclePlate,inspectCte,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
+import {createCteApi,CTE_BILLING_RATE_PER_TON,CTE_REPORT_COLUMNS,extractNfeCargoWeight,extractNfeVehiclePlate,inspectCte,inspectCtePaymentProof,inspectNfePdf,inspectNfeXml,parseCtePdfText,parseCteXml} from '../server/ctes.js';
 
 const companyId='11111111-1111-4111-8111-111111111111',userId='22222222-2222-4222-8222-222222222222',documentId='33333333-3333-4333-8333-333333333333';
 const xml=new TextEncoder().encode(`<?xml version="1.0"?><cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte><ide><nCT>123</nCT><dhEmi>2026-10-08T10:22:00-04:00</dhEmi><toma3><toma>3</toma></toma3></ide><emit><xNome>Transportadora Exemplo Ltda</xNome></emit><rem><xNome>Remetente Exemplo Ltda</xNome></rem><dest><xNome>Fazenda Exemplo SA</xNome></dest><vPrest><vTPrest>1250.75</vTPrest></vPrest><infCTeNorm><infCarga><vCarga>1000</vCarga><proPred>Soja</proPred><infQ><cUnid>01</cUnid><tpMed>PESO BRUTO</tpMed><qCarga>44222.000</qCarga></infQ></infCarga><infModal><rodo><veic><placa>ABC1D23</placa></veic></rodo></infModal></infCTeNorm></infCte></CTe></cteProc>`);
@@ -38,6 +38,8 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
    download:async document=>downloadCte?downloadCte(document):xml,
    saveWeight:async(company,id,weight,unit)=>{calls.savedWeight={company,id,weight,unit};},
    upload:async(actor,metadata,bytes,details,snapshot)=>{calls.upload={actor,metadata,bytes,details,snapshot};return {id:documentId,name:details.name,mime:details.mime,size:details.size};},
+   recordPayment:async(actor,id,bytes,details)=>{calls.payment={actor,id,bytes,details};return {id,farmId:actor.farmId,paymentReceipt:{id:'77777777-7777-4777-8777-777777777777',name:details.name,mime:details.mime,size:details.size,uploadedBy:actor.userId,paidAt:'2026-10-14T18:00:00.000Z',objectKey:companyId+'/cte-billing/'+id+'/receipt.pdf'}};},
+   signPaymentProof:async()=> 'https://storage.example/signed?download=receipt.pdf',
    find:async(idCompany,id)=>idCompany===companyId&&id===documentId?{name:'cte.xml',mime:'application/xml',objectKey:companyId+'/ctes/'+documentId+'/cte.xml'}:null,
    sign:async()=> 'https://storage.example/signed?download=cte.xml'
   },
@@ -60,12 +62,13 @@ test('extrai automaticamente participantes, valor, data e placa do XML do CT-e',
  assert.equal(parseCteXml(xmlToma4).serviceTaker,'Tomador Contratante Ltda');
  const accessKey='51260956023496000173550010000008571135775140',secondAccessKey=accessKey.slice(0,25)+'000000858'+accessKey.slice(34),withNotes=new TextEncoder().encode(new TextDecoder().decode(xml).replace('</infCTeNorm>','<infDoc><infNFe><chave>'+accessKey+'</chave></infNFe><infNFe><chave>'+secondAccessKey+'</chave></infNFe></infDoc></infCTeNorm>'));
  assert.deepEqual(parseCteXml(withNotes).manifestedNotes,['857','858']);
+ assert.deepEqual(parseCteXml(withNotes).manifestedKeys,[accessKey,secondAccessKey]);
  const detailed=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<emit><xNome>Transportadora Exemplo Ltda</xNome></emit>','<emit><CNPJ>12345678000199</CNPJ><IE>123456789</IE><xNome>Transportadora Exemplo Ltda</xNome><enderEmit><xMun>Cuiaba</xMun></enderEmit></emit>').replace('<rem><xNome>Remetente Exemplo Ltda</xNome></rem>','<rem><CNPJ>11222333000144</CNPJ><IE>987654321</IE><xNome>Remetente Exemplo Ltda</xNome><enderReme><xMun>Campo Novo</xMun></enderReme></rem>').replace('<dest><xNome>Fazenda Exemplo SA</xNome></dest>','<dest><CPF>12345678901</CPF><IE>1234567</IE><xNome>Fazenda Exemplo SA</xNome></dest>'));
  const detail=parseCteXml(detailed).participantDetails;assert.deepEqual(detail.shipper,{city:'Campo Novo',stateRegistration:'987654321',cnpj:'11.222.333/0001-44',cpf:''});assert.deepEqual(detail.recipient,{city:'',stateRegistration:'1234567',cnpj:'',cpf:'123.456.789-01'});
 });
 
 test('extrai automaticamente dados do DACTE e todas as notas manifestadas',()=>{
- const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.cargoWeight,44222);assert.equal(parsed.cargoWeightUnit,'kg');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');assert.deepEqual(parsed.manifestedNotes,['857','858']);
+ const parsed=parseCtePdfText(pdfText);assert.equal(parsed.issuer,'BARROS TRANSPORTES RODOVIARIOS LTDA');assert.equal(parsed.recipient,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.shipper,'MORENA SEMENTES LTDA');assert.equal(parsed.serviceTaker,'JOSE ALTAIR LAZAROTTO');assert.equal(parsed.totalValue,46875.32);assert.equal(parsed.issuedOn,'2026-09-22');assert.equal(parsed.plate,'BCD5C56');assert.equal(parsed.cargoWeight,44222);assert.equal(parsed.cargoWeightUnit,'kg');assert.equal(parsed.number,'');assert.equal(parsed.participantDetails.serviceTaker.city,'LUCAS DO RIO VERDE');assert.deepEqual(parsed.manifestedNotes,['857','858']);assert.deepEqual(parsed.manifestedKeys,['51260956023496000173550010000008571135775140','51260956023496000173550010000008581135775140']);
  const detailed=parseCtePdfText(pdfText.replace('Tomador Serviço:', 'Município: CAMPO NOVO DO PARECIS CEP: 78360-000 Município: LUCAS DO RIO VERDE CEP: 78450-000\nCNPJ/CPF: 56.023.496/0001-73 Insc.Est: 140735488 CNPJ/CPF: 330.803.640-15 Insc.Est: 135597749\nTomador Serviço:'));
  assert.deepEqual(detailed.participantDetails.shipper,{city:'CAMPO NOVO DO PARECIS',stateRegistration:'140735488',cnpj:'56.023.496/0001-73',cpf:''});assert.deepEqual(detailed.participantDetails.recipient,{city:'LUCAS DO RIO VERDE',stateRegistration:'135597749',cnpj:'',cpf:'330.803.640-15'});assert.equal(detailed.participantDetails.serviceTaker.cpf,'330.803.640-15');
 });
@@ -96,6 +99,7 @@ test('valida XML de NF-e, extrai a chave e rejeita XML fora do padrão fiscal',(
 test('valida PDF da NF-e sem exigir leitura da chave pelo PDF',()=>{
  const bytes=new TextEncoder().encode('%PDF-1.7\nconteudo de teste');
  assert.deepEqual(inspectNfePdf(bytes,'danfe.pdf'),{name:'danfe.pdf',mime:'application/pdf',extension:'pdf',size:bytes.length,accessKey:''});
+ assert.equal(inspectNfePdf(bytes,'51260956023496000173550010000008571135775140.pdf').accessKey,'51260956023496000173550010000008571135775140');
  assert.throws(()=>inspectNfePdf(new TextEncoder().encode('nao e pdf'),'danfe.pdf'),/PDF válidos/);
  assert.throws(()=>inspectNfePdf(bytes,'danfe.xml'),/PDF válidos/);
 });
@@ -237,6 +241,37 @@ test('peso ilegível exige confirmação manual e registra que a comparação n�
 test('placa divergente sem carta de correção continua bloqueada',async()=>{
  const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[]},withOtherPlate=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<placa>ABC1D23</placa>','<placa>BCD5C56</placa>')),form=new FormData();form.append('requestId',request.id);form.append('confirmPlateCorrection','true');form.append('file',new Blob([withOtherPlate],{type:'application/xml'}),'cte.xml');
  const {api}=setup({party:'carrier',request});await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),/placa do CT-e precisa ser a mesma placa/);
+});
+
+test('a tarifa por tonelada é calculada com o peso do CT-e',async()=>{
+ const {api,calls}=setup({party:'carrier'}),response=await api(formRequest({confirmHighValue:true}));
+ assert.equal(response.status,201);assert.equal(CTE_BILLING_RATE_PER_TON,2.70);assert.equal(calls.upload.metadata.billableTons,44.222);assert.equal(calls.upload.metadata.billingRate,2.70);assert.equal(calls.upload.metadata.billingAmount,119.40);
+});
+
+test('carta de correção pode acompanhar a solicitação sem ser tratada como NF-e',async()=>{
+ const key='51260956023496000173550010000008571135775140',form=new FormData(),nfe=new TextEncoder().encode('%PDF-1.7\\nDANFE'),correction=new TextEncoder().encode('%PDF-1.7\\nCarta de correção');
+ form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([nfe],{type:'application/pdf'}),key+'.pdf');form.append('correctionFile',new Blob([correction],{type:'application/pdf'}),'Carta-Correcao.pdf');
+ const {api,calls}=setup({party:'farm',readNfePdf:async()=> 'PLACA DO VEÍCULO ABC1D23'}),response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));
+ assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,2);assert.equal(calls.request.invoiceFiles[0].details.accessKey,key);assert.equal(calls.request.invoiceFiles[1].details.documentType,'correction');assert.equal(calls.request.invoiceFiles[1].details.vehiclePlate,undefined);
+});
+
+test('bloqueia NF-e que já está em solicitação ou foi manifestada em outro CT-e',async()=>{
+ const key='51260956023496000173550010000008571135775140',nfe=new TextEncoder().encode('%PDF-1.7\\nDANFE'),makeRequest=()=>{const form=new FormData();form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([nfe],{type:'application/pdf'}),key+'.pdf');return new Request('https://example.test/api/cte-requests',{method:'POST',body:form});};
+ const prior={id:'55555555-5555-4555-8555-555555555555',status:'issued',invoiceFiles:[{name:key+'.pdf'}]},requested=setup({party:'farm',request:prior,readNfePdf:async()=> 'PLACA DO VEÍCULO ABC1D23'});await assert.rejects(()=>requested.api(makeRequest()),/já foi solicitada ou manifestada/);assert.equal(requested.calls.request,undefined);
+ const manifested=setup({party:'farm',documents:[{id:documentId,participantDetails:{manifestedKeys:[key]}}],readNfePdf:async()=> 'PLACA DO VEÍCULO ABC1D23'});await assert.rejects(()=>manifested.api(makeRequest()),/já foi solicitada ou manifestada/);assert.equal(manifested.calls.request,undefined);
+});
+
+test('fazenda anexa comprovante para marcar CT-e como pago; outros acessos são negados',async()=>{
+ const form=new FormData();form.append('paymentProof',new Blob(['%PDF-1.7\\nrecibo'],{type:'application/pdf'}),'comprovante.pdf');
+ const farm=setup({party:'farm',role:'operator'}),response=await farm.api(new Request('https://example.test/api/ctes/'+documentId+'/payment-proof',{method:'POST',body:form}));
+ assert.equal(response.status,201);assert.equal(farm.calls.payment.id,documentId);assert.equal(farm.calls.payment.actor.farmId,'farm-a');assert.equal(farm.calls.payment.details.mime,'application/pdf');assert.equal((await response.json()).document.paymentReceipt.name,'comprovante.pdf');
+ const carrier=await setup({party:'carrier'}).api(new Request('https://example.test/api/ctes/'+documentId+'/payment-proof',{method:'POST',body:form}));assert.equal(carrier.status,403);
+});
+
+test('comprovante de pagamento valida assinatura real e extensão',()=>{
+ assert.equal(inspectCtePaymentProof(new TextEncoder().encode('%PDF-1.7\\nrecibo'),'recibo.pdf').mime,'application/pdf');
+ assert.equal(inspectCtePaymentProof(new Uint8Array([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),'recibo.png').mime,'image/png');
+ assert.throws(()=>inspectCtePaymentProof(new TextEncoder().encode('%PDF-1.7\\nrecibo'),'recibo.png'),/comprovante válido/);
 });
 
 test('cada usuário salva sua seleção e ordem de colunas no portal da própria empresa',async()=>{

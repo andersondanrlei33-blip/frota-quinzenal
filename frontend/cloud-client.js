@@ -53,6 +53,8 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
     async uploadCte({file,requestId='',confirmPlateCorrection=false,confirmWeightCheck=false,confirmHighValue=false}){const body=new FormData();body.append('file',file,file.name);if(requestId)body.append('requestId',requestId);if(confirmPlateCorrection)body.append('confirmPlateCorrection','true');if(confirmWeightCheck)body.append('confirmWeightCheck','true');if(confirmHighValue)body.append('confirmHighValue','true');return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
     async cteLink(id){return api('/api/ctes/'+encodeURIComponent(id));},
+    async submitCtePaymentProof(id,file){const body=new FormData();body.append('paymentProof',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/ctes/'+encodeURIComponent(id)+'/payment-proof',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async ctePaymentProofLink(id){return api('/api/ctes/'+encodeURIComponent(id)+'/payment-proof');},
     hasSession(){return !!session;}
   };
 }
