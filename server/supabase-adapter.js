@@ -25,6 +25,13 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
   const repository={
     async load(companyId){const result=await rpc('fleet_load_state',{p_company:companyId});if(!result)throw Error('Empresa não encontrada.');return result;},
     async version(companyId){const result=await service('/rest/v1/fleet_companies?'+new URLSearchParams({id:'eq.'+companyId,select:'revision'}));return result?.[0]?.revision;},
+    async hasTruckFiscalActivity(companyId,truckId){
+      const filters=new URLSearchParams({company_id:'eq.'+companyId,truck_id:'eq.'+truckId,select:'id',limit:'1'});
+      const requests=await service('/rest/v1/fleet_cte_requests?'+filters);
+      if(requests?.length)return true;
+      const documents=await service('/rest/v1/fleet_cte_documents?'+filters);
+      return !!documents?.length;
+    },
     async commit(companyId,revision,state,audit){const result=await rpc('fleet_commit_state',{p_company:companyId,p_actor:audit.actorId,p_expected:revision,p_state:state,p_action:audit.action});return result?.conflict?null:result;}
   };
   const bucket='fleet-receipts',objectPath=key=>key.split('/').map(encodeURIComponent).join('/');

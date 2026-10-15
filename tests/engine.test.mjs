@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,reopenForInvoice,discountLocked,SCHEMA,transferTruck,previewTransfer,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
+import {period,calculate,initialState,validateTruck,validateDiscount,draft,validateState,csv,parseAmount,amountLabel,dateRangeError,periodRows,farmClosing,saveClosing,reopenClosing,reopenTruckClosing,reopenForInvoice,discountLocked,SCHEMA,transferTruck,previewTransfer,undoTransfer,undoTransferBlockReason,days,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive,openFarmIds} from '../server/engine.js';
 
 const truck={id:'a',plate:'ABC1D23',driver:'João',carrier:'Transportes',farmId:'farm1',monthly:40000,start:'2026-10-06',end:'2026-11-10'};
 const settings={mode:'daily30',includeStart:true,includeEnd:true,confirmed:true};
@@ -276,6 +276,39 @@ test('a dated transfer preserves the truck information and divides costs between
   assert.equal(s.trucks[0].end,'2026-10-09');assert.equal(to.start,'2026-10-10');assert.equal(to.monthly,40000);assert.equal(to.plate,truck.plate);assert.equal(to.driver,truck.driver);
   const rr=draft(s,p);assert.equal(rr.find(r=>r.farmId==='farm1').eligibleDays,9);assert.equal(rr.find(r=>r.farmId==='farm2').eligibleDays,6);assert.equal(rr.reduce((n,r)=>n+r.net,0),20000);
   assert.equal(s.trucks[0].transferOut.toTruckId,'to');assert.equal(to.transferIn.fromTruckId,'a');assert.deepEqual(validateState(s),s);
+});
+test('undoing an unused transfer restores the original farm and planned end date',()=>{
+  const s=transferFixture('2026-10-01','2026-11-10'),before=structuredClone(s.trucks[0]);
+  transferTruck(s,'a','farm2','2026-10-10','','to');
+  assert.equal(undoTransferBlockReason(s,'to'),'');
+  undoTransfer(s,'to');
+  assert.deepEqual(s.trucks,[before]);
+  assert.deepEqual(validateState(s),s);
+});
+test('undoing transfers works from the most recent destination backwards',()=>{
+  const s=transferFixture();
+  transferTruck(s,'a','farm2','2026-10-10','','to');
+  transferTruck(s,'to','farm1','2026-10-11','','back');
+  assert.match(undoTransferBlockReason(s,'to'),/mais recente/);
+  undoTransfer(s,'back');undoTransfer(s,'to');
+  assert.equal(s.trucks.length,1);
+  assert.equal(s.trucks[0].farmId,'farm1');
+  assert.equal(s.trucks[0].end,'');
+});
+test('undoing a transfer refuses destination movement without changing records',()=>{
+  const cases=[
+    [s=>s.discounts.push({id:'d',truckId:'to',start:'2026-10-11',end:'2026-10-11'}),/descontos/],
+    [s=>s.closings.push({rows:[{truckId:'to'}]}),/fechamento/],
+    [s=>s.paymentRequests.push({truckId:'to'}),/pagamento/],
+    [s=>s.fundingTransfers.push({rows:[{truckId:'to'}]}),/repasse/],
+    [s=>{s.trucks.find(t=>t.id==='to').serviceEnded={date:'2026-10-12'};},/encerradas/],
+    [s=>{s.trucks.find(t=>t.id==='to').monthly=42000;},/alterados/]
+  ];
+  for(const [move,reason] of cases){
+    const s=transferFixture();transferTruck(s,'a','farm2','2026-10-10','','to');move(s);
+    const before=structuredClone(s);assert.match(undoTransferBlockReason(s,'to'),reason);
+    assert.throws(()=>undoTransfer(s,'to'),reason);assert.deepEqual(s,before);
+  }
 });
 test('transfer boundaries do not apply the real entry or termination exclusion twice',()=>{
   for(const includeStart of [true,false])for(const includeEnd of [true,false]){

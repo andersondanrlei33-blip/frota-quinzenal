@@ -295,7 +295,7 @@ export function transferTruck(state,truckId,toFarmId,date,note='',newId=uid()) {
   if(!plan.canTransfer)throw Error('Há fechamento salvo nos dias afetados. Revise e reabra esse período antes de transferir.');
   if(state.trucks.some(t=>t.id===newId))throw Error('O cadastro de destino já existe.');
   const next=structuredClone(state),from=next.trucks.find(t=>t.id===truckId),oldEnd=from.end||'';
-  const to={...from,id:newId,farmId:toFarmId,start:date,end:oldEnd,transferIn:{fromTruckId:truckId,fromFarmId:from.farmId,fromFarmName:plan.fromFarmName,date,note:String(note).trim().slice(0,300)}};
+  const to={...from,id:newId,farmId:toFarmId,start:date,end:oldEnd,transferIn:{fromTruckId:truckId,fromFarmId:from.farmId,fromFarmName:plan.fromFarmName,date,previousEnd:oldEnd,note:String(note).trim().slice(0,300)}};
   delete to.transferOut;
   from.end=plan.lastOldDay;
   delete from.serviceEnded;
@@ -309,6 +309,39 @@ export function transferTruck(state,truckId,toFarmId,date,note='',newId=uid()) {
   validateState(next);
   state.trucks=next.trucks;state.discounts=next.discounts;
   return to;
+}
+export function undoTransferBlockReason(state,destinationId) {
+  const to=state.trucks.find(t=>t.id===destinationId);
+  if(!to?.transferIn)return 'Selecione o período criado por uma transferência.';
+  if(to.transferOut)return 'Desfaça primeiro a transferência mais recente desta placa.';
+  const from=state.trucks.find(t=>t.id===to.transferIn.fromTruckId);
+  if(!from||from.transferOut?.toTruckId!==to.id||from.farmId!==to.transferIn.fromFarmId||from.transferOut.toFarmId!==to.farmId||from.plate!==to.plate)
+    return 'O histórico da transferência está inconsistente. Atualize os dados.';
+  if(to.serviceEnded)return 'O período de destino já teve atividades encerradas.';
+  if(to.transferIn.previousEnd!==undefined&&to.end!==to.transferIn.previousEnd)
+    return 'A data de encerramento no destino foi alterada. Revise o cadastro antes de desfazer.';
+  const fields=['plate','driver','carrier','bodyType','axles','monthly','paymentAccountId','paymentDetails'];
+  if(fields.some(field=>JSON.stringify(from[field])!==JSON.stringify(to[field])))
+    return 'Os dados da placa no destino foram alterados. Revise o cadastro antes de desfazer.';
+  if(state.discounts.some(d=>d.truckId===to.id))return 'Há descontos lançados no período de destino.';
+  if(state.closings.some(c=>c.rows?.some(r=>r.truckId===to.id)||c.calculationRevisions?.some(revision=>revision.previousRows?.some(r=>r.truckId===to.id))))
+    return 'Há fechamento salvo para o período de destino.';
+  if(state.paymentRequests?.some(r=>r.truckId===to.id||r.snapshot?.truckId===to.id))
+    return 'Há solicitação ou histórico de pagamento para o período de destino.';
+  if(state.fundingTransfers?.some(t=>t.rows?.some(r=>r.truckId===to.id)))
+    return 'Há repasse da fazenda vinculado ao período de destino.';
+  return '';
+}
+export function undoTransfer(state,destinationId) {
+  const blocked=undoTransferBlockReason(state,destinationId);
+  if(blocked)throw Error(blocked);
+  const next=structuredClone(state),to=next.trucks.find(t=>t.id===destinationId),from=next.trucks.find(t=>t.id===to.transferIn.fromTruckId);
+  from.end=to.transferIn.previousEnd===undefined?to.end:to.transferIn.previousEnd;
+  delete from.transferOut;
+  next.trucks=next.trucks.filter(t=>t.id!==destinationId);
+  validateState(next);
+  state.trucks=next.trucks;
+  return from;
 }
 export function latestTruck(state,id) {
   let t=state.trucks.find(t=>t.id===id);const seen=new Set();

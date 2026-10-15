@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState} from '../server/engine.js';
+import {initialState,transferTruck} from '../server/engine.js';
 import {createFleetApi} from '../server/api.js';
 const accounts={a:{userId:'a',companyId:'company-one',role:'admin'},b:{userId:'b',companyId:'company-one',role:'operator'},viewer:{userId:'viewer',companyId:'company-one',role:'viewer'},other:{userId:'other',companyId:'company-two',role:'admin'}};
 function setup(){
@@ -25,4 +25,27 @@ test('concurrent edits cannot overwrite the first saved update with an old revis
   assert.equal((await api(req('a','/api/commands',command))).status,200);
   const stale={...command,payload:{id:'farm4',active:true}};assert.equal((await api(req('a','/api/commands',stale))).status,409);
   const read=await (await api(req('b'))).json();assert.equal(read.state.farms[3].active,false);assert.equal(read.revision,1);
+});
+test('transfer undo checks fiscal activity on the server before removing a destination period',async()=>{
+  const {api,repository,audit}=setup(),company='company-one';
+  const initial=await repository.load(company);
+  initial.state.trucks=[{id:'source',plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:''}];
+  transferTruck(initial.state,'source','farm2','2026-10-10','','destination');
+  await repository.commit(company,0,initial.state,{action:'fixture',actorId:'a'});
+  let checked=0,hasFiscal=true;
+  repository.hasTruckFiscalActivity=async(id,truckId)=>{assert.equal(id,company);assert.equal(truckId,'destination');checked++;return hasFiscal;};
+  const command={type:'truck.transfer.undo',payload:{id:'destination'},expectedRevision:1};
+  const blocked=await api(req('a','/api/commands',command));
+  assert.equal(blocked.status,400);
+  assert.match((await blocked.json()).error,/CT-e/);
+  assert.equal((await repository.load(company)).revision,1);
+  hasFiscal=false;
+  const accepted=await api(req('a','/api/commands',command));
+  assert.equal(accepted.status,200);
+  const after=await accepted.json();
+  assert.equal(after.state.trucks.length,1);
+  assert.equal(after.state.trucks[0].farmId,'farm1');
+  assert.equal(after.state.trucks[0].end,'');
+  assert.equal(checked,2);
+  assert.equal(audit.at(-1).action,'truck.transfer.undo');
 });

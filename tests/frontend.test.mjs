@@ -16,6 +16,7 @@ async function boot(role='admin',activation=false,storage=null,party='group'){
   let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
   let account={role,party};const proofs=new Map();
   const repository={async load(){return structuredClone(stored);},async version(){return stored.revision;},async commit(company,revision,state){if(revision!==stored.revision)return null;stored={...stored,state:structuredClone(state),revision:revision+1};return structuredClone(stored);}};
+  repository.hasTruckFiscalActivity=async()=>false;
   repository.verifyReceipt=async(actor,id,requestId)=>{const proof=proofs.get(id);if(!proof||proof.requestId!==requestId)throw Error('Comprovante inválido.');return proof;};
   repository.verifyFundingReceipt=async(actor,id,transferId)=>{const proof=proofs.get(id);if(!proof||proof.transferId!==transferId||proof.uploadedBy!==actor.userId)throw Error('Recibo inválido.');return proof;};
   const api=createFleetApi({repository,authenticate:async request=>request.headers.get('Authorization')?{userId:account.party==='carrier'?'carrier-test':'group-test',companyId:'company-one',email:'user@example.test',...account}:null});
@@ -322,4 +323,19 @@ test('truck list groups transfers and returns into one plate with a consolidated
   assert.match(details,/Conta conjunta/);assert.match(details,/Titular Exemplo/);assert.match(details,/Banco Teste/);assert.match(details,/12345-6/);
   await app.action('truck-history','other');const pixDetails=app.get('#modal-content').innerHTML;assert.match(pixDetails,/Chave Pix/);assert.match(pixDetails,/chave@exemplo.test/);
 })
+test('truck details can undo an unused transfer after confirmation',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
+  app.mutateState(state=>{
+    state.trucks=[{id:'original',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:''}];
+    transferTruck(state,'original','farm2','2026-10-10','','destination');
+  });
+  await app.poll();
+  await app.action('truck-history','destination');
+  assert.match(app.get('#modal-content').innerHTML,/Desfazer transferência/);
+  await app.action('undo-transfer','destination');
+  assert.match(app.get('#modal-content').innerHTML,/será removido/);
+  await app.action('confirm-undo-transfer','destination');
+  assert.equal(app.state().state.trucks.length,1);
+  assert.equal(app.state().state.trucks[0].farmId,'farm1');
+});
 

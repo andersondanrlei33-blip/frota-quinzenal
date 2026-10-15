@@ -1,4 +1,4 @@
-import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,paymentDetailsMissing,validatePaymentDetails,allocateInvoiceNumber} from './engine.js';
+import {initialState,validateState,validateTruck,validateDiscount,saveClosing,closingPreview,splitClosingsByFarm,reopenClosing,reopenForInvoice,reopenTruckClosing,discountLocked,period,validDate,today,uid,transferTruck,undoTransfer,endActivities,removeFarm,setFarmActive,applyFixedMonthlyRule,overlaps,normalizePaymentDetails,paymentDetailsMissing,validatePaymentDetails,allocateInvoiceNumber} from './engine.js';
 import {authorizePortalCommand,requestPayments,cancelRequest,recordRequestedPayment,recordRequestedPaymentBatch,undoRequestedPayment,protectPortalBackup} from './payment-portal.js';
 import {createFunding,attachFundingReceipt,recordFunding,cancelFunding} from './funding.js';
 
@@ -78,6 +78,10 @@ export function executeCommand(input,command,actor,context={}){
     case 'funding.record':recordFunding(state,p,actor);break;
     case 'funding.cancel':cancelFunding(state,p,actor);break;
     case 'truck.transfer':transferTruck(state,p.id,p.toFarmId,p.date,text(p.note||'',300));break;
+    case 'truck.transfer.undo':{
+      if(context.transferUndoFiscalClear!==true)throw Error('Não foi possível confirmar se há solicitações de CT-e ou documentos no destino.');
+      undoTransfer(state,text(p.id,100));break;
+    }
     case 'truck.end':endActivities(state,p.id,p.date,text(p.note||'',300));break;
     case 'farms.save':{
       if(!Array.isArray(p.farms)||!p.farms.length)throw Error('Cadastre pelo menos uma fazenda.');
