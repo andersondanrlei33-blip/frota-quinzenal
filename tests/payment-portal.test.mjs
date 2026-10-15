@@ -22,6 +22,16 @@ test('the group requests all four farms once and carrier receives only approved 
   assert.throws(()=>executeCommand(state,command('payment.record-batch',{requestIds:[state.paymentRequests[0].id],date:'2026-10-06'}),actor),/acesso da transportadora/);
  }
 });
+test('a closed farm discount is preserved in the carrier request as gross, discount and net',()=>{
+ const state=initialState();state.trucks=[{id:'discounted',plate:'ATV2C70',driver:'JUNIOR',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:35000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'JUNIOR',document:'12345678901',pixKey:'junior@example.com'}}];
+ state.discounts=[{id:'two-days',truckId:'discounted',start:'2026-10-07',end:'2026-10-08',reason:'Falta',note:''}];
+ saveClosing(state,p,'farm1','discounted-closing','2026-10-14');
+ const sent=executeCommand(state,command('payment.request',{month:p.month,half:p.half,farmId:'farm1'}),group).state;
+ const snapshot=sent.paymentRequests[0].snapshot;
+ assert.equal(snapshot.gross,17500);assert.equal(snapshot.discount,2333.33);assert.equal(snapshot.net,15166.67);assert.equal(snapshot.payableDays,13);
+ const carrierView=presentState({state:sent,revision:2,company:{id:group.companyId}},carrier);
+ assert.deepEqual([carrierView.requests[0].snapshot.gross,carrierView.requests[0].snapshot.discount,carrierView.requests[0].snapshot.net],[17500,2333.33,15166.67]);
+});
 test('the carrier portal uses the same unique invoice number across farms',()=>{
  const state=initialState();state.trucks=[...closed().trucks.slice(0,2)];
  const saved=executeCommand(state,command('period.close',{month:p.month,half:p.half}),group).state;
@@ -92,4 +102,5 @@ test('proof files are limited by actual bytes and content signature rather than 
  const pdf=new TextEncoder().encode('%PDF-1.4\nSample technical fixture');assert.equal(inspectReceipt(pdf,'arquivo.html').mime,'application/pdf');assert.equal(inspectReceipt(new Uint8Array([137,80,78,71,13,10,26,10]),'foto.png').mime,'image/png');assert.equal(inspectReceipt(new Uint8Array([255,216,255]),'foto.jpg').mime,'image/jpeg');
  assert.throws(()=>inspectReceipt(new TextEncoder().encode('<script>'), 'comprovante.pdf'),/PDF, JPG ou PNG/);assert.throws(()=>inspectReceipt(new Uint8Array(RECEIPT_LIMIT+1),'grande.pdf'),/10 MB/);
 });
+
 
