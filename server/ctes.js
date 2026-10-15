@@ -108,6 +108,12 @@ export function extractNfeCargoWeight(text){
   const tokens=[...row.matchAll(/(?<![A-Z0-9])\d[\d.,]*(?![A-Z0-9])/g)].map(match=>match[0]);if(!tokens.length)continue;
   const token=header.includes('PESO LIQUIDO')&&tokens.length>1?tokens[1]:tokens[0],value=numberFrom(token);if(value!==null)return {cargoWeight:Number(value.toFixed(3)),cargoWeightUnit:'kg'};
  }
+ const productStart=folded.findIndex(line=>line.includes('DADOS DOS PRODUTOS')),productEnd=productStart>=0?folded.findIndex((line,lineIndex)=>lineIndex>productStart&&/(CALCULO DO ISSQN|INFORMACOES COMPLEMENTARES)/.test(line)):-1,productLines=productStart>=0?lines.slice(productStart+1,productEnd>=0?productEnd:productStart+80):[];
+ let productKg=0,productKgFound=false;
+ for(const row of productLines){
+  for(const match of row.matchAll(/\b(?:KG|KGS)\s+([\d.,]+)/gi)){const value=numberFrom(match[1]);if(value!==null){productKg+=value;productKgFound=true;}}
+ }
+ if(productKgFound)return {cargoWeight:Number(productKg.toFixed(3)),cargoWeightUnit:'kg',cargoWeightSource:'product-quantity',cargoWeightComplete:false};
  return {cargoWeight:null,cargoWeightUnit:null};
 }
 const manifestedNotesFromXml=normalized=>{
@@ -318,13 +324,14 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
     if(plateMismatch&&(!correctionFiles.length||!confirmPlateCorrection))throw Error( correctionFiles.length?'O CT-e informa a placa '+cte.plate+', mas a solicitação é da placa '+cteRequest.plate+'. Confira a carta de correção e marque a confirmação antes de enviar.':'A placa do CT-e precisa ser a mesma placa informada na solicitação da fazenda.');
     const requestFarm=(current.state.farms||[]).find(item=>item.id===cteRequest.farmId),notes=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file));
     if(!requestFarm||!notes.length)throw Error('A solicitação não tem fazenda e NF-e válidas para conferência. Solicite um novo pedido.');
-    for(const note of notes){const parties=note.parties||extractNfeParties(await readNfePdf(await backend.cteRequests.downloadFile(note)));assertNfePartiesMatchFarm(parties,requestFarm,note.name);}
+    for(const note of notes){let noteText='';if(!note.parties||note.cargoWeight==null){noteText=await readNfePdf(await backend.cteRequests.downloadFile(note));if(!note.parties)note.parties=extractNfeParties(noteText);if(note.cargoWeight==null)Object.assign(note,extractNfeCargoWeight(noteText));}assertNfePartiesMatchFarm(note.parties,requestFarm,note.name);}
    }
    let weightConference=null;
    if(cteRequest){
     const invoiceWeightFiles=(cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file)),invoiceWeights=invoiceWeightFiles.map(file=>{const value=Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(unit==='t'?1000:1):null;}),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
-    if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)){
-     const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
+    const partial=invoiceWeightFiles.filter(file=>file.cargoWeightSource==='product-quantity'||file.cargoWeightComplete===false).map(file=>file.name).filter(Boolean);
+    if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)||partial.length){
+     const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:partial.length?`A NF-e ${partial.join(', ')} tem quantidade em KG nos produtos, mas não informa o peso bruto total.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
      if(!confirmWeightCheck){const error=Error(reason+' Confira os documentos e confirme se deseja enviar mesmo sem a comparação automática.');error.code='CTE_WEIGHT_UNAVAILABLE';throw error;}
      weightConference={status:'unavailable',cteWeightKg,nfeWeightKg:null,confirmedBy:actor.userId,confirmedAt:new Date().toISOString()};
     }else{
