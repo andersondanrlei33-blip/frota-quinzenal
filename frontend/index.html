@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#172c2b"><meta name="referrer" content="no-referrer">
   <meta name="description" content="Rota Safra: controle de frota, diárias, pagamentos e CT-e.">
   <title>Rota Safra — Gestão de frota</title>
-  <link rel="stylesheet" href="./styles.css?v=111">
+  <link rel="stylesheet" href="./styles.css?v=127">
 </head>
 <body>
   <aside class="sidebar">
@@ -21,11 +21,11 @@
       <section class="nav-section" data-nav-section="payments"><div class="nav-section-label">DIÁRIAS E PAGAMENTOS</div>
         <a href="#closings" data-nav="closings"><span>▣</span> Diárias e fechamentos</a>
         <a href="#requests" data-nav="requests"><span>▣</span> Solicitações</a>
-        <a href="#reconciliation" data-nav="reconciliation"><span>↔</span> Encontro de contas</a>
+        <a href="#farm-billing" data-nav="farm-billing"><span>R$</span> Cobrança por tonelada</a>
       </section>
       <section class="nav-section" data-nav-section="fiscal"><div class="nav-section-label">FISCAL</div>
         <a href="#ctes" data-nav="ctes"><span>▧</span> CT-e recebidos</a>
-        <a href="#farm-billing" data-nav="farm-billing"><span>R$</span> Cobrança por tonelada</a>
+        <a href="#reconciliation" data-nav="reconciliation"><span>↔</span> Encontro de contas</a>
         <a href="#cte-requests" data-nav="cte-requests"><span>▤</span> Solicitar CT-e</a>
       </section>
       <section class="nav-section" data-nav-section="admin"><div class="nav-section-label">ADMINISTRAÇÃO</div>
@@ -42,8 +42,21 @@
   <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
   <dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=111"></script>
+  <script>
+    window.addEventListener('error', () => {
+      const main = document.querySelector('#main');
+      if (!main || main.children.length) return;
+      const card = document.createElement('section');
+      card.className = 'card render-failure';
+      card.setAttribute('role', 'alert');
+      const title = document.createElement('h2');
+      title.textContent = 'Não foi possível carregar esta tela';
+      const message = document.createElement('p');
+      message.textContent = 'O portal encontrou uma falha ao carregar. Atualize a página ou abra outra opção do menu.';
+      card.append(title, message);
+      main.append(card);
+    });
+  </script>
+  <script type="module" src="./app.js?v=132"></script>
 </body>
 </html>
-
-

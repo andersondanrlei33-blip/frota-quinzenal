@@ -948,7 +948,11 @@ document.addEventListener('change',async ev=>{
   else if(el.id==='backup-file'&&el.files[0]){try{const file=el.files[0];if(file.size>10000000)throw Error('O arquivo é grande demais para este controle.');pendingBackup=applyFixedMonthlyRule(validateState(JSON.parse(await file.text())));confirmation('Restaurar este backup?',`O arquivo contém ${pendingBackup.trucks.length} caminhão(ões), ${pendingBackup.discounts.length} desconto(s) e ${pendingBackup.closings.length} fechamento(s). Os registros atuais da empresa serão substituídos no banco online. Baixe um backup dos registros atuais antes de continuar, se precisar preservá-los.`,'confirm-import');}catch(err){pendingBackup=null;notify(err.message||'Não foi possível ler o backup.');}el.value='';}
 });
 document.addEventListener('input',ev=>{if(ev.target.id==='request-search'){portalSearch=ev.target.value;selectedPaymentRequests.clear();const pos=ev.target.selectionStart;render();const el=document.querySelector('#request-search');el.focus();el.setSelectionRange(pos,pos);}if(ev.target.id==='truck-search'){search=ev.target.value;const pos=ev.target.selectionStart;render();const el=document.querySelector('#truck-search');el.focus();el.setSelectionRange(pos,pos);}});
-modal.addEventListener('click',ev=>{if(ev.target===modal){const r=modal.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)modal.close();}});
+modal.addEventListener('click',ev=>{
+  if(modal.querySelector('#farm-form'))return;
+  if(ev.target===modal){const r=modal.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)modal.close();}
+});
+modal.addEventListener('cancel',ev=>{if(modal.querySelector('#farm-form'))ev.preventDefault();});
 
 function updateDateRange(form) {
   if(!form||!['truck-form','discount-form'].includes(form.id))return;

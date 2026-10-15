@@ -61,5 +61,3 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     hasSession(){return !!session;}
   };
 }
-
-
