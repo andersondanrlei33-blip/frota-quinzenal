@@ -82,8 +82,19 @@ export function executeCommand(input,command,actor,context={}){
     case 'farms.save':{
       if(!Array.isArray(p.farms)||!p.farms.length)throw Error('Cadastre pelo menos uma fazenda.');
       if(state.farms.some(farm=>!p.farms.some(item=>item.id===farm.id)))throw Error('Use Remover ou Inativar para alterar a lista de fazendas.');
-      const profileFields={legalName:120,cpf:14,stateRegistration:30,address:180,contactName:100,contactEmail:160,contactPhone:30};
-      const farms=p.farms.map(item=>{const existing=state.farms.find(farm=>farm.id===item.id)||{},legacyCnpj=item.cnpj??existing.cnpj??'',legacyDigits=String(legacyCnpj).replace(/\D/g,''),cpf=text(item.cpf|| (legacyDigits.length===11?legacyCnpj:existing.cpf)||'',14),farm={...existing,id:item.id||uid(),name:text(item.name,80),...Object.fromEntries(Object.entries(profileFields).map(([key,max])=>[key,key==='cpf'?cpf:text(item[key]||'',max)]))};if(legacyDigits.length===14)farm.cnpj=text(legacyCnpj,24);else delete farm.cnpj;return farm;});
+      const profileFields={legalName:120,stateRegistration:30,address:180,contactName:100,contactEmail:160,contactPhone:30};
+      const farms=p.farms.map(item=>{
+        const existing=state.farms.find(farm=>farm.id===item.id)||{};
+        const sourceCpf=Object.hasOwn(item,'cpf')?item.cpf:existing.cpf||'';
+        const sourceCnpj=Object.hasOwn(item,'cnpj')?item.cnpj:existing.cnpj||'';
+        const cnpjDigits=String(sourceCnpj||'').replace(/\D/g,'');
+        const cpf=text(sourceCpf||(cnpjDigits.length===11?sourceCnpj:''),14);
+        const cnpj=cnpjDigits.length===14?text(sourceCnpj,24):'';
+        if(cnpjDigits&&![11,14].includes(cnpjDigits.length))throw Error('Informe um CNPJ válido para o titular da fazenda.');
+        const farm={...existing,id:item.id||uid(),name:text(item.name,80),cpf,...Object.fromEntries(Object.entries(profileFields).map(([key,max])=>[key,text(item[key]||'',max)]))};
+        if(cnpj)farm.cnpj=cnpj;else delete farm.cnpj;
+        return farm;
+      });
       if(farms.some(item=>!item.name)||new Set(farms.map(item=>item.name.toLocaleLowerCase('pt-BR'))).size!==farms.length)throw Error('Preencha nomes diferentes para cada fazenda.');state.farms=farms;break;
     }
     case 'farm.remove':removeFarm(state,p.id);break;

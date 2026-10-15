@@ -4,6 +4,7 @@ export const REQUEST_FILE_LIMIT=10*1024*1024;
 export const REQUEST_TOTAL_FILE_LIMIT=20*1024*1024;
 export const CTE_BILLING_RATE_PER_TON=2.70;
 export const CTE_REPORT_COLUMNS=['number','shipper','recipient','serviceTaker','issuer','totalValue','issuedOn','plate','cargoWeight','manifestedNotes','shipperCity','shipperStateRegistration','shipperDocument','recipientCity','recipientStateRegistration','recipientDocument','serviceTakerCity','serviceTakerStateRegistration','serviceTakerDocument','issuerCity','issuerStateRegistration','issuerDocument'];
+const businessToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Cuiaba'}).format(new Date());
 
 const decodeXml=text=>String(text||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([\da-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&').replace(/<[^>]+>/g,'').trim();
 function xmlElement(xml,name){const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),match=String(xml||'').match(new RegExp(`<(?:(?:[\\w.-]+):)?${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:(?:[\\w.-]+):)?${escaped}\\s*>`,'i'));return match?.[1]||'';}
@@ -97,6 +98,7 @@ export function parseCtePdfText(text){
  const explicit=lines.map((line,index)=>({line,key:folded[index]})).find(item=>item.key.includes('PLACA DO VEICULO')&&item.key.match(/PLACA DO VEICULO\s*[:=]?\s*[A-Z0-9-]{7,8}/));
  plate=(explicit?.key.match(/PLACA DO VEICULO\s*[:=]?\s*([A-Z0-9-]{7,8})/)?.[1]||vehiclePlate?.[1]||'').replace(/[^A-Z0-9]/g,'');
  const weightIndex=folded.findIndex(line=>line.includes('PESO BRUTO')||line.includes('PESO DA CARGA')||line.includes('PESO TOTAL'));if(weightIndex>=0){const weightText=lines.slice(weightIndex,weightIndex+3).join(' '),weightMatch=weightText.match(/(?:PESO\s+(?:BRUTO|DA\s+CARGA|TOTAL))\s*[:=]?\s*([\d.,]+)\s*(KG|KGS|T|TON|TONELADAS)?\b/i);if(weightMatch){const token=weightMatch[1],normalizedNumber=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,''),value=Number(normalizedNumber);if(Number.isFinite(value)&&value>=0){cargoWeight=Number(value.toFixed(3));cargoWeightUnit=/^(T|TON|TONELADAS)$/i.test(weightMatch[2]||'')?'t':'kg';}}}
+ if(cargoWeight===null){for(let index=0;index<lines.length;index++){if(!folded[index].includes('CARGA'))continue;const context=folded.slice(Math.max(0,index-4),index+1).join(' ');if(!context.includes('QTD'))continue;const weightText=lines.slice(index,Math.min(lines.length,index+3)).join(' '),weightMatch=weightText.match(/\b(KG|KGS|TON|TONELADAS|T)\s*([\d.,]+)\b/i);if(!weightMatch)continue;const token=weightMatch[2],normalizedNumber=token.includes(',')?token.replace(/\./g,'').replace(',','.'):token.replace(/\.(?=\d{3}(?:\D|$))/g,''),value=Number(normalizedNumber);if(Number.isFinite(value)&&value>=0){cargoWeight=Number(value.toFixed(3));cargoWeightUnit=/^(T|TON|TONELADAS)$/i.test(weightMatch[1])?'t':'kg';break;}}}
  issuer=issuer.replace(/\s+/g,' ').replace(/\s*\/\s*[A-Z]{2}\s*$/,'').trim();recipient=recipient.replace(/\s+/g,' ').trim();shipper=shipper.replace(/\s+/g,' ').trim();serviceTaker=serviceTaker.replace(/\s+/g,' ').trim();
  const parsedDate=issuedOn?new Date(issuedOn+'T00:00:00Z'):null;
  if(!issuer||issuer.length>160||!recipient||recipient.length>160||!shipper||shipper.length>160||!serviceTaker||serviceTaker.length>160||!Number.isFinite(totalValue)||totalValue<0||totalValue>999999999999.99||!issuedOn||!Number.isFinite(parsedDate?.getTime())||parsedDate.toISOString().slice(0,10)!==issuedOn||plate.length<7||plate.length>8)throw Error('Não consegui ler todos os dados do PDF. Envie o DACTE em PDF com texto selecionável e confira se o documento está legível.');
@@ -149,11 +151,11 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
   if(request.method==='GET'&&path.endsWith('/api/ctes')){
    if(!['group','carrier','farm'].includes(actor.party)||actor.party==='farm'&&!actor.farmId)return backend.responseJson({error:'Sua conta não tem uma fazenda vinculada.'},403);
    const farmId=actor.party==='farm'?actor.farmId:null;
-   const [rows,current,requests,preferences]=await Promise.all([backend.ctes.list(actor.companyId,farmId),backend.repository.load(actor.companyId),backend.cteRequests?.list(actor.companyId,farmId)||[],actor.party==='farm'?null:backend.ctes.getPreferences?.(actor.userId,actor.companyId)??null]);
+   const [rows,current,requests,preferences,billingInvoices]=await Promise.all([backend.ctes.list(actor.companyId,farmId),backend.repository.load(actor.companyId),backend.cteRequests?.list(actor.companyId,farmId)||[],actor.party==='farm'?null:backend.ctes.getPreferences?.(actor.userId,actor.companyId)??null,['group','carrier'].includes(actor.party)?backend.ctes.listBillingInvoices?.(actor.companyId)||[]:[]]);
    const state=current.state||{};
    const farms=(state.farms||[]).filter(f=>!farmId||f.id===farmId);
    if(backend.ctes.download&&backend.ctes.saveWeight){await Promise.all(rows.filter(row=>!row.cargoWeightChecked&&row.objectKey).map(async row=>{try{const bytes=await backend.ctes.download(row),metadata=row.mime==='application/xml'?parseCteXml(bytes):parseCtePdfText(await readPdf(bytes));row.cargoWeight=metadata.cargoWeight;row.cargoWeightUnit=metadata.cargoWeightUnit;row.billableTons=billableTons(metadata.cargoWeight,metadata.cargoWeightUnit);row.billingRate=CTE_BILLING_RATE_PER_TON;row.billingAmount=billingAmount(row.billableTons);row.cargoWeightChecked=true;await backend.ctes.saveWeight(actor.companyId,row.id,metadata.cargoWeight,metadata.cargoWeightUnit);}catch{}}));}
-   return backend.responseJson({documents:rows.map(({objectKey,cargoWeightChecked,...row})=>({...row,paymentReceipt:row.paymentReceipt?(({objectKey,uploadedBy,...receipt})=>receipt)(row.paymentReceipt):null})),requests:requests.map(item=>({...item,invoiceFiles:(item.invoiceFiles||[]).map(({objectKey,...file})=>file)})),trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
+   return backend.responseJson({documents:rows.map(({objectKey,cargoWeightChecked,...row})=>({...row,paymentReceipt:row.paymentReceipt?(({objectKey,uploadedBy,...receipt})=>receipt)(row.paymentReceipt):null})),requests:requests.map(item=>({...item,invoiceFiles:(item.invoiceFiles||[]).map(({objectKey,...file})=>file)})),billingInvoices:billingInvoices.map(({companyId,paymentReceipt,...invoice})=>({...invoice,paymentReceipt:paymentReceipt?(({objectKey,uploadedBy,...receipt})=>receipt)(paymentReceipt):null})),trucks:(state.trucks||[]).filter(t=>!farmId||t.farmId===farmId).map(t=>({id:t.id,plate:t.plate,driver:t.driver,farmId:t.farmId,start:t.start||'',end:t.end||'',serviceEnded:t.serviceEnded||null,transferIn:t.transferIn||null,transferOut:t.transferOut||null})),farms:farms.map(f=>({id:f.id,name:f.name,active:f.active!==false})),preferences});
   }
   if(request.method==='POST'&&path.endsWith('/api/cte-requests')){
    if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente o funcionário da fazenda pode solicitar CT-e.'},403);
@@ -179,12 +181,28 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    const invoiceFile=item.invoiceFiles?.find(file=>file.id===requestFileMatch[2]);if(!invoiceFile)return backend.responseJson({error:'XML de NF-e não encontrado.'},404);
    return backend.responseJson({name:invoiceFile.name,mime:invoiceFile.mime,signedUrl:await backend.cteRequests.signFile(invoiceFile),expiresIn:120});
   }
+  if(request.method==='POST'&&path.endsWith('/api/cte-billing-invoices')){
+   if(actor.party!=='group'||!['admin','operator'].includes(actor.role))return backend.responseJson({error:'Somente usuários autorizados do grupo podem emitir faturas.'},403);
+   const text=await request.text();if(text.length>40000)return backend.responseJson({error:'Pedido muito grande.'},413);const body=JSON.parse(text),documentIds=body.documentIds,dueOn=String(body.dueOn||'');
+   if(!Array.isArray(documentIds)||!documentIds.length||documentIds.length>500||documentIds.some(id=>typeof id!=='string'||! /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))||new Set(documentIds).size!==documentIds.length)return backend.responseJson({error:'Selecione de 1 a 500 CT-es diferentes para faturar.'},400);
+   const dueDate=/^\d{4}-\d{2}-\d{2}$/.test(dueOn)?new Date(dueOn+'T00:00:00Z'):null;if(!dueDate||!Number.isFinite(dueDate.getTime())||dueDate.toISOString().slice(0,10)!==dueOn||dueOn<businessToday())return backend.responseJson({error:'Informe um vencimento válido a partir de hoje.'},400);
+   const invoice=await backend.ctes.issueBillingInvoice(actor,documentIds,dueOn);return backend.responseJson({invoice},201);
+  }
+  const invoicePaymentMatch=path.match(/\/api\/cte-billing-invoices\/([0-9a-f-]{36})\/payment-proof$/i);
+  if(invoicePaymentMatch&&request.method==='POST'){
+   if(actor.party!=='group'||!['admin','operator'].includes(actor.role))return backend.responseJson({error:'Somente usuários autorizados do grupo podem quitar faturas.'},403);
+   const data=await boundedFormData(request,REQUEST_FILE_LIMIT+65536),file=data.get('paymentProof');if(!file||typeof file.arrayBuffer!=='function'||!file.size)throw Error('Anexe o comprovante do pagamento.');const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectCtePaymentProof(bytes,file.name),result=await backend.ctes.payBillingInvoice(actor,invoicePaymentMatch[1],bytes,details);return backend.responseJson(result,201);
+  }
+  if(invoicePaymentMatch&&request.method==='GET'){
+   if(!['group','carrier'].includes(actor.party)||actor.party==='group'&&!['admin','operator','viewer'].includes(actor.role))return backend.responseJson({error:'Acesso não permitido.'},403);const invoices=await backend.ctes.listBillingInvoices?.(actor.companyId)||[],invoice=invoices.find(item=>item.id===invoicePaymentMatch[1]);if(!invoice||!invoice.paymentReceipt)return backend.responseJson({error:'Comprovante não encontrado para esta fatura.'},404);return backend.responseJson({name:invoice.paymentReceipt.name,mime:invoice.paymentReceipt.mime,signedUrl:await backend.ctes.signInvoicePaymentProof(invoice.paymentReceipt),expiresIn:120});
+  }
   const paymentProofMatch=path.match(/\/api\/ctes\/([0-9a-f-]{36})\/payment-proof$/i);
   if(request.method==='POST'&&path.endsWith('/api/cte-payment-batches')){
-   if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente um usuário autorizado da fazenda pode enviar o comprovante.'},403);
+   const canPayFarm=actor.party==='farm'&&actor.role!=='viewer'&&actor.farmId;
+   if(!canPayFarm)return backend.responseJson({error:'Somente usuários autorizados da fazenda podem enviar o comprovante.'},403);
    const data=await boundedFormData(request,REQUEST_FILE_LIMIT+65536),file=data.get('paymentProof');let documentIds=[];
    try{documentIds=JSON.parse(String(data.get('documentIds')||''));}catch{}
-   if(!Array.isArray(documentIds)||!documentIds.length||documentIds.length>50||documentIds.some(id=>typeof id!=='string'||! /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))||new Set(documentIds).size!==documentIds.length)return backend.responseJson({error:'Selecione de 1 a 50 CT-es diferentes para pagar.'},400);
+   if(!Array.isArray(documentIds)||!documentIds.length||documentIds.length>500||documentIds.some(id=>typeof id!=='string'||! /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))||new Set(documentIds).size!==documentIds.length)return backend.responseJson({error:'Selecione de 1 a 500 CT-es diferentes para pagar.'},400);
    if(!file||typeof file.arrayBuffer!=='function'||!file.size)throw Error('Anexe o comprovante de pagamento.');
    const bytes=new Uint8Array(await file.arrayBuffer()),details=inspectCtePaymentProof(bytes,file.name),documents=await backend.ctes.recordPaymentBatch(actor,documentIds,bytes,details);
    return backend.responseJson({documents:documents.map(document=>({id:document.id,paidAt:document.paymentReceipt?.paidAt,paymentReceipt:(({objectKey,uploadedBy,...receipt})=>receipt)(document.paymentReceipt)}))},201);
@@ -255,4 +273,3 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
   return backend.responseJson({error:'Método não permitido.'},405);
  };
 }
-

@@ -10,6 +10,14 @@ test('farm registry saves CPF and contact details and migrates legacy CPF values
  const legacy=executeCommand(initialState(),{type:'farms.save',payload:{farms:[{...initialState().farms[0],cnpj:'330.803.640-15'},...initialState().farms.slice(1)]}},actor).state;assert.equal(legacy.farms[0].cpf,'330.803.640-15');assert.equal('cnpj' in legacy.farms[0],false);
  assert.throws(()=>executeCommand(initialState(),{type:'farms.save',payload:{farms:[{...initialState().farms[0],cpf:'12345'},...initialState().farms.slice(1)]}},actor),/CPF válido/);
 });
+test('farm registry saves CNPJ and can switch between CNPJ and CPF',()=>{
+ const initial=initialState(),farm={...initial.farms[0],legalName:'Agropecuária Exemplo Ltda',cpf:'',cnpj:'12.345.678/0001-95'};
+ let state=executeCommand(initial,{type:'farms.save',payload:{farms:[farm,...initial.farms.slice(1)]}},actor).state;
+ assert.equal(state.farms[0].cnpj,'12.345.678/0001-95');assert.equal(state.farms[0].cpf,'');assert.deepEqual(validateState(state),state);
+ state=executeCommand(state,{type:'farms.save',payload:{farms:[{...state.farms[0],cpf:'330.803.640-15',cnpj:''},...state.farms.slice(1)]}},actor).state;
+ assert.equal(state.farms[0].cpf,'330.803.640-15');assert.equal('cnpj' in state.farms[0],false);
+ assert.throws(()=>executeCommand(state,{type:'farms.save',payload:{farms:[{...state.farms[0],cpf:'',cnpj:'12.345'},...state.farms.slice(1)]}},actor),/CNPJ válido/);
+});
 test('server commands calculate amounts themselves and reject client supplied paid values',()=>{
   let state=initialState();state=executeCommand(state,{type:'truck.save',payload:{...truck,net:1,paid:{date:'2026-10-01'}}},actor).state;
   const before=structuredClone(state),closed=executeCommand(state,{type:'period.close',payload:{month:'2026-10',half:1}},actor);
