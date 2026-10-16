@@ -61,6 +61,6 @@ Deno.serve(async request=>{
       return corsResponse(backend.responseJson({error:'Método não permitido.'},405),request);
     }
     return corsResponse(await dataApi(request),request);
-  }catch(error){const status=error.code==='42501'?403:[400,401,403,404,409,429,502,503].includes(error.status)?error.status:400;return corsResponse(backend.responseJson({error:error.code==='42501'?'Esta alteração não é permitida.':error.message||'Não foi possível concluir a solicitação.',...(error.code==='CTE_HIGH_VALUE'||error.code==='CTE_FARM_MISMATCH'||error.code?.startsWith('CTE_WEIGHT_')?{code:error.code}:{})},status),request);}
+  }catch(error){const status=error.code==='42501'?403:[400,401,403,404,409,429,502,503].includes(error.status)?error.status:400;return corsResponse(backend.responseJson({error:error.code==='42501'?'Esta alteração não é permitida.':error.message||'Não foi possível concluir a solicitação.',...(error.code==='CTE_HIGH_VALUE'||error.code==='CTE_FARM_MISMATCH'||error.code==='CTE_CONFIRMATIONS_REQUIRED'||error.code?.startsWith('CTE_WEIGHT_')?{code:error.code,...(error.issues?{issues:error.issues}:{})}:{})},status),request);}
 });
 
