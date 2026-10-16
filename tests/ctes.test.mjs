@@ -155,6 +155,14 @@ test('CT-e acima de R$ 10.000 exige confirmação explícita e registra quem con
  const accepted=setup({party:'carrier'}),response=await accepted.api(makeForm(true));assert.equal(response.status,201);assert.equal(accepted.calls.upload.metadata.totalValue,10000.01);assert.equal(accepted.calls.upload.metadata.participantDetails.highValueAlert.threshold,10000);assert.equal(accepted.calls.upload.metadata.participantDetails.highValueAlert.confirmedBy,userId);assert.ok(accepted.calls.upload.metadata.participantDetails.highValueAlert.confirmedAt);
 });
 
+test('reúne alertas de valor alto e peso divergente antes de solicitar confirmação',async()=>{
+ const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[],invoiceFiles:[{name:'danfe.pdf',cargoWeight:50000,cargoWeightUnit:'kg'}]},highValueXml=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<vTPrest>1250.75</vTPrest>','<vTPrest>46875.32</vTPrest>')),form=new FormData();
+ form.append('requestId',request.id);form.append('file',new Blob([highValueXml],{type:'application/xml'}),'cte.xml');
+ const {api,calls}=setup({party:'carrier',request});
+ await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),error=>{assert.equal(error.code,'CTE_CONFIRMATIONS_REQUIRED');assert.equal(error.issues.length,2);assert.match(error.message,/valor do CT-e/);assert.match(error.message,/Peso diferente/);return true;});
+ assert.equal(calls.upload,undefined);
+});
+
 test('CT-e exatamente em R$ 10.000 não exige confirmação adicional',async()=>{
  const tenThousandXml=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<vTPrest>1250.75</vTPrest>','<vTPrest>10000.00</vTPrest>'));
  const {api,calls}=setup({party:'carrier'}),response=await api(formRequest({bytes:tenThousandXml}));assert.equal(response.status,201);assert.equal(calls.upload.metadata.totalValue,10000);assert.equal(calls.upload.metadata.participantDetails.highValueAlert,undefined);
