@@ -8,26 +8,32 @@ const dataApi=createFleetApi({repository:backend.repository,authenticate:backend
 const receiptApi=createReceiptApi({backend});
 const cteApi=createCteApi({backend,readPdf:async bytes=>(await import('./cte-pdf.js')).extractCtePdfText(bytes)});
 const escapeHtml=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
+const inviteSender=raw=>{
+  const value=String(raw||'').trim(),match=value.match(/^([^<>\r\n]{1,80})\s*<([^<>\r\n]+)>$/);
+  const email=(match?match[2]:value).trim(),name=(match?match[1].trim():String(Deno.env.get('FLEET_EMAIL_FROM_NAME')||'Rota Safra').trim())||'Rota Safra';
+  if(/[\r\n]/.test(value)||email.length>200||!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(email)||name.length>80)return null;
+  return {email,name};
+};
 async function sendAccessInvite(email,ticket){
-  const apiKey=Deno.env.get('RESEND_API_KEY'),from=Deno.env.get('FLEET_EMAIL_FROM');
-  if(!apiKey||!from)return {sent:false,message:'O envio por e-mail ainda não está configurado. O link individual foi gerado e pode ser copiado abaixo.'};
-  if(/[\r\n]/.test(from)||from.length>200||!(/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(from)||/^[^<>\r\n]{1,80}<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>$/.test(from))){
-    return {sent:false,message:'O endereço remetente configurado para o Resend é inválido. O link individual foi gerado e pode ser copiado abaixo.'};
-  }
-  const link='https://andersondanrlei33-blip.github.io/frota-quinzenal/#activate='+encodeURIComponent(ticket);
+  const brevoKey=String(Deno.env.get('BREVO_API_KEY')||'').trim(),resendKey=String(Deno.env.get('RESEND_API_KEY')||'').trim(),from=inviteSender(Deno.env.get('FLEET_EMAIL_FROM'));
+  if(!brevoKey&&!resendKey)return {sent:false,message:'O envio por e-mail ainda não está configurado. O link individual foi gerado e pode ser copiado abaixo.'};
+  if(!from)return {sent:false,message:'O remetente configurado para o envio é inválido. Use um e-mail de domínio verificado em FLEET_EMAIL_FROM. O link individual foi gerado e pode ser copiado abaixo.'};
+  const siteUrl=String(Deno.env.get('FLEET_SITE_URL')||'https://andersondanrlei33-blip.github.io/frota-quinzenal/').trim().replace(/#.*$/,'').replace(/\/$/,'');
+  const link=siteUrl+'#activate='+encodeURIComponent(ticket);
   const safeLink=escapeHtml(link);
-  let response;
-  try{response=await fetch('https://api.resend.com/emails',{
-    method:'POST',
-    headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},
-    body:JSON.stringify({
-      from,to:[email],subject:'Convite para acessar o Controle de Frota',
-      text:'Você recebeu acesso ao Controle de Frota. Abra este link para criar sua senha e ativar seu acesso (válido por 72 horas): '+link+'\n\nSe você não esperava este convite, ignore esta mensagem.',
-      html:'<!doctype html><html lang="pt-BR"><body style="margin:0;padding:32px;background:#f4f6f3;font-family:Arial,sans-serif;color:#18312d"><main style="max-width:560px;margin:auto;padding:32px;background:#fff;border:1px solid #dce4dc;border-radius:12px"><h1 style="font-size:24px">Acesso ao Controle de Frota</h1><p>Você recebeu um convite para acessar o portal da frota.</p><p>Use o botão abaixo para criar sua senha e concluir o cadastro. Este link é válido por 72 horas.</p><p style="margin:28px 0"><a href="'+safeLink+'" style="display:inline-block;padding:13px 20px;border-radius:8px;background:#246b52;color:#fff;text-decoration:none;font-weight:700">Criar senha e acessar</a></p><p style="font-size:13px;color:#66756e">Se o botão não abrir, copie este endereço para o navegador:<br><a href="'+safeLink+'">'+safeLink+'</a></p><p style="font-size:12px;color:#7a8580">Se você não esperava este convite, ignore esta mensagem.</p></main></body></html>'
-    })
-  });}catch{return {sent:false,message:'Não foi possível conectar ao Resend. O link individual foi gerado e pode ser copiado abaixo.'};}
+  const subject='Convite para acessar o Controle de Frota',textContent='Você recebeu acesso ao Controle de Frota. Abra este link para criar sua senha e ativar seu acesso (válido por 72 horas): '+link+'\n\nSe você não esperava este convite, ignore esta mensagem.',htmlContent='<!doctype html><html lang="pt-BR"><body style="margin:0;padding:32px;background:#f4f6f3;font-family:Arial,sans-serif;color:#18312d"><main style="max-width:560px;margin:auto;padding:32px;background:#fff;border:1px solid #dce4dc;border-radius:12px"><h1 style="font-size:24px">Acesso ao Controle de Frota</h1><p>Você recebeu um convite para acessar o portal da frota.</p><p>Use o botão abaixo para criar sua senha e concluir o cadastro. Este link é válido por 72 horas.</p><p style="margin:28px 0"><a href="'+safeLink+'" style="display:inline-block;padding:13px 20px;border-radius:8px;background:#246b52;color:#fff;text-decoration:none;font-weight:700">Criar senha e acessar</a></p><p style="font-size:13px;color:#66756e">Se o botão não abrir, copie este endereço para o navegador:<br><a href="'+safeLink+'">'+safeLink+'</a></p><p style="font-size:12px;color:#7a8580">Se você não esperava este convite, ignore esta mensagem.</p></main></body></html>';
+  let response,provider;
+  try{
+    if(brevoKey){
+      provider='Brevo';
+      response=await fetch('https://api.brevo.com/v3/smtp/email',{method:'POST',headers:{'api-key':brevoKey,'Content-Type':'application/json'},body:JSON.stringify({sender:from,to:[{email}],subject,textContent,htmlContent})});
+    }else{
+      provider='Resend';
+      response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+resendKey,'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({from:from.name+' <'+from.email+'>',to:[email],subject,text:textContent,html:htmlContent})});
+    }
+  }catch{return {sent:false,message:'Não foi possível conectar ao '+provider+'. O link individual foi gerado e pode ser copiado abaixo.'};}
   if(response.ok)return {sent:true};
-  const message=response.status===401?'A chave do Resend não foi aceita. Confira RESEND_API_KEY.':response.status===403?'O remetente não foi autorizado pelo Resend. Verifique o domínio e FLEET_EMAIL_FROM.':response.status===429?'O Resend limitou temporariamente o envio. Aguarde e tente novamente.':'O Resend não conseguiu enviar o convite. Confira a configuração do remetente.';
+  const message=provider==='Brevo'?(response.status===401||response.status===403?'A chave ou o remetente da Brevo não foi aceito. Confira BREVO_API_KEY, o domínio verificado e FLEET_EMAIL_FROM.':response.status===429?'A Brevo limitou temporariamente o envio. Aguarde e tente novamente.':'A Brevo não conseguiu enviar o convite. Confira a configuração do remetente.'):(response.status===401?'A chave do Resend não foi aceita. Confira RESEND_API_KEY.':response.status===403?'O remetente não foi autorizado pelo Resend. Verifique o domínio e FLEET_EMAIL_FROM.':response.status===429?'O Resend limitou temporariamente o envio. Aguarde e tente novamente.':'O Resend não conseguiu enviar o convite. Confira a configuração do remetente.');
   return {sent:false,message:message+' O link individual foi gerado e pode ser copiado abaixo.'};
 }
 Deno.serve(async request=>{
@@ -63,4 +69,3 @@ Deno.serve(async request=>{
     return corsResponse(await dataApi(request),request);
   }catch(error){const status=error.code==='42501'?403:[400,401,403,404,409,429,502,503].includes(error.status)?error.status:400;return corsResponse(backend.responseJson({error:error.code==='42501'?'Esta alteração não é permitida.':error.message||'Não foi possível concluir a solicitação.',...(error.code==='CTE_HIGH_VALUE'||error.code==='CTE_FARM_MISMATCH'||error.code==='CTE_CONFIRMATIONS_REQUIRED'||error.code?.startsWith('CTE_WEIGHT_')?{code:error.code,...(error.issues?{issues:error.issues}:{})}:{})},status),request);}
 });
-
