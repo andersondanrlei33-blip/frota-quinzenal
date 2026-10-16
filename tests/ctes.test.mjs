@@ -163,6 +163,12 @@ test('reúne alertas de valor alto e peso divergente antes de solicitar confirma
  assert.equal(calls.upload,undefined);
 });
 
+test('transportadora confirma divergência cadastral já autorizada pela fazenda',async()=>{
+ const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[],invoiceFiles:[{name:'danfe.pdf',cargoWeight:44222,cargoWeightUnit:'kg',farmMatch:'mismatch'}]},makeForm=confirm=>{const form=new FormData();form.append('requestId',request.id);if(confirm)form.append('confirmFarmMismatch','true');form.append('file',new Blob([xml],{type:'application/xml'}),'cte.xml');return new Request('https://example.test/api/ctes',{method:'POST',body:form});};
+ const blocked=setup({party:'carrier',request,nfeIdentityText:foreignNfeIdentity});await assert.rejects(()=>blocked.api(makeForm(false)),error=>error.code==='CTE_FARM_MISMATCH'&&/divergência cadastral/.test(error.message));assert.equal(blocked.calls.upload,undefined);
+ const accepted=setup({party:'carrier',request,nfeIdentityText:foreignNfeIdentity}),response=await accepted.api(makeForm(true));assert.equal(response.status,201);assert.deepEqual(accepted.calls.upload.metadata.participantDetails.farmMismatch.notes,['danfe.pdf']);assert.equal(accepted.calls.upload.metadata.participantDetails.farmMismatch.confirmedBy,userId);
+});
+
 test('CT-e exatamente em R$ 10.000 não exige confirmação adicional',async()=>{
  const tenThousandXml=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<vTPrest>1250.75</vTPrest>','<vTPrest>10000.00</vTPrest>'));
  const {api,calls}=setup({party:'carrier'}),response=await api(formRequest({bytes:tenThousandXml}));assert.equal(response.status,201);assert.equal(calls.upload.metadata.totalValue,10000);assert.equal(calls.upload.metadata.participantDetails.highValueAlert,undefined);
