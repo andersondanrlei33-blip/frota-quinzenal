@@ -15,7 +15,7 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
   const request=async (endpoint,{method='GET',body,token=null,company=false,raw=false}={})=>{
     const response=await fetchImpl(endpoint,{method,cache:'no-store',headers:{apikey:publishableKey,...(token?{Authorization:'Bearer '+token}:{}),...(company&&companyId?{'X-Fleet-Company':companyId}:{}),...(body&&!raw?{'Content-Type':'application/json'}:{})},body:body?(raw?body:JSON.stringify(body)):undefined});
     let value;try{value=await response.json();}catch{throw Error('O servidor não respondeu corretamente. Tente novamente.');}
-    if(!response.ok){const error=Error(value.error||value.msg||value.message||'Não foi possível concluir a solicitação.');error.status=response.status;error.code=value.code;throw error;}
+    if(!response.ok){const error=Error(value.error||value.msg||value.message||'Não foi possível concluir a solicitação.');error.status=response.status;error.code=value.code;if(Array.isArray(value.issues))error.issues=value.issues;throw error;}
     return value;
   };
   const setSession=value=>{
@@ -62,3 +62,4 @@ export function createCloudClient({url,publishableKey,functionName='fleet-api',f
     hasSession(){return !!session;}
   };
 }
+
