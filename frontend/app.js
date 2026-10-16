@@ -133,10 +133,17 @@ function adoptServerData(data) {
   if(isCarrier()||isFarmEmployee()){state=initialState();portalRequests=data.requests||[];}else{state=applyFixedMonthlyRule(validateState(data.state));portalRequests=state.paymentRequests;}
   serverRevision=data.revision;loadError='';updateCloudStatus();
 }
+function currentFarmName(){
+  if(!isFarmEmployee())return '';
+  return currentUser?.farmName
+    || cteFarms.find(farm=>farm.id===currentUser?.farmId)?.name
+    || portalRequests.find(request=>!currentUser?.farmId||request.farmId===currentUser.farmId)?.farmName
+    || 'Fazenda não identificada';
+}
 function updateCloudStatus() {
   const label=document.querySelector('#cloud-status');if(label)label.textContent=stale?'Há novas alterações. Atualize os dados.':saving?'Salvando no servidor…':'Dados salvos no banco online';
   const company=document.querySelector('#company-label');if(company)company.textContent=currentCompany?.name||'Rota Safra';
-  const account=document.querySelector('#account-label');if(account)account.textContent=currentUser?(currentUser.email+' · '+(isCarrier()?'Transportadora':isFarmEmployee()?'Funcionário da fazenda':'Grupo das fazendas')):'';
+  const account=document.querySelector('#account-label');if(account)account.textContent=currentUser?(currentUser.email+' · '+(isCarrier()?'Transportadora':isFarmEmployee()?`Funcionário · ${currentFarmName()}`:'Grupo das fazendas')):'';
 }
 async function refreshServerData({automatic=false}={}) {
   if(saving)return false;
@@ -442,7 +449,7 @@ function renderCtePreferenceRows(){const list=modalContent.querySelector('.cte-p
 function hasCteRequestDraft(){const form=main.querySelector('#cte-request-form');if(!form)return false;const plate=form.querySelector('[name="truckId"]'),files=form.querySelector('[name="invoicePdfs"]'),correction=form.querySelector('[name="correctionFile"]'),note=form.querySelector('[name="note"]');return Boolean(plate?.value||files?.files?.length||correction?.files?.length||note?.value.trim());}
 async function loadCteData(){
  if(cteLoading)return;cteLoading=true;
- try{const data=await cloud.ctes();cteDocuments=data.documents||[];cteRequests=data.requests||[];cteTrucks=data.trucks||[];cteFarms=data.farms||[];billingInvoices=data.billingInvoices||[];cteSummaryLoaded=true;ctePreferences=normalizeCtePreferences(data.preferences);if(view==='ctes')main.innerHTML=ctesView();else if(view==='reconciliation')main.innerHTML=reconciliationView();else if(view==='farms')main.innerHTML=farmsView();else if(view==='cte-requests'&&!hasCteRequestDraft())main.innerHTML=farmCteRequestsView();else if(view==='farm-billing')main.innerHTML=cteBillingView();}
+ try{const data=await cloud.ctes();cteDocuments=data.documents||[];cteRequests=data.requests||[];cteTrucks=data.trucks||[];cteFarms=data.farms||[];billingInvoices=data.billingInvoices||[];cteSummaryLoaded=true;ctePreferences=normalizeCtePreferences(data.preferences);updateCloudStatus();if(view==='ctes')main.innerHTML=ctesView();else if(view==='reconciliation')main.innerHTML=reconciliationView();else if(view==='farms')main.innerHTML=farmsView();else if(view==='cte-requests'&&!hasCteRequestDraft())main.innerHTML=farmCteRequestsView();else if(view==='farm-billing')main.innerHTML=cteBillingView();}
  catch(error){if(view==='farms'){cteSummaryLoaded=false;main.innerHTML=farmsView();}else if(view==='ctes'||view==='reconciliation'||view==='cte-requests'||view==='farm-billing'){const billing=view==='farm-billing',requests=view==='cte-requests';main.innerHTML=head(view==='ctes'?'CT-e':requests?'Solicitações de CT-e':billing?'Cobrança por tonelada':'Encontro de contas','Não foi possível carregar os registros relacionados.','<button class="btn" data-action="cte-refresh">Tentar novamente</button>',requests?'FISCAL DA FAZENDA':billing?'DIÁRIAS E PAGAMENTOS':'DOCUMENTOS FISCAIS')+`<section class="card empty"><p>${e(authErrorMessage(error))}</p></section>`;}}
  finally{cteLoading=false;}
 }
