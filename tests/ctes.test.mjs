@@ -124,10 +124,19 @@ test('confere CPF/CNPJ e inscrição estadual da fazenda no emitente ou destinat
  assert.throws(()=>assertNfeMatchesFarm(foreignNfeIdentity,state.farms[0],'nota.pdf'),/não corresponde à Fazenda A/);
  assert.throws(()=>assertNfeMatchesFarm('PLACA DO VEÍCULO ABC1D23',state.farms[0],'nota.pdf'),/DANFE legível/);
 });
+test('ignora o destinatário do cabeçalho e lê a seção completa do DANFE',()=>{
+ const text='DESTINATARIO: JOSE ALTAIR LAZAROTTO\nIDENTIFICACAO DO EMITENTE\nCNPJ: 56.023.496/0001-73\nINSCRICAO ESTADUAL: 140735488\nDESTINATARIO / REMETENTE\nNOME / RAZAO SOCIAL\nJOSE ALTAIR LAZAROTTO\nCNPJ / CPF 330.803.640-15\nINSCRICAO ESTADUAL 135597749\nCALCULO DO IMPOSTO';
+ const parties=extractNfeParties(text);
+ assert.equal(parties.issuer.document,'56023496000173');
+ assert.equal(parties.recipient.document,'33080364015');
+ assert.equal(parties.recipient.stateRegistrations.includes('135597749'),true);
+ assert.doesNotThrow(()=>assertNfeMatchesFarm(text,{name:'Fazenda Mafra',cpf:'330.803.640-15',stateRegistration:'135597749'},'nota.pdf'));
+});
 test('peso bruto da NF-e é lido e normalizado para kg',()=>{
  assert.deepEqual(extractNfeCargoWeight('PESO BRUTO\n44.222,000'),{cargoWeight:44222,cargoWeightUnit:'kg'});
  assert.deepEqual(extractNfeCargoWeight('PESO BRUTO: 44,222 t'),{cargoWeight:44222,cargoWeightUnit:'kg'});
  assert.deepEqual(extractNfeCargoWeight('PESO LÍQUIDO: 42.000,000'),{cargoWeight:null,cargoWeightUnit:null});
+ assert.deepEqual(extractNfeCargoWeight('QUANTIDADE ESPÉCIE MARCA NÚMERO PESO BRUTO PESO LÍQUIDO\n75,00 SC 2.000,000 2.000,000'),{cargoWeight:2000,cargoWeightUnit:'kg'});
 });
 
 test('somente operador da transportadora envia e o servidor associa os dados extraídos ao caminhão e fazenda',async()=>{
@@ -191,6 +200,13 @@ test('recusa NF-e de outra fazenda mesmo quando o funcionário e a placa pertenc
  form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'marape.pdf');
  await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form})),/não corresponde à Fazenda A/);
  assert.equal(calls.request,undefined);
+});
+
+test('permite enviar NF-e divergente somente após confirmação explícita para conferência',async()=>{
+ const {api,calls}=setup({party:'farm',nfeIdentityText:foreignNfeIdentity}),form=new FormData();
+ form.append('payload',JSON.stringify({truckId:'truck-a',confirmFarmMismatch:true}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'marape.pdf');
+ const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));
+ assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles[0].details.farmMatch,'mismatch');
 });
 
 test('funcionário envia uma ou mais NF-e somente em PDF, sem XML nem chave',async()=>{
@@ -333,4 +349,5 @@ test('cada usuário salva sua seleção e ordem de colunas no portal da própria
  assert.deepEqual(mergedDocuments.filter(field=>CTE_REPORT_COLUMNS.includes(field)),mergedDocuments);assert.equal(CTE_REPORT_COLUMNS.filter(field=>/^(shipper|recipient|serviceTaker|issuer)(Cnpj|Cpf)$/.test(field)).length,0);
  const invalid=await api(new Request('https://example.test/api/ctes/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visibleColumns:['unknown'],columnOrder:['unknown']})}));assert.equal(invalid.status,400);
 });
+
 
