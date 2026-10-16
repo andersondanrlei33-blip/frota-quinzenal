@@ -18,6 +18,8 @@ const isFarmEmployee=()=>currentUser?.party==='farm';
 const canOperate=()=>['admin','operator'].includes(currentUser?.role);
 let currentMonth=today().slice(0,7), currentHalf=Number(today().slice(8))<=15?1:2, farmFilter='',search='',closingSearch='',view='overview',toastTimer,invoiceSplitAttempted=false,invoiceSplitInProgress=false;
 const main=document.querySelector('#main'),modal=document.querySelector('#modal'),modalContent=document.querySelector('#modal-content');
+// Mantém o modal anterior disponível quando uma tela de detalhes é aberta por cima dele.
+let modalStack=[];
 const e=x=>String(x??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');
 const opt=(v,label,selected)=>`<option value="${e(v)}" ${String(v)===String(selected)?'selected':''}>${e(label)}</option>`;
 function formatPaymentDocument(value){
@@ -210,7 +212,22 @@ async function loadTeam() {
 function teamSettings(){return currentUser?.role==='admin'&&!isCarrier()?`<section class="card team-access-card"><div class="card-header"><div><h2>Equipe e acessos</h2><p>Veja os usuários cadastrados, os perfis e a fazenda vinculada a cada funcionário.</p></div><span class="badge gray" data-team-count>${teamMembers.length} usuário(s)</span></div><div class="form-content"><div class="form-note team-autosave-note">As alterações de perfil e fazenda são salvas automaticamente. Funcionários acessam somente os documentos da fazenda vinculada.</div><div id="team-list"><p class="team-empty">Carregando usuários…</p></div></div></section><section class="card team-invite-card"><div class="card-header"><div><h2>Liberar novo acesso</h2><p>Envie um convite por e-mail e escolha o escopo correto para essa pessoa.</p></div></div><div class="form-content"><form id="invite-form">${errBox()}<div class="invite-fields"><div class="field"><label for="invite-email">E-mail</label><input id="invite-email" name="email" type="email" placeholder="nome@empresa.com.br" required></div><div class="field"><label for="invite-profile">Perfil de acesso</label><select name="profile" id="invite-profile">${profileOptions('farm:operator')}</select></div><div class="field" id="invite-farm-field"><label for="invite-farm">Fazenda do funcionário *</label><select name="farmId" id="invite-farm">${opt('','Selecione a fazenda','')}${farmOptions('')}</select></div></div><div class="form-note">O convite libera acesso ao portal conforme o perfil e a fazenda selecionados.</div><button class="btn primary" type="submit">Enviar convite por e-mail</button></form><div id="invite-result"></div></div></section>`:'';}
 
 function download(data,type,name) {const u=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
-function openModal(title,subtitle,body,{wide=false}={}) {modal.classList.toggle('wide-modal',wide);modalContent.innerHTML=`<div class="modal-head"><div><h2 id="modal-title">${e(title)}</h2><p>${e(subtitle)}</p></div><button class="close-modal" data-action="close-modal" aria-label="Fechar janela">×</button></div><div class="modal-body">${body}</div>`;if(!modal.open)modal.showModal();}
+function openModal(title,subtitle,body,{wide=false,preserve=false}={}) {
+  if(preserve&&modal.open){
+    modalStack.push({html:modalContent.innerHTML,wide:modal.classList.contains('wide-modal'),scrollTop:modal.scrollTop,bodyScrollTop:modalContent.querySelector('.modal-body')?.scrollTop||0});
+  }else if(!preserve)modalStack=[];
+  modal.classList.toggle('wide-modal',wide);
+  modalContent.innerHTML=`<div class="modal-head"><div><h2 id="modal-title">${e(title)}</h2><p>${e(subtitle)}</p></div><button class="close-modal" data-action="close-modal" aria-label="${modalStack.length?'Voltar para a tela anterior':'Fechar janela'}">×</button></div><div class="modal-body">${body}</div>`;
+  if(!modal.open)modal.showModal();
+}
+function closeModalOrReturn(){
+  const previous=modalStack.pop();
+  if(!previous){modal.close();return;}
+  modal.classList.toggle('wide-modal',previous.wide);
+  modalContent.innerHTML=previous.html;
+  if(!modal.open)modal.showModal();
+  requestAnimationFrame(()=>{modal.scrollTop=previous.scrollTop||0;const body=modalContent.querySelector('.modal-body');if(body)body.scrollTop=previous.bodyScrollTop||0;});
+}
 const errBox=()=>'<div class="form-error" role="alert"></div>';
 function formError(form,message,details=[]) {const box=form.querySelector('.form-error');if(box){if(details.length){box.innerHTML='<strong>'+e(message)+'</strong><ul>'+details.map(item=>'<li>'+e(item)+'</li>').join('')+'</ul>';}else box.textContent=message;box.classList.add('visible');box.scrollIntoView({block:'nearest'});}else notify(message);}
 const paymentStatus=row=>row.paid?'Pago':row.closed?'Fechado':'Aberto';
@@ -308,9 +325,9 @@ function historyPaymentAccountMarkup(row){
 function historyPaymentAccountDetails(truckId){
  const truck=state.trucks.find(item=>item.id===truckId);if(!truck)throw Error('Placa não encontrada nesta fatura.');
  const account=state.paymentAccounts.find(item=>item.id===truck.paymentAccountId),details=account?.details||truck.paymentDetails;
- if(paymentDetailsMissing(details).length){openModal(`Dados de pagamento · ${truck.plate}`,`${truck.driver} · ${state.farms.find(farm=>farm.id===truck.farmId)?.name||''}`,'<div class="form-note warn"><strong>Dados incompletos</strong><br>Confira o cadastro da placa ou da conta de pagamento antes de solicitar a transferência.</div><div class="form-actions"><button class="btn" data-action="close-modal">Fechar</button></div>');return;}
+ if(paymentDetailsMissing(details).length){openModal(`Dados de pagamento · ${truck.plate}`,`${truck.driver} · ${state.farms.find(farm=>farm.id===truck.farmId)?.name||''}`,'<div class="form-note warn"><strong>Dados incompletos</strong><br>Confira o cadastro da placa ou da conta de pagamento antes de solicitar a transferência.</div><div class="form-actions"><button class="btn" data-action="close-modal">Fechar</button></div>',{preserve:true});return;}
  const payment=normalizePaymentDetails(details),destination=payment.method==='pix'?`<div><small>Chave Pix</small><strong>${e(payment.pixKey)}</strong></div>`:`<div><small>Banco</small><strong>${e(payment.bankName)}</strong></div><div><small>Agência</small><strong>${e(payment.agency)}</strong></div><div><small>Conta</small><strong>${e(payment.account)} · ${e({corrente:'Corrente',poupanca:'Poupança',pagamento:'Pagamento'}[payment.accountType])}</strong></div>`;
- openModal(`Dados de pagamento · ${truck.plate}`,`${truck.driver} · ${state.farms.find(farm=>farm.id===truck.farmId)?.name||''}`,`<div class="form-note"><strong>Conta vinculada a esta placa</strong><br>${e(account?.name||truck.paymentAccountName||'Conta da placa')}</div><div class="detail-grid"><div><small>Forma de pagamento</small><strong>${e(PAYMENT_METHODS[payment.method])}</strong></div><div><small>Titular</small><strong>${e(payment.holder)}</strong></div><div><small>CPF/CNPJ</small><strong>${e(formatPaymentDocument(payment.document))}</strong></div>${destination}</div><div class="form-actions"><button class="btn" data-action="close-modal">Fechar</button></div>`,{wide:true});
+ openModal(`Dados de pagamento · ${truck.plate}`,`${truck.driver} · ${state.farms.find(farm=>farm.id===truck.farmId)?.name||''}`,`<div class="form-note"><strong>Conta vinculada a esta placa</strong><br>${e(account?.name||truck.paymentAccountName||'Conta da placa')}</div><div class="detail-grid"><div><small>Forma de pagamento</small><strong>${e(PAYMENT_METHODS[payment.method])}</strong></div><div><small>Titular</small><strong>${e(payment.holder)}</strong></div><div><small>CPF/CNPJ</small><strong>${e(formatPaymentDocument(payment.document))}</strong></div>${destination}</div><div class="form-actions"><button class="btn" data-action="close-modal">Fechar</button></div>`,{wide:true,preserve:true});
 }
 function historyDetails(id) {
   const h=state.closings.find(item=>item.id===id);if(!h)throw Error('Este fechamento não está mais disponível.');
@@ -833,7 +850,7 @@ document.addEventListener('click',async ev=>{
     else if(a==='cancel-request')requestReasonForm(id,'cancel');
         else if(a==='legacy-undo')requestReasonForm(id,'legacy');
     else if(a==='receipt-view')await showReceipt(id);
-    else if(a==='close-modal')modal.close();
+    else if(a==='close-modal')closeModalOrReturn();
     else if(a==='new-truck'){if(modal.open)modal.close();truckForm();}
     else if(a==='edit-truck')truckForm(id);
     else if(a==='add-farm')addFarmInput();
@@ -1046,9 +1063,9 @@ document.addEventListener('change',async ev=>{
 document.addEventListener('input',ev=>{if(ev.target.id==='request-search'){portalSearch=ev.target.value;selectedPaymentRequests.clear();const pos=ev.target.selectionStart;render();const el=document.querySelector('#request-search');el.focus();el.setSelectionRange(pos,pos);}if(ev.target.id==='truck-search'){search=ev.target.value;const pos=ev.target.selectionStart;render();const el=document.querySelector('#truck-search');el.focus();el.setSelectionRange(pos,pos);}if(ev.target.id==='closing-search'){closingSearch=ev.target.value;const pos=ev.target.selectionStart;render();const el=document.querySelector('#closing-search');if(el){el.focus();el.setSelectionRange(pos,pos);}}});
 modal.addEventListener('click',ev=>{
   if(modal.querySelector('#farm-form'))return;
-  if(ev.target===modal){const r=modal.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)modal.close();}
+  if(ev.target===modal){const r=modal.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)closeModalOrReturn();}
 });
-modal.addEventListener('cancel',ev=>{if(modal.querySelector('#farm-form'))ev.preventDefault();});
+modal.addEventListener('cancel',ev=>{if(modal.querySelector('#farm-form'))ev.preventDefault();else if(modalStack.length){ev.preventDefault();closeModalOrReturn();}});
 
 function updateDateRange(form) {
   if(!form||!['truck-form','discount-form'].includes(form.id))return;
