@@ -161,6 +161,7 @@ test('reúne alertas de valor alto e peso divergente antes de solicitar confirma
  const {api,calls}=setup({party:'carrier',request});
  await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),error=>{assert.equal(error.code,'CTE_CONFIRMATIONS_REQUIRED');assert.equal(error.issues.length,2);assert.match(error.message,/valor do CT-e/);assert.match(error.message,/Peso diferente/);return true;});
  assert.equal(calls.upload,undefined);
+ const accepted=setup({party:'carrier',request}),confirmed=new FormData();confirmed.append('requestId',request.id);confirmed.append('confirmAlerts','true');confirmed.append('file',new Blob([highValueXml],{type:'application/xml'}),'cte.xml');const response=await accepted.api(new Request('https://example.test/api/ctes',{method:'POST',body:confirmed}));assert.equal(response.status,201);assert.equal(accepted.calls.upload.metadata.participantDetails.weightConference.status,'different');assert.equal(accepted.calls.upload.metadata.participantDetails.highValueAlert.threshold,10000);
 });
 
 test('transportadora confirma divergência cadastral já autorizada pela fazenda',async()=>{
