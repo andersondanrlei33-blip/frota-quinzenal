@@ -6,7 +6,7 @@ Sistema online para uma empresa controlar caminhões contratados, fazendas, falt
 
 ## Primeiro acesso e equipe
 
-O envio de convites usa o Resend. Para ativá-lo no Supabase, verifique um domínio no Resend e cadastre os segredos RESEND_API_KEY e FLEET_EMAIL_FROM na função fleet-api. O remetente deve usar o domínio verificado, por exemplo Frota <nao-responda@seudominio.com.br>.
+O envio de convites usa a Brevo. Para ativá-lo no Supabase, verifique o domínio ou o remetente em **Transactional → Senders & IP** na Brevo, crie uma chave de API transacional e cadastre os segredos `BREVO_API_KEY`, `FLEET_EMAIL_FROM` e `FLEET_SITE_URL` na função `fleet-api`. O remetente deve usar o domínio verificado, por exemplo `Rota Safra <nao-responda@seudominio.com.br>`. Enquanto a chave não estiver cadastrada, o sistema cria o convite e deixa o link individual disponível para cópia.
 
 O proprietário recebe um link privado de ativação, válido por 72 horas e de uso único. Nesse link define nome da empresa, e-mail e senha com pelo menos 6 caracteres. Não há senha padrão nem cadastro público de empresas.
 
