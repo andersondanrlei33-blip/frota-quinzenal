@@ -744,7 +744,8 @@ function paymentGroupForm(groupKey){
  const first=requests[0],destination=(first.snapshot.paymentAccountName?first.snapshot.paymentAccountName+' · ':'')+paymentDestinationLabel(first.snapshot.paymentDetails),amount=round(requests.reduce((total,item)=>total+item.snapshot.net,0));
  openModal('Registrar pagamento da conta',first.snapshot.farmName+' · '+periodLabel(first.period)+' · Fatura '+(first.invoiceNumber||'—'),`<form id="payment-batch-form" data-request-ids="${e(JSON.stringify(requests.map(item=>item.id)))}">${errBox()}<div class="form-note"><strong>${requests.length} placa(s) nesta conta</strong><br>${e(destination)}<br>Um único pagamento e comprovante serão vinculados às placas listadas abaixo.</div><div class="request-preview">${requests.map(item=>`<div><span><strong>${e(item.snapshot.plate)}</strong> · ${e(item.snapshot.driver)}<small>${e(item.snapshot.farmName)} · ${money(item.snapshot.net)} para esta placa</small></span></div>`).join('')}<div><span><strong>Total da transferência</strong><small>O valor individual de cada placa ficará registrado na fatura.</small></span><strong>${money(amount)}</strong></div></div><div class="field"><label for="paid-batch-date">Data do pagamento *</label><input id="paid-batch-date" name="date" type="date" value="${today()}" max="${today()}" required></div><div class="field"><label for="paid-batch-receipt">Comprovante da transferência *</label><input id="paid-batch-receipt" name="receipt" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required><small>Um comprovante será compartilhado por estas placas. PDF, JPG ou PNG, até 10 MB.</small></div><div class="field"><label for="paid-batch-note">Observação</label><input id="paid-batch-note" name="note" maxlength="300" placeholder="Ex.: transferência conjunta via Pix"></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Cancelar</button><button class="btn primary" type="submit">Registrar pagamento · ${money(amount)}</button></div></form>`);
 }
-function confirmation(title,text,action,id='') {if(modal.open)modal.close();openModal(title,'Confira antes de continuar.',`<p style="font-size:13px;line-height:1.8;color:var(--ink)">${e(text)}</p><div class="form-actions"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="${e(action)}" data-id="${e(id)}">Confirmar</button></div>`);}
+function confirmation(title,text,action,id='') {const preserve=modal.open;openModal(title,'Confira antes de continuar.',`${errBox()}<p style="font-size:13px;line-height:1.8;color:var(--ink)">${e(text)}</p><div class="form-actions"><button class="btn" data-action="close-modal">Cancelar</button><button class="btn danger" data-action="${e(action)}" data-id="${e(id)}">Confirmar</button></div>`,{preserve});}
+function blockedAction(title,text) {const preserve=modal.open;openModal(title,'A ação não pode ser concluída.',`${errBox()}<p style="font-size:13px;line-height:1.8;color:var(--ink)">${e(text)}</p><div class="form-actions"><button class="btn" data-action="close-modal">Voltar</button></div>`,{preserve});}
 function exportCsv() {
   const p=currentPeriod(),c=closing(),list=filteredRows();if(!list.length)return;
   const matrix=[['Período','Placa','Motorista','Transportador','Fazenda','Tipo de caminhão','Eixos','Mensal R$','Início considerado','Fim considerado','Dias no período','Dias descontados','Dias a pagar','Bruto R$','Descontos R$','Líquido R$','Situação','Data pagamento','Regra']];
@@ -874,7 +875,7 @@ document.addEventListener('click',async ev=>{
     else if(a==='transfer-truck')transferForm(id);
     else if(a==='undo-transfer'){
       const truck=state.trucks.find(item=>item.id===id),reason=undoTransferBlockReason(state,id);
-      if(reason)throw Error(reason);
+      if(reason){blockedAction('Não é possível desfazer a transferência',reason);return;}
       const from=state.farms.find(item=>item.id===truck.transferIn.fromFarmId)?.name||'fazenda de origem';
       const to=state.farms.find(item=>item.id===truck.farmId)?.name||'fazenda de destino';
       confirmation('Desfazer transferência?',`A placa ${truck.plate} voltará para ${from} sem interrupção. O período em ${to}, iniciado em ${dateLabel(truck.start)}, será removido. O servidor só permitirá o estorno se não houver movimentação fiscal ou financeira vinculada a esse período.`,'confirm-undo-transfer',id);
@@ -921,7 +922,7 @@ document.addEventListener('click',async ev=>{
     else if(a==='backup'){if(loadError)throw Error('Os registros precisam ser recuperados antes de exportar.');download(JSON.stringify(state,null,2),'application/json',`frota-backup-${today()}.json`);notify('Backup completo baixado.');}
     else if(a==='import-backup')document.querySelector('#backup-file').click();
     else if(a==='confirm-import'){if(!pendingBackup)return;await remoteCommand('backup.import',{state:pendingBackup});pendingBackup=null;loadError='';modal.close();farmFilter='';render();notify('Backup restaurado.');}
-  }catch(err){notify(err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.');}
+  }catch(err){const message=err.message||'Não foi possível salvar. Atualize os dados para conferir o salvamento no servidor.';const box=modal.open?modalContent.querySelector('.form-error'):null;if(box){box.textContent=message;box.classList.add('visible');box.scrollIntoView({block:'nearest'});}else notify(message);}
 });
 document.addEventListener('submit',async ev=>{
   const f=ev.target;
