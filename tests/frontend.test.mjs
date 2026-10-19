@@ -10,7 +10,7 @@ import {createFleetApi} from '../server/api.js';
 const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
 const code=[raw('engine.js'),raw('reports.js'),raw('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key'};",raw('cloud-ui.js'),raw('app.js')].join('\n');
 function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,required:false,hidden:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},setCustomValidity(value){this.validationMessage=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
-async function boot(role='admin',activation=false,storage=null,party='group'){
+async function boot(role='admin',activation=false,storage=null,party='group',teamFixture=[]){
   const nodes=new Map(),handlers=new Map(),intervals=[],get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
   const document={body:domNode(),visibilityState:'visible',querySelector:get,querySelectorAll:()=>[],addEventListener(type,fn){if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};get('#modal').querySelector=get;
   let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
@@ -21,7 +21,7 @@ async function boot(role='admin',activation=false,storage=null,party='group'){
   repository.verifyFundingReceipt=async(actor,id,transferId)=>{const proof=proofs.get(id);if(!proof||proof.transferId!==transferId||proof.uploadedBy!==actor.userId)throw Error('Recibo inválido.');return proof;};
   const api=createFleetApi({repository,authenticate:async request=>request.headers.get('Authorization')?{userId:account.party==='carrier'?'carrier-test':'group-test',companyId:'company-one',email:'user@example.test',...account}:null});
   const calls=[];
-  const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')||url.endsWith('/api/funding-receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),transferId:options.body.get('transferId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:[]});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
+  const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')||url.endsWith('/api/funding-receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),transferId:options.body.get('transferId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:teamFixture});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
   class FormData {constructor(form){this.values=form?.data||new Map();}get(name){return this.values.get(name);}has(name){return this.values.has(name);}append(name,value){this.values.set(name,value);}}
   let printCount=0;
   const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){printCount++;}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return intervals.length;},console});
@@ -42,6 +42,14 @@ test('carrier receives new requests automatically without closing an open paymen
   await app.poll();assert.doesNotMatch(app.get('#main').innerHTML,/BBB2B22/);assert.equal(app.get('#modal').open,true);
   app.get('#modal').open=false;
   await app.poll();assert.match(app.get('#main').innerHTML,/BBB2B22/);
+});
+test('farm team settings use compact selectable tabs and prefill a farm-specific invite',async()=>{
+ const fixture=[{user_id:'staff-1',email:'staff@example.test',party:'farm',farm_id:'farm2',role:'operator',active:true}];
+ const app=await boot('admin',false,null,'group',fixture);assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ app.run("location.hash='#settings';render()");await app.poll();let html=app.get('#team-list').innerHTML;
+ assert.match(html,/team-farm-tabs/);assert.match(html,/Fazenda 1/);assert.match(html,/Fazenda 2/);assert.match(html,/aria-pressed="true" data-action="team-farm-select" data-farm-id="farm1"/);assert.doesNotMatch(html,/Fazenda 3[\s\S]*Fazenda 4[\s\S]*Fazenda sem vínculo/);
+ await app.action('team-farm-select','',{farmId:'farm2'});html=app.get('#team-farm-panel').innerHTML;assert.match(html,/staff@example\.test/);assert.match(html,/Cadastrar usuário/);assert.doesNotMatch(html,/Nenhum funcionário com acesso/);
+ await app.action('team-invite-farm','',{farmId:'farm2'});assert.equal(app.get('#invite-profile').value,'farm:operator');assert.equal(app.get('#invite-farm').value,'farm2');assert.equal(app.get('#invite-farm').required,true);assert.equal(app.get('#invite-farm-field').hidden,false);
 });
 test('carrier payments are grouped and filtered by fortnight and invoice',async()=>{
   const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
@@ -361,4 +369,5 @@ test('truck details can undo an unused transfer after confirmation',async()=>{
   assert.equal(app.state().state.trucks.length,1);
   assert.equal(app.state().state.trucks[0].farmId,'farm1');
 });
+
 
