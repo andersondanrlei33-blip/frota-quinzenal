@@ -3,7 +3,7 @@ import {createReport,reportMarkup} from './reports.js?v=158';
 import {cloud,authErrorMessage} from './cloud-ui.js?v=126';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
-let teamMembers=[],farmEditSnapshots=new Map();
+let teamMembers=[],teamSelectedFarmId='',farmEditSnapshots=new Map();
 let inviteTicket=location.hash.startsWith('#activate=')?location.hash.slice(10):null;
 let portalRequests=[],portalPeriod='',portalFarm='',portalInvoice='',portalSearch='',selectedPaymentRequests=new Set();
 let cteDocuments=[],cteRequests=[],cteTrucks=[],cteFarms=[],billingInvoices=[],cteFarmFilter='',cteSearch='',ctePage=1,cteQueueSearch='',cteQueuePage=1,cteBillingSearch='',cteBillingPage=1,cteFarmRequestSearch='',cteFarmRequestPage=1,cteColumnFilters={},cteFilterFieldOpen='',cteFilterDraft=[],cteFilterOptions=[],cteFilterSearch='',cteFilterAnchor={top:0,left:0},cteLoading=false,cteSummaryLoaded=false,ctePreferences={visibleColumns:[],columnOrder:[]},ctePreferenceDraft=null,cteRequestForUpload='',farmCteTab='request';
@@ -189,8 +189,10 @@ function teamMemberRow(member) {
   const party=member.party||'group',farmId=member.farm_id||'',scope=party==='carrier'?'Transportadora':party==='farm'?'Funcionário · '+(state.farms.find(farm=>farm.id===farmId)?.name||'Fazenda não encontrada'):'Grupo das fazendas';
   return `<article class="team-member"><div class="team-member-info"><strong>${e(member.email||'E-mail não informado')}</strong><span class="secondary" ${party==='farm'?`data-member-summary data-id="${e(member.user_id)}"`:''}>${e(scope)}</span></div><span class="badge ${member.active?'green':'gray'}"><i></i>${member.active?'Ativo':'Inativo'}</span><div class="team-controls"><label class="sr-only" for="member-profile-${e(member.user_id)}">Perfil de ${e(member.email||'usuário')}</label><select id="member-profile-${e(member.user_id)}" aria-label="Acesso de ${e(member.email||'usuário')}" data-member-profile data-id="${e(member.user_id)}" data-active="${member.active}" data-farm="${e(farmId)}">${profileOptions(party+':'+member.role)}</select><label class="sr-only" for="member-farm-${e(member.user_id)}">Fazenda de ${e(member.email||'usuário')}</label><select id="member-farm-${e(member.user_id)}" aria-label="Fazenda de ${e(member.email||'usuário')}" data-member-farm data-id="${e(member.user_id)}" ${party==='farm'?'':'hidden'}>${opt('','Selecione a fazenda',farmId)}${farmOptions(farmId)}</select><button type="button" class="btn small ${member.active?'':'primary'}" data-action="member-status" data-id="${e(member.user_id)}" data-role="${e(member.role)}" data-party="${e(party)}" data-farm="${e(farmId)}" data-active="${member.active?'false':'true'}">${member.active?'Inativar':'Reativar'}</button></div></article>`;
 }
-function teamFarmSection(title,members,{emptyLabel='Nenhum funcionário com acesso a esta fazenda.'}={}) {
-  return `<section class="team-farm-section"><div class="team-section-heading"><div><h3>${e(title)}</h3><p>${members.length?`${members.filter(member=>member.active).length} ativo(s) · ${members.length} cadastrado(s)`:emptyLabel}</p></div><span class="count-pill">${members.length}</span></div>${members.length?members.map(teamMemberRow).join(''):`<p class="team-empty">${e(emptyLabel)}</p>`}</section>`;
+function teamFarmWorkspace(farmId,employees,knownFarmIds) {
+  const farm=state.farms.find(item=>item.id===farmId),members=farm?employees.filter(member=>member.farm_id===farm.id):employees.filter(member=>!knownFarmIds.has(member.farm_id));
+  const title=farm?.name||'Fazenda sem vínculo',emptyLabel=farm?'Nenhum funcionário com acesso a esta fazenda.':'Nenhum funcionário sem fazenda vinculada.';
+  return `<section class="team-farm-section"><div class="team-section-heading"><div><h3>${e(title)}</h3><p>${members.length?`${members.filter(member=>member.active).length} ativo(s) · ${members.length} cadastrado(s)`:emptyLabel}</p></div><button class="btn small primary" type="button" data-action="team-invite-farm" data-farm-id="${e(farm?.id||'')}">Cadastrar usuário</button></div>${members.length?members.map(teamMemberRow).join(''):`<p class="team-empty">${e(emptyLabel)}</p>`}</section>`;
 }
 async function loadTeam() {
   if(currentUser?.role!=='admin'||isCarrier())return;const box=document.querySelector('#team-list');
@@ -201,10 +203,12 @@ async function loadTeam() {
       const general=teamMembers.filter(member=>member.party!=='farm');
       const employees=teamMembers.filter(member=>member.party==='farm');
       const knownFarmIds=new Set(state.farms.map(farm=>farm.id));
-      const farmSections=state.farms.map(farm=>teamFarmSection(farm.name,employees.filter(member=>member.farm_id===farm.id)));
       const unassigned=employees.filter(member=>!knownFarmIds.has(member.farm_id));
-      if(unassigned.length)farmSections.push(teamFarmSection('Fazenda sem vínculo',unassigned,{emptyLabel:'Nenhum funcionário sem fazenda vinculada.'}));
-      box.innerHTML=`<div class="team-section"><div class="team-section-heading"><div><h3>Acessos gerais</h3><p>Administradores, equipe do grupo e transportadora.</p></div><span class="count-pill">${general.length}</span></div>${general.length?general.map(teamMemberRow).join(''):'<p class="team-empty">Nenhum acesso geral cadastrado.</p>'}</div><div class="team-section"><div class="team-section-heading"><div><h3>Funcionários por fazenda</h3><p>Confira quem está vinculado a cada unidade e altere o vínculo quando precisar.</p></div><span class="count-pill">${employees.length}</span></div>${farmSections.join('')}</div>`;
+      const hasUnassigned=unassigned.length>0,availableIds=[...state.farms.map(farm=>farm.id),...(hasUnassigned?['__unassigned__']:[])];
+      if(!availableIds.includes(teamSelectedFarmId))teamSelectedFarmId=availableIds[0]||'';
+      const tabs=state.farms.map(farm=>{const members=employees.filter(member=>member.farm_id===farm.id),selected=teamSelectedFarmId===farm.id;return `<button class="team-farm-tab${selected?' selected':''}" type="button" aria-pressed="${selected}" data-action="team-farm-select" data-farm-id="${e(farm.id)}"><span>${e(farm.name)}</span><small>${members.filter(member=>member.active).length} ativo(s) · ${members.length} usuário(s)</small></button>`;}).join('')+(hasUnassigned?`<button class="team-farm-tab${teamSelectedFarmId==='__unassigned__'?' selected':''}" type="button" aria-pressed="${teamSelectedFarmId==='__unassigned__'}" data-action="team-farm-select" data-farm-id="__unassigned__"><span>Fazenda sem vínculo</span><small>${unassigned.filter(member=>member.active).length} ativo(s) · ${unassigned.length} usuário(s)</small></button>`:'');
+      const farmPanel=teamSelectedFarmId?teamFarmWorkspace(teamSelectedFarmId==='__unassigned__'?'':teamSelectedFarmId,employees,knownFarmIds):'<p class="team-empty">Nenhuma fazenda cadastrada.</p>';
+      box.innerHTML=`<div class="team-section"><div class="team-section-heading"><div><h3>Acessos gerais</h3><p>Administradores, equipe do grupo e transportadora.</p></div><span class="count-pill">${general.length}</span></div>${general.length?general.map(teamMemberRow).join(''):'<p class="team-empty">Nenhum acesso geral cadastrado.</p>'}</div><div class="team-section"><div class="team-section-heading"><div><h3>Funcionários por fazenda</h3><p>Selecione uma fazenda para ver, alterar ou cadastrar os usuários vinculados.</p></div><span class="count-pill">${employees.length}</span></div><div class="team-farm-tabs" role="group" aria-label="Selecionar fazenda">${tabs}</div><div id="team-farm-panel">${farmPanel}</div></div>`;
     }
     if(view==='farms')main.innerHTML=farmsView();
   }catch(error){if(box)box.textContent=authErrorMessage(error);}
@@ -868,6 +872,8 @@ document.addEventListener('click',async ev=>{
     else if(a==='farm-open-finance'){farmFilter=id;location.hash='#closings';render();}
     else if(a==='farm-open-ctes'){cteFarmFilter=id;location.hash='#ctes';render();}
     else if(a==='farm-open-team'){location.hash='#settings';render();document.querySelector('#team-list')?.scrollIntoView({behavior:'smooth',block:'start'});}
+    else if(a==='team-farm-select'){teamSelectedFarmId=b.dataset.farmId||'';document.querySelectorAll('[data-action="team-farm-select"]').forEach(tab=>{const selected=tab.dataset.farmId===teamSelectedFarmId;tab.classList.toggle('selected',selected);tab.setAttribute('aria-pressed',String(selected));});const panel=document.querySelector('#team-farm-panel'),knownFarmIds=new Set(state.farms.map(farm=>farm.id));if(panel)panel.innerHTML=teamFarmWorkspace(teamSelectedFarmId==='__unassigned__'?'':teamSelectedFarmId,teamMembers.filter(member=>member.party==='farm'),knownFarmIds);}
+    else if(a==='team-invite-farm'){const profile=document.querySelector('#invite-profile'),farm=document.querySelector('#invite-farm'),farmField=document.querySelector('#invite-farm-field'),form=document.querySelector('#invite-form');if(profile)profile.value='farm:operator';if(farmField)farmField.hidden=false;if(farm){farm.required=true;farm.value=b.dataset.farmId||'';}form?.scrollIntoView({behavior:'smooth',block:'center'});document.querySelector('#invite-email')?.focus();}
     else if(a==='remove-farm')requestFarmAction(id);
     else if(a==='inactivate-farm')requestFarmAction(id,true);
     else if(a==='confirm-remove-farm')await applyFarmAction(id,'remove');
@@ -1253,3 +1259,4 @@ function requestAccountDetail(key){
 
 
 
+
