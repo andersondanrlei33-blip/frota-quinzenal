@@ -185,10 +185,13 @@ test('farm tonnage billing closes by month and lets the farm select CT-es with o
 });
 test('CT-e report columns can be dragged to any position in the saved order',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("ctePreferences=normalizeCtePreferences({visibleColumns:['number','shipper','plate'],columnOrder:['number','shipper','plate']});ctePreferencesForm()");
+  app.run("ctePreferences=normalizeCtePreferences({visibleColumns:['number','shipper','plate'],columnOrder:['number','farm','shipper','recipient','plate']});ctePreferencesForm()");
   assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-row="farm"/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="farm"/);
   assert.match(app.get('#modal-content').innerHTML,/draggable="true" data-cte-pref-row="number"/);assert.match(app.get('#modal-content').innerHTML,/arraste cada linha para a posição desejada/);
-  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder').slice(0,3)],['shipper','plate','number']);
+  assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,4)')],['number','shipper','plate','cargoWeight']);
+  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,3)')],['shipper','plate','number']);
+  app.run("moveCtePreference('number','recipient',false)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,3)')],['shipper','plate','number']);
+  await app.change({closest:()=>({dataset:{ctePrefColumn:'number'},checked:false})});const order=[...app.run('ctePreferenceDraft.columnOrder')],visible=new Set([...app.run('ctePreferenceDraft.visibleColumns')]),firstUnchecked=order.findIndex(field=>!visible.has(field));assert.ok(order.indexOf('number')>=firstUnchecked);assert.ok(order.slice(0,firstUnchecked).every(field=>visible.has(field)));assert.ok(order.slice(firstUnchecked).every(field=>!visible.has(field)));
 });
 test('account reconciliation compares lifetime payments and CT-es across farm transfers',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
