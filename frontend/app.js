@@ -271,7 +271,7 @@ function overviewData(month=currentMonth,selectedFarm=farmFilter,now=today(),hal
   const fleet=[...new Map(assignments.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(t=>[t.plate,t])).values()];
   const types={Caçamba:0,Graneleiro:0,'A informar':0},axles={7:0,9:0,other:0};
   for(const t of fleet){types[BODY_TYPES.includes(t.bodyType)?t.bodyType:'A informar']++;axles[t.axles===7?7:t.axles===9?9:'other']++;}
-  const events=[...entries.map(t=>({plate:t.plate,date:t.start,label:'Entrada',text:state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda'})),...endings.map(t=>({plate:t.plate,date:t.end,label:'Encerramento',text:state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda'})),...transfers.map(t=>({plate:t.plate,date:t.transferOut.date,label:'Transferência',text:(state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda')+' para '+t.transferOut.toFarmName,destinationTruckId:t.transferOut.toTruckId}))];
+  const events=[...entries.map(t=>({plate:t.plate,date:t.start,label:'Entrada',text:state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda'})),...endings.map(t=>({plate:t.plate,date:t.end,label:'Encerramento',text:state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda'})),...transfers.map(t=>({plate:t.plate,date:t.transferOut.date,label:'Transferência',text:(state.farms.find(f=>f.id===t.farmId)?.name||'Fazenda')+' para '+t.transferOut.toFarmName,destinationTruckId:state.trucks.find(x=>x.id===t.transferOut.toTruckId)?.id||state.trucks.find(x=>x.transferIn?.fromTruckId===t.id&&x.transferIn.date===t.transferOut.date)?.id||t.id}))];
   events.sort((a,b)=>Number(a.date>now)-Number(b.date>now)||(a.date>now?a.date.localeCompare(b.date):b.date.localeCompare(a.date))||a.plate.localeCompare(b.plate));
   const paid=sum(rows.filter(r=>r.paid),'net'),waiting=sum(rows.filter(r=>r.closed&&!r.paid),'net'),open=sum(rows.filter(r=>!r.closed),'net');
   const farms=state.farms.filter(f=>(!selectedFarm||f.id===selectedFarm)&&(f.active!==false||assignments.some(t=>t.farmId===f.id)||rows.some(r=>r.farmId===f.id)||f.id===selectedFarm)).map(f=>({...f,activeTrucks:uniquePlates(active.filter(t=>t.farmId===f.id)),periodTrucks:uniquePlates(assignments.filter(t=>t.farmId===f.id))}));
@@ -624,7 +624,7 @@ function truckPaymentAccountMarkup(truck) {
   return `<section class="event-list"><h3>Conta para pagamento</h3>${label}<div class="detail-grid" style="margin-top:16px">${field('Forma de pagamento',PAYMENT_METHODS[details.method])}${field('Titular',details.holder)}${field('CPF/CNPJ do titular',details.document?formatPaymentDocument(details.document):'')}${destination}</div>${missing.length?'<div class="form-note warn">Dados incompletos. Confira esta conta antes de solicitar um pagamento.</div>':''}</section>`;
 }
 function truckHistory(id) {
-  const t=state.trucks.find(t=>t.id===id);if(!t)return;
+  const t=state.trucks.find(t=>t.id===id);if(!t){notify('Não encontrei este período do caminhão. Atualize os dados e tente novamente.');return;}
   const entries=state.trucks.filter(x=>x.plate===t.plate).sort((a,b)=>a.start.localeCompare(b.start)),ids=new Set(entries.map(x=>x.id));
   const saved=state.closings.flatMap(c=>c.rows.filter(r=>ids.has(r.truckId)).map(r=>({closing:c,row:r}))).sort((a,b)=>b.closing.period.key.localeCompare(a.closing.period.key));
   const undoReason=t.transferIn&&!t.transferOut?undoTransferBlockReason(state,t.id):'';

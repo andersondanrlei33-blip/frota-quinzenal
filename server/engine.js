@@ -315,7 +315,8 @@ export function undoTransferBlockReason(state,destinationId) {
   if(!to?.transferIn)return 'Selecione o período criado por uma transferência.';
   if(to.transferOut)return 'Desfaça primeiro a transferência mais recente desta placa.';
   const from=state.trucks.find(t=>t.id===to.transferIn.fromTruckId);
-  if(!from||from.transferOut?.toTruckId!==to.id||from.farmId!==to.transferIn.fromFarmId||from.transferOut.toFarmId!==to.farmId||from.plate!==to.plate)
+  const reverseLink=from&&state.trucks.some(item=>item.id===to.id&&item.transferIn?.fromTruckId===from.id&&item.transferIn?.date===from.transferOut?.date&&item.transferIn?.fromFarmId===from.farmId&&item.farmId===from.transferOut?.toFarmId&&item.plate===from.plate);
+  if(!from||(from.transferOut?.toTruckId!==to.id&&!reverseLink)||from.farmId!==to.transferIn.fromFarmId||from.transferOut.toFarmId!==to.farmId||from.transferOut.date!==to.transferIn.date||from.end!==shiftDate(to.transferIn.date,-1)||from.plate!==to.plate)
     return 'O histórico da transferência está inconsistente. Atualize os dados.';
   if(to.serviceEnded)return 'O período de destino já teve atividades encerradas.';
   if(to.transferIn.previousEnd!==undefined&&to.end!==to.transferIn.previousEnd)
