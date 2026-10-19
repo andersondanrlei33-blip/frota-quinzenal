@@ -148,7 +148,8 @@ test('CT-e print uses the selected farm, visible columns and applied column filt
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   app.run("cteDocuments=[{id:'cte-one',farmId:'farm1',farmName:'Fazenda 1',number:'5219',plate:'ABC1234',issuedOn:'2026-10-08',totalValue:100,shipper:'Remetente A'},{id:'cte-two',farmId:'farm1',farmName:'Fazenda 1',number:'5181',plate:'DEF5678',issuedOn:'2026-10-09',totalValue:200,shipper:'Remetente B'}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['number','plate'],columnOrder:['number','plate']};cteFarmFilter='farm1';cteColumnFilters={plate:['ABC1234']};main.innerHTML=ctesView()");
   const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/id="cte-farm-filter"/);assert.match(html,/Imprimir \/ Salvar PDF/);assert.match(html,/Fazenda: Fazenda 1 · 1 documento\(s\)/);assert.match(html,/ABC1234/);assert.doesNotMatch(html,/DEF5678|Remetente A/);
-  app.run('ctePreferencesForm()');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/Fazenda do relatório/);assert.match(modal,/id="cte-preference-farm-filter" name="farmFilter"/);assert.match(modal,/Todas as fazendas/);assert.match(modal,/Fazenda 1/);
+  app.run('ctePreferencesForm()');const modal=app.get('#modal-content').innerHTML;assert.doesNotMatch(modal,/Fazenda do relatório|cte-preference-farm-filter/);assert.match(modal,/data-cte-pref-column="farm"/);assert.match(modal,/<span>Fazenda<\/span>/);assert.match(modal,/filtro fica no cabeçalho da coluna/);
+  app.run("ctePreferences={visibleColumns:['farm','number'],columnOrder:['farm','number']};main.innerHTML=ctesView()");const farmColumn=app.get('#main').innerHTML;assert.match(farmColumn,/FAZENDA/);assert.match(farmColumn,/Fazenda 1/);assert.match(farmColumn,/data-field="farm" aria-label="Filtrar por Fazenda"/);
   const css=fs.readFileSync(new URL('../frontend/styles.css',import.meta.url),'utf8');assert.match(css,/main:has\(\.cte-report-card\)>:not\(\.cte-report-card\)\{display:none!important\}/);assert.match(css,/@page cte-report\{size:A4 landscape;margin:0\}/);
   await app.action('cte-print');assert.equal(app.printCount(),1);
 });
@@ -184,9 +185,10 @@ test('farm tonnage billing closes by month and lets the farm select CT-es with o
 });
 test('CT-e report columns can be dragged to any position in the saved order',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("ctePreferences={visibleColumns:['number','shipper','plate'],columnOrder:['number','shipper','plate']};ctePreferencesForm()");
+  app.run("ctePreferences=normalizeCtePreferences({visibleColumns:['number','shipper','plate'],columnOrder:['number','shipper','plate']});ctePreferencesForm()");
+  assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-row="farm"/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="farm"/);
   assert.match(app.get('#modal-content').innerHTML,/draggable="true" data-cte-pref-row="number"/);assert.match(app.get('#modal-content').innerHTML,/arraste cada linha para a posição desejada/);
-  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder')],['shipper','plate','number']);
+  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder').slice(0,3)],['shipper','plate','number']);
 });
 test('account reconciliation compares lifetime payments and CT-es across farm transfers',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
