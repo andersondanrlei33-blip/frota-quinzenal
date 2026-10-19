@@ -53,7 +53,10 @@ test('reports escape names and observations while large farms and long names pag
   const state=fleet(25),p=period('2026-10',2);state.trucks.forEach(row=>{row.farmId='farm1';row.carrier='<img src=x onerror=alert(1)> '+ 'Transportador longo '.repeat(5);});
   const report=createReport(state,p),html=reportMarkup(report),printed=report.pages.flatMap(page=>page.rows);
   assert.ok(report.pages.length>3);assert.equal(printed.length,25);assert.equal(new Set(printed.map(row=>row.truckId)).size,25);assert.equal(report.total,375000);
-  assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img/);assert.match(html,/Total líquido da fazenda/);
+  assert.match(html,/&lt;img/);
+  const brandImage='<img class="report-logo" src="./assets/rota-safra/logo-horizontal.png" width="1086" height="235" alt="Rota Safra">';
+  assert.deepEqual([...html.matchAll(/<img\b[^>]*>/g)].map(match=>match[0]),report.pages.map(()=>brandImage));
+  assert.doesNotMatch(html.replaceAll(brandImage,''),/<img\b/);assert.match(html,/Total líquido da fazenda/);
 });
 
 test('plate filtering combines farm and paid filters and retains both parts of a transferred truck',()=>{
