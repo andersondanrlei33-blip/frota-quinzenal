@@ -21,7 +21,7 @@ test('farm and paid filters exclude unpaid rows and preserve the historical name
   const c=saveClosing(state,p,'','original','2026-10-31');c.rows[0].paid={date:'2026-10-31',note:''};
   state.trucks[0].monthly=90000;state.trucks[0].driver='Outro nome';state.farms[0].name='Nome novo';state.discounts[0].note='Texto novo';
   const report=createReport(state,p,{farmId:'farm1',onlyPaid:true}),html=reportMarkup(report);
-  assert.equal(report.truckCount,1);assert.equal(report.total,14062.5);assert.equal(report.pages[0].farmName,'Fazenda 1');
+  assert.equal(report.truckCount,1);assert.equal(report.total,14000);assert.equal(report.pages[0].farmName,'Fazenda 1');
   assert.match(html,/Registro original/);assert.doesNotMatch(html,/Texto novo|Outro nome|Nome novo/);assert.match(html,/Somente pagos/);
   assert.match(html,/<div class="report-truck-heading"><strong>ABC0000<\/strong><span class="report-start">Início: 01\/09\/2026<\/span>/);
   assert.equal(createReport(state,p,{farmId:'farm2'}).pages.length,0);
@@ -40,7 +40,7 @@ test('cross-period discounts are clipped to the saved service range and long not
   const state=fleet(1),p=period('2026-10',2);state.trucks[0].end='2026-10-25';
   state.discounts=[{id:'d',truckId:'t0',start:'2026-10-14',end:'2026-10-18',reason:'Falta',note:'Explicação extensa '.repeat(35)}];
   saveClosing(state,p,'','closed','2026-10-31');
-  const report=createReport(state,p),html=reportMarkup(report);assert.equal(report.pages[0].rows[0].payableDays,7);assert.equal(report.total,6562.5);
+  const report=createReport(state,p),html=reportMarkup(report);assert.equal(report.pages[0].rows[0].payableDays,7);assert.equal(report.total,6375);
   assert.ok(report.pages.some(page=>page.kind==='notes'));assert.match(html,/16\/10\/2026 a 18\/10\/2026: 3 dia/);assert.doesNotMatch(html,/Atividades encerradas/);
   assert.equal(report.pages.filter(page=>page.kind==='trucks').reduce((n,page)=>n+page.total,0),report.total);
 });

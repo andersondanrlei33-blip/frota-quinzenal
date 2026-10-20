@@ -65,12 +65,35 @@ test('current fixed monthly rule pays the agreed amount in 28, 29, 30 and 31 day
     if(monthly===30000){assert.equal(a.net,15000);assert.equal(b.net,15000);}
   }
 });
-test('partial service and discounts use the actual days of their fixed monthly fortnight',()=>{
+test('partial service is proportional to fortnight days while each discount day always uses monthly divided by 30',()=>{
   const s=initialState().settings,p=period('2026-10',2),t={...truck,monthly:30000,start:'2026-10-01',end:''};
   const d={id:'d',truckId:'a',start:'2026-10-20',end:'2026-10-20',reason:'Falta',note:''};
-  const r=calculate(t,p,s,[d]);assert.equal(r.gross,15000);assert.equal(r.rate,937.5);assert.equal(r.net,14062.5);assert.equal(r.discount,937.5);
+  const r=calculate(t,p,s,[d]);assert.equal(r.gross,15000);assert.equal(r.rate,937.5);assert.equal(r.net,14000);assert.equal(r.discount,1000);
   assert.equal(calculate({...t,start:'2026-10-20',end:'2026-10-25'},p,s,[]).net,5625);
   assert.equal(t.monthly,30000);
+});
+test('monthly divided by 30 discounts also apply to partial periods and round the combined daily amount',()=>{
+  const p=period('2026-10',2),s=initialState().settings,t={...truck,monthly:14218.75,start:'2026-10-01',end:''};
+  const discounts=[{id:'d',truckId:'a',start:'2026-10-20',end:'2026-10-22',reason:'Oficina',note:''}];
+  const r=calculate(t,p,s,discounts);assert.equal(r.gross,7109.37);assert.equal(r.discount,1421.88);assert.equal(r.net,5687.49);
+  const partial=calculate({...t,start:'2026-10-31'},p,s,[{...discounts[0],start:'2026-10-31',end:'2026-10-31'}]);assert.equal(partial.gross,444.34);assert.equal(partial.net,0);
+});
+test('rule update recalculates unpaid discount snapshots to monthly divided by 30 and preserves paid or requested rows',()=>{
+  const s=initialState(),p=period('2026-10',2);s.settings={...s.settings,fixedMonthlyVersion:1};
+  const discounts=['a','b','c'].map((id)=>({id:'d'+id,truckId:id,start:'2026-10-20',end:'2026-10-20',reason:'Falta',note:''}));
+  s.trucks=['a','b','c'].map((id,index)=>({...truck,id,plate:['ABC1D23','XYZ9B87','DEF1G23'][index],monthly:30000,start:'2026-10-01',end:''}));s.discounts=discounts;
+  const closing=saveClosing(s,p,'farm1','monthly-v1','2026-10-31');
+  for(const row of closing.rows){row.rate=937.5;row.gross=15000;row.discount=937.5;row.net=14062.5;}
+  const paid=closing.rows.find(row=>row.truckId==='b');paid.paid={date:'2026-10-31',note:'Pago'};
+  const requested=closing.rows.find(row=>row.truckId==='c');requested.requestId='request-c';
+  const paidBefore=structuredClone(paid),requestedBefore=structuredClone(requested);
+  s.paymentRequests.push({id:'request-c',closingId:closing.id,truckId:'c',period:p,status:'pending',requestedAt:'2026-10-31T12:00:00.000Z',requestedBy:'teste',snapshot:structuredClone(requested),paymentHistory:[]});
+  assert.equal(closing.rows.find(row=>row.truckId==='a').net,14062.5);
+  applyFixedMonthlyRule(s);
+  assert.equal(s.settings.fixedMonthlyVersion,2);assert.equal(closing.rows.find(row=>row.truckId==='a').net,14000);
+  assert.deepEqual(closing.rows.find(row=>row.truckId==='b'),paidBefore);assert.deepEqual(closing.rows.find(row=>row.truckId==='c'),requestedBefore);
+  assert.equal(closing.calculationRevisions[0].previousRows.find(row=>row.truckId==='a').net,14062.5);
+  assert.deepEqual(validateState(s),s);
 });
 test('switching to fixed monthly recalculates unpaid snapshots, audits prior values and preserves paid rows',()=>{
   const s=initialState();s.settings={...settings};s.trucks=[{...truck,monthly:30000,start:'2026-10-01',end:''},{...truck,id:'b',plate:'XYZ9B87',farmId:'farm2',monthly:30000,start:'2026-10-01',end:''}];

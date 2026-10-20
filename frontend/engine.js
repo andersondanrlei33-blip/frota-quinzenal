@@ -41,7 +41,7 @@ export function validatePaymentDetails(input,required=false) {
 }
 export const MODES = {
   daily30: 'Histórico: diária mensal ÷ 30',
-  half: 'Mensal fixo: metade por quinzena completa',
+  half: 'Mensal fixo: metade por quinzena completa · desconto diário mensal ÷ 30',
   calendar: 'Diária pelos dias reais do mês',
 };
 export const money = n => new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'}).format(n || 0);
@@ -88,7 +88,7 @@ export function period(month,half) {
 export const dateLabel = s => validDate(s) ? s.split('-').reverse().join('/') : '—';
 export const periodLabel = p => `${dateLabel(p.start)} a ${dateLabel(p.end)}`;
 export function initialState() {
-  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],paymentAccounts:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],nextInvoiceNumber:1,settings:{mode:'half',fixedMonthlyVersion:1,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
+  return {schema:SCHEMA, farms:[{id:'farm1',name:'Fazenda 1'},{id:'farm2',name:'Fazenda 2'},{id:'farm3',name:'Fazenda 3'},{id:'farm4',name:'Fazenda 4'}],trucks:[],paymentAccounts:[],discounts:[],closings:[],invoiceReopens:[],paymentRequests:[],fundingTransfers:[],nextInvoiceNumber:1,settings:{mode:'half',fixedMonthlyVersion:2,includeStart:true,includeEnd:true,confirmed:true},updatedAt:null};
 }
 export function allocateInvoiceNumber(state) {
   const used=(state.closings||[]).reduce((max,closing)=>Math.max(max,Number.isInteger(closing.invoiceNumber)?closing.invoiceNumber:0),0);
@@ -140,7 +140,7 @@ export function calculate(truck,p,settings,discounts,farms=[],allowOverLimit=fal
   const mode=settings.fixedMonthlyVersion?'half':settings.mode;
   const rate=settings.fixedMonthlyVersion?fixedPeriodAmount(truck.monthly,p)/periodDays:truck.monthly/(mode==='half'?2*periodDays:mode==='calendar'?p.monthDays:30);
   const payableDays=Math.max(0,r.count-deducted.size);
-  const amount=round(events.filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0)),gross=round(rate*r.count),beforeAmount=round(rate*payableDays);
+  const amount=round(events.filter(isAmountDiscount).reduce((total,event)=>total+event.amount,0)),gross=round(rate*r.count),dayDiscount=round(truck.monthly*deducted.size/30),beforeAmount=mode==='daily30'&&!settings.fixedMonthlyVersion?round(rate*payableDays):round(Math.max(0,gross-dayDiscount));
   if(amount>beforeAmount&&!allowOverLimit)throw Error('Os descontos por valor excedem o saldo desta placa na quinzena. Confira o valor e os descontos por dias.');
   const net=round(Math.max(0,beforeAmount-amount)),discount=round(gross-net);
   return {truckId:truck.id,plate:truck.plate,driver:truck.driver,carrier:truck.carrier,bodyType:truck.bodyType||'',axles:truck.axles??null,farmId:truck.farmId,farmName:farms.find(f=>f.id===truck.farmId)?.name || 'Fazenda não encontrada',monthly:truck.monthly,contractStart:truck.start,contractEnd:truck.end || '',start:r.count?r.start:'',end:r.count?r.end:'',eligibleDays:r.count,discountDays:deducted.size,payableDays,rate,gross,discount,net,events:events.map(e=>({...e,count:isAmountDiscount(e)?0:dateList(e.start,e.end).filter(d=>dates.has(d)).length})).filter(e=>isAmountDiscount(e)||e.count),paid:null};
@@ -153,8 +153,8 @@ export function draft(state,p) {
     if(group.length<2)continue;
     const pending=group.filter(r=>!booked.has(r.truckId)).sort((a,b)=>a.start.localeCompare(b.start));
     if(!pending.length)continue;
-    const gross=Math.round(round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.eligibleDays;},0))*100);
-    const net=Math.round(round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.payableDays;},0))*100)-group.reduce((n,r)=>n+Math.round(amountDiscountTotal(booked.get(r.truckId)||r)*100),0);
+    const fixed=group.filter(r=>booked.has(r.truckId)),editable=group.filter(r=>!booked.has(r.truckId)),totalGross=round(group.reduce((n,r)=>{const source=booked.get(r.truckId)||r;return n+source.rate*source.eligibleDays;},0)),fixedGross=fixed.reduce((n,r)=>n+Math.round(booked.get(r.truckId).gross*100),0),editableGross=Math.max(0,Math.round(totalGross*100)-fixedGross)/100,editableDayDiscount=editable.reduce((n,r)=>n+round(r.monthly*r.discountDays/30),0),editableAmountDiscount=editable.reduce((n,r)=>n+amountDiscountTotal(r),0);
+    const gross=Math.round(totalGross*100),net=fixed.reduce((n,r)=>n+Math.round(booked.get(r.truckId).net*100),0)+Math.max(0,Math.round((editableGross-editableDayDiscount-editableAmountDiscount)*100));
     const currentNet=group.reduce((n,r)=>n+Math.round((booked.get(r.truckId)||r).net*100),0);
     const currentDiscount=group.reduce((n,r)=>n+Math.round((booked.get(r.truckId)||r).discount*100),0);
     const adjust=(key,delta,candidates)=>{
@@ -451,24 +451,24 @@ function fixedPeriodAmount(monthly,p) {
   return p.half===1?first:round(monthly-first);
 }
 export function applyFixedMonthlyRule(state) {
-  state.settings={...state.settings,mode:'half',fixedMonthlyVersion:1,confirmed:true};
+  state.settings={...state.settings,mode:'half',fixedMonthlyVersion:2,confirmed:true};
   const previous=new Map(),changed=new Set();
   for(const c of state.closings){
-    previous.set(c.id,{settings:structuredClone(c.settings),rows:structuredClone(c.rows.filter(r=>!r.paid))});
+    previous.set(c.id,{settings:structuredClone(c.settings),rows:structuredClone(c.rows.filter(r=>!r.paid&&!r.requestId))});
     for(const r of c.rows){
       const used=r.calculationSettings||c.settings;
-      if(r.paid||r.requestId||(used.mode==='half'&&used.fixedMonthlyVersion===1))continue;
+      if(r.paid||r.requestId||(used.mode==='half'&&used.fixedMonthlyVersion===2))continue;
       const rate=fixedPeriodAmount(r.monthly,c.period)/days(c.period.start,c.period.end);
-      r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(rate*r.payableDays-amountDiscountTotal(r));if(r.net<0)throw Error('Os descontos por valor excedem o saldo do fechamento.');r.discount=round(r.gross-r.net);
-      r.calculationSettings={...used,mode:'half',fixedMonthlyVersion:1};delete r.roundingAdjusted;changed.add(c.id);
+      r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(Math.max(0,r.gross-round(r.monthly*r.discountDays/30)-amountDiscountTotal(r)));r.discount=round(r.gross-r.net);
+      r.calculationSettings={...used,mode:'half',fixedMonthlyVersion:2};delete r.roundingAdjusted;changed.add(c.id);
     }
   }
   const groups=new Map();
   for(const c of state.closings)for(const r of c.rows){const key=c.period.key+'|'+r.plate;if(!groups.has(key))groups.set(key,[]);groups.get(key).push({closing:c,row:r});}
   for(const items of groups.values()){
     if(!items.some(x=>changed.has(x.closing.id)))continue;
-    const pending=items.filter(x=>!x.row.paid).sort((a,b)=>a.row.start.localeCompare(b.row.start));if(!pending.length)continue;
-    const gross=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0))*100),net=Math.round(round(items.reduce((n,x)=>n+x.row.rate*x.row.payableDays,0))*100)-items.reduce((n,x)=>n+Math.round(amountDiscountTotal(x.row)*100),0);
+    const pending=items.filter(x=>!x.row.paid&&!x.row.requestId).sort((a,b)=>a.row.start.localeCompare(b.row.start));if(!pending.length)continue;
+    const fixed=items.filter(x=>x.row.paid||x.row.requestId),editable=items.filter(x=>!x.row.paid&&!x.row.requestId),totalGross=round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0)),fixedGross=fixed.reduce((n,x)=>n+Math.round(x.row.gross*100),0),editableGross=Math.max(0,Math.round(totalGross*100)-fixedGross)/100,editableDayDiscount=editable.reduce((n,x)=>n+round(x.row.monthly*x.row.discountDays/30),0),editableAmountDiscount=editable.reduce((n,x)=>n+amountDiscountTotal(x.row),0),gross=Math.round(totalGross*100),net=fixed.reduce((n,x)=>n+Math.round(x.row.net*100),0)+Math.max(0,Math.round((editableGross-editableDayDiscount-editableAmountDiscount)*100));
     const currentNet=items.reduce((n,x)=>n+Math.round(x.row.net*100),0),currentDiscount=items.reduce((n,x)=>n+Math.round(x.row.discount*100),0);
     const adjust=(field,delta,candidates)=>{
       for(const x of [...candidates].reverse()){
@@ -484,7 +484,7 @@ export function applyFixedMonthlyRule(state) {
     if(!changed.has(c.id))continue;
     const old=previous.get(c.id),changedAmounts=c.rows.filter(r=>!r.paid).some(r=>{const p=old.rows.find(x=>x.truckId===r.truckId);return p&&(p.net!==r.net||p.gross!==r.gross||p.discount!==r.discount);});
     if(changedAmounts)c.calculationRevisions=[...(c.calculationRevisions||[]),{reason:'fixed-monthly',date:today(),previousSettings:old.settings,previousRows:old.rows}];
-    if(!c.rows.some(r=>r.paid)){c.settings={...c.settings,mode:'half',fixedMonthlyVersion:1};c.rows.forEach(r=>{if(!r.paid)delete r.calculationSettings;});}
+    if(!c.rows.some(r=>r.paid||r.requestId)){c.settings={...c.settings,mode:'half',fixedMonthlyVersion:2};c.rows.forEach(r=>{if(!r.paid&&!r.requestId)delete r.calculationSettings;});}
   }
   return state;
 }
