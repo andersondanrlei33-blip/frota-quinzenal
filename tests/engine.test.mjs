@@ -78,37 +78,40 @@ test('monthly divided by 30 discounts also apply to partial periods and round th
   const r=calculate(t,p,s,discounts);assert.equal(r.gross,7109.37);assert.equal(r.discount,1421.88);assert.equal(r.net,5687.49);
   const partial=calculate({...t,start:'2026-10-31'},p,s,[{...discounts[0],start:'2026-10-31',end:'2026-10-31'}]);assert.equal(partial.gross,444.34);assert.equal(partial.net,0);
 });
-test('rule update recalculates unpaid discount snapshots to monthly divided by 30 and preserves paid or requested rows',()=>{
+test('rule update recalculates paid, requested and unpaid snapshots using monthly divided by 30',()=>{
   const s=initialState(),p=period('2026-10',2);s.settings={...s.settings,fixedMonthlyVersion:1};
   const discounts=['a','b','c'].map((id)=>({id:'d'+id,truckId:id,start:'2026-10-20',end:'2026-10-20',reason:'Falta',note:''}));
   s.trucks=['a','b','c'].map((id,index)=>({...truck,id,plate:['ABC1D23','XYZ9B87','DEF1G23'][index],monthly:30000,start:'2026-10-01',end:''}));s.discounts=discounts;
   const closing=saveClosing(s,p,'farm1','monthly-v1','2026-10-31');
   for(const row of closing.rows){row.rate=937.5;row.gross=15000;row.discount=937.5;row.net=14062.5;}
-  const paid=closing.rows.find(row=>row.truckId==='b');paid.paid={date:'2026-10-31',note:'Pago'};
+  const paid=closing.rows.find(row=>row.truckId==='b');paid.requestId='request-b';paid.paid={date:'2026-10-31',note:'Pago',requestId:'request-b',paymentGroupId:'group-b',paymentGroupAmount:14062.5,receipt:{id:'receipt-b'}};
   const requested=closing.rows.find(row=>row.truckId==='c');requested.requestId='request-c';
-  const paidBefore=structuredClone(paid),requestedBefore=structuredClone(requested);
+  const paidBefore=structuredClone(paid);
+  const paidSnapshot=structuredClone(paid);delete paidSnapshot.requestId;delete paidSnapshot.paid;
+  s.paymentRequests.push({id:'request-b',closingId:closing.id,truckId:'b',period:p,status:'paid',requestedAt:'2026-10-31T12:00:00.000Z',requestedBy:'teste',snapshot:paidSnapshot,payment:structuredClone(paid.paid),paymentHistory:[]});
   s.paymentRequests.push({id:'request-c',closingId:closing.id,truckId:'c',period:p,status:'pending',requestedAt:'2026-10-31T12:00:00.000Z',requestedBy:'teste',snapshot:structuredClone(requested),paymentHistory:[]});
   assert.equal(closing.rows.find(row=>row.truckId==='a').net,14062.5);
   applyFixedMonthlyRule(s);
   assert.equal(s.settings.fixedMonthlyVersion,2);assert.equal(closing.rows.find(row=>row.truckId==='a').net,14000);
-  assert.deepEqual(closing.rows.find(row=>row.truckId==='b'),paidBefore);assert.deepEqual(closing.rows.find(row=>row.truckId==='c'),requestedBefore);
+  assert.equal(closing.rows.find(row=>row.truckId==='b').net,14000);assert.equal(closing.rows.find(row=>row.truckId==='b').paid.date,paidBefore.paid.date);
+  assert.equal(s.paymentRequests.find(request=>request.id==='request-b').snapshot.net,14000);assert.equal(s.paymentRequests.find(request=>request.id==='request-b').payment.paymentGroupAmount,14000);
+  assert.equal(closing.rows.find(row=>row.truckId==='c').net,14000);assert.equal(s.paymentRequests.find(request=>request.id==='request-c').snapshot.net,14000);
   assert.equal(closing.calculationRevisions[0].previousRows.find(row=>row.truckId==='a').net,14062.5);
   assert.deepEqual(validateState(s),s);
 });
-test('switching to fixed monthly recalculates unpaid snapshots, audits prior values and preserves paid rows',()=>{
+test('switching to fixed monthly recalculates paid and unpaid snapshots and audits prior values',()=>{
   const s=initialState();s.settings={...settings};s.trucks=[{...truck,monthly:30000,start:'2026-10-01',end:''},{...truck,id:'b',plate:'XYZ9B87',farmId:'farm2',monthly:30000,start:'2026-10-01',end:''}];
   saveClosing(s,period('2026-10',1),'','first','2026-10-15');
   const c=saveClosing(s,period('2026-10',2),'','legacy','2026-10-31');c.rows.find(r=>r.truckId==='b').paid={date:'2026-10-31',note:'Original'};
-  const paid=structuredClone(c.rows.find(r=>r.truckId==='b'));
   applyFixedMonthlyRule(s);
-  const unpaid=c.rows.find(r=>r.truckId==='a');assert.equal(unpaid.net,15000);assert.equal(unpaid.calculationSettings.mode,'half');assert.equal(c.settings.mode,'daily30');
-  assert.deepEqual(c.rows.find(r=>r.truckId==='b'),paid);assert.equal(c.calculationRevisions[0].previousRows[0].net,16000);
+  const unpaid=c.rows.find(r=>r.truckId==='a');assert.equal(unpaid.net,15000);assert.equal(unpaid.calculationSettings.mode,'half');assert.equal(c.settings.mode,'half');
+  assert.equal(c.rows.find(r=>r.truckId==='b').paid.date,'2026-10-31');assert.equal(c.calculationRevisions[0].previousRows[0].net,16000);
   const before=structuredClone(s);applyFixedMonthlyRule(s);assert.deepEqual(s,before);assert.deepEqual(validateState(s),s);
 });
-test('a fully paid legacy closing remains identical and fixed monthly transfers conserve the total',()=>{
+test('a fully paid legacy closing is versioned and fixed monthly transfers conserve the total',()=>{
   const s=initialState();s.settings={...settings};s.trucks=[{...truck,monthly:30000,start:'2026-10-01',end:''}];
   const c=saveClosing(s,period('2026-10',1),'','paid','2026-10-15');c.rows[0].paid={date:'2026-10-15',note:'Original'};const old=structuredClone(c);
-  applyFixedMonthlyRule(s);assert.deepEqual(s.closings[0],old);
+  applyFixedMonthlyRule(s);assert.equal(s.closings[0].rows[0].net,old.rows[0].net);assert.equal(s.closings[0].rows[0].calculationSettings.fixedMonthlyVersion,2);assert.equal(s.closings[0].calculationRevisions[0].previousRows[0].paid.date,'2026-10-15');
   transferTruck(s,'a','farm2','2026-10-20','','to');const rows=draft(s,period('2026-10',2));
   assert.equal(rows.length,2);assert.equal(rows.reduce((n,r)=>n+r.net,0),15000);assert.equal(rows.reduce((n,r)=>n+r.eligibleDays,0),16);
 });
@@ -438,5 +441,6 @@ test('a zero-day ending remains explicitly closed and repeated confirmation does
   const before=structuredClone(s);endActivities(s,'a','2026-10-01','Nota','again','2026-10-06');assert.deepEqual(s,before);assert.deepEqual(validateState(s),s);
   assert.throws(()=>previewEndActivities(s,'a','2026-09-30'),/posterior/);
 });
+
 
 

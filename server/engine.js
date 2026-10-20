@@ -454,10 +454,10 @@ export function applyFixedMonthlyRule(state) {
   state.settings={...state.settings,mode:'half',fixedMonthlyVersion:2,confirmed:true};
   const previous=new Map(),changed=new Set();
   for(const c of state.closings){
-    previous.set(c.id,{settings:structuredClone(c.settings),rows:structuredClone(c.rows.filter(r=>!r.paid&&!r.requestId))});
+    previous.set(c.id,{settings:structuredClone(c.settings),rows:structuredClone(c.rows)});
     for(const r of c.rows){
       const used=r.calculationSettings||c.settings;
-      if(r.paid||r.requestId||(used.mode==='half'&&used.fixedMonthlyVersion===2))continue;
+      if(used.mode==='half'&&used.fixedMonthlyVersion===2)continue;
       const rate=fixedPeriodAmount(r.monthly,c.period)/days(c.period.start,c.period.end);
       r.rate=rate;r.gross=round(rate*r.eligibleDays);r.net=round(Math.max(0,r.gross-round(r.monthly*r.discountDays/30)-amountDiscountTotal(r)));r.discount=round(r.gross-r.net);
       r.calculationSettings={...used,mode:'half',fixedMonthlyVersion:2};delete r.roundingAdjusted;changed.add(c.id);
@@ -467,9 +467,7 @@ export function applyFixedMonthlyRule(state) {
   for(const c of state.closings)for(const r of c.rows){const key=c.period.key+'|'+r.plate;if(!groups.has(key))groups.set(key,[]);groups.get(key).push({closing:c,row:r});}
   for(const items of groups.values()){
     if(!items.some(x=>changed.has(x.closing.id)))continue;
-    const pending=items.filter(x=>!x.row.paid&&!x.row.requestId).sort((a,b)=>a.row.start.localeCompare(b.row.start));if(!pending.length)continue;
-    const fixed=items.filter(x=>x.row.paid||x.row.requestId),editable=items.filter(x=>!x.row.paid&&!x.row.requestId),totalGross=round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0)),fixedGross=fixed.reduce((n,x)=>n+Math.round(x.row.gross*100),0),editableGross=Math.max(0,Math.round(totalGross*100)-fixedGross)/100,editableDayDiscount=editable.reduce((n,x)=>n+round(x.row.monthly*x.row.discountDays/30),0),editableAmountDiscount=editable.reduce((n,x)=>n+amountDiscountTotal(x.row),0),gross=Math.round(totalGross*100),net=fixed.reduce((n,x)=>n+Math.round(x.row.net*100),0)+Math.max(0,Math.round((editableGross-editableDayDiscount-editableAmountDiscount)*100));
-    const currentNet=items.reduce((n,x)=>n+Math.round(x.row.net*100),0),currentDiscount=items.reduce((n,x)=>n+Math.round(x.row.discount*100),0);
+    const ordered=[...items].sort((a,b)=>a.row.start.localeCompare(b.row.start)),totalGross=Math.round(items.reduce((n,x)=>n+x.row.rate*x.row.eligibleDays,0)*100),totalDiscount=items.reduce((n,x)=>n+Math.round(x.row.discount*100),0),net=Math.max(0,totalGross-totalDiscount);
     const adjust=(field,delta,candidates)=>{
       for(const x of [...candidates].reverse()){
         if(!delta)break;const old=Math.round(x.row[field]*100),amount=delta>0?delta:Math.max(delta,-old);
@@ -477,14 +475,34 @@ export function applyFixedMonthlyRule(state) {
       }
       if(delta)throw Error('Confira os pagamentos antigos antes de ajustar a regra mensal desta placa.');
     };
-    adjust('net',net-currentNet,pending.filter(x=>x.row.payableDays>0));adjust('discount',gross-net-currentDiscount,pending.filter(x=>x.row.discountDays>0||amountDiscountTotal(x.row)>0));
-    pending.forEach(x=>x.row.gross=round(x.row.net+x.row.discount));
+    adjust('net',net-ordered.reduce((n,x)=>n+Math.round(x.row.net*100),0),ordered.filter(x=>x.row.payableDays>0));
+    adjust('discount',(totalGross-net)-totalDiscount,ordered.filter(x=>x.row.discountDays>0||amountDiscountTotal(x.row)>0));
+    ordered.forEach(x=>x.row.gross=round(x.row.net+x.row.discount));
   }
   for(const c of state.closings){
     if(!changed.has(c.id))continue;
-    const old=previous.get(c.id),changedAmounts=c.rows.filter(r=>!r.paid).some(r=>{const p=old.rows.find(x=>x.truckId===r.truckId);return p&&(p.net!==r.net||p.gross!==r.gross||p.discount!==r.discount);});
-    if(changedAmounts)c.calculationRevisions=[...(c.calculationRevisions||[]),{reason:'fixed-monthly',date:today(),previousSettings:old.settings,previousRows:old.rows}];
-    if(!c.rows.some(r=>r.paid||r.requestId)){c.settings={...c.settings,mode:'half',fixedMonthlyVersion:2};c.rows.forEach(r=>{if(!r.paid&&!r.requestId)delete r.calculationSettings;});}
+    const old=previous.get(c.id);c.calculationRevisions=[...(c.calculationRevisions||[]),{reason:'fixed-monthly',date:today(),previousSettings:old.settings,previousRows:old.rows}];
+    c.settings={...c.settings,mode:'half',fixedMonthlyVersion:2};
+    c.rows.forEach(r=>{r.calculationSettings={...(r.calculationSettings||old.settings),mode:'half',fixedMonthlyVersion:2};});
+  }
+  const requestsByGroup=new Map();
+  for(const request of state.paymentRequests||[]){
+    if(request.status==='cancelled')continue;
+    const closing=state.closings.find(c=>c.id===request.closingId),row=closing?.rows.find(r=>r.truckId===request.truckId);
+    if(!row)continue;
+    const savedDetails=request.snapshot?.paymentDetails,savedAccountId=request.snapshot?.paymentAccountId,savedAccountName=request.snapshot?.paymentAccountName;
+    const snapshot=structuredClone(row);delete snapshot.requestId;delete snapshot.paid;delete snapshot.paidHistory;
+    if(savedDetails!==undefined)snapshot.paymentDetails=savedDetails;if(savedAccountId!==undefined)snapshot.paymentAccountId=savedAccountId;if(savedAccountName!==undefined)snapshot.paymentAccountName=savedAccountName;
+    request.snapshot=snapshot;
+    if(request.status==='paid'&&row.paid){
+      const payment=structuredClone(request.payment||row.paid),groupId=payment.paymentGroupId;
+      if(groupId){if(!requestsByGroup.has(groupId))requestsByGroup.set(groupId,[]);requestsByGroup.get(groupId).push({request,row,payment});}
+      else{row.paid=structuredClone(payment);request.payment=structuredClone(payment);}
+    }
+  }
+  for(const items of requestsByGroup.values()){
+    const amount=round(items.reduce((n,x)=>n+x.row.net,0));
+    for(const {request,row,payment} of items){payment.paymentGroupAmount=amount;row.paid=structuredClone(payment);request.payment=structuredClone(payment);}
   }
   return state;
 }
@@ -538,5 +556,6 @@ export function validateState(input) {
   }
   return s;
 }
+
 
 
