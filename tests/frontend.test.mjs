@@ -137,6 +137,7 @@ test('fortnight preview groups transferred periods into one plate row and one en
  const html=app.get('#main').innerHTML,preview=html.slice(html.indexOf('Diárias previstas na quinzena'),html.indexOf('Totais por transportador'));
  assert.equal((preview.match(/class="plate">ATV2C70/g)||[]).length,1);assert.match(preview,/3 período\(s\)/);assert.match(preview,/15<span class="secondary">total na quinzena/);assert.match(preview,/R\$\s?17\.500,00/);assert.match(preview,/Detalhes \(3\)/);
  await app.action('fortnight-plate-detail','',{plate:'ATV2C70'});const details=app.get('#modal-content').innerHTML;
+ assert.match(details,/Dados do caminhão/);assert.match(details,/Transportadora/);assert.match(details,/Valor mensal[\s\S]*R\$\s?35\.000,00/);assert.match(details,/Graneleiro/);assert.match(details,/7 eixos/);assert.match(details,/Início do contrato[\s\S]*01\/10\/2026/);
  assert.match(details,/Fazenda 1 · Fazenda 2/);assert.match(details,/Períodos considerados/);assert.match(details,/11\/10\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
 });
 test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
