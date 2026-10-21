@@ -140,6 +140,13 @@ test('fortnight preview groups transferred periods into one plate row and one en
  assert.match(details,/Dados do caminhão/);assert.match(details,/Transportadora/);assert.match(details,/Valor mensal[\s\S]*R\$\s?35\.000,00/);assert.match(details,/Graneleiro/);assert.match(details,/7 eixos/);assert.match(details,/Início do contrato[\s\S]*01\/10\/2026/);
  assert.match(details,/Fazenda 1 · Fazenda 2/);assert.match(details,/Períodos considerados/);assert.match(details,/11\/10\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
 });
+test('open fortnight plate details explain each applied discount',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ const state=initialState();state.trucks=[{id:'discount-truck',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];
+ state.discounts=[{id:'absence',truckId:'discount-truck',start:'2026-10-19',end:'2026-10-20',reason:'Falta',note:'Ausência sem justificativa'},{id:'advance',truckId:'discount-truck',start:'2026-10-21',end:'2026-10-21',kind:'amount',reason:'Valor',amount:500,note:'Adiantamento'}];
+ app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='';location.hash='#closings';render()");await app.action('fortnight-plate-detail','',{plate:'BCP5583'});
+ const details=app.get('#modal-content').innerHTML;assert.match(details,/O que está sendo descontado/);assert.match(details,/Falta/);assert.match(details,/19\/10\/2026 a 20\/10\/2026/);assert.match(details,/2 dia\(s\)/);assert.match(details,/Ausência sem justificativa/);assert.match(details,/Por valor/);assert.match(details,/21\/10\/2026/);assert.match(details,/R\$\s?500,00/);assert.match(details,/Adiantamento/);
+});
 test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  const shell=fs.readFileSync(new URL('../frontend/index.html',import.meta.url),'utf8'),html=app.get('#main').innerHTML;
