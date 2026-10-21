@@ -112,3 +112,21 @@ body.report-open{overflow:hidden}
 
 .cte-farm-filter-setting{display:grid;gap:7px;margin-bottom:16px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#f7f9f5}.cte-farm-filter-setting label{font-size:12px;font-weight:650}.cte-farm-filter-setting select{max-width:100%;min-height:38px}.cte-farm-filter-setting small{font-size:11px;color:var(--muted)}
 
+
+.invoice-print-toolbar{display:flex;align-items:center;gap:12px;padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--line)}.invoice-print-toolbar>span{font-size:11px;color:var(--muted)}
+@media print{
+  @page invoice{size:A4 landscape;margin:10mm}
+  body.invoice-print-open{overflow:visible;background:#fff;color:#111}
+  body.invoice-print-open>:not(#modal){display:none!important}
+  body.invoice-print-open #modal{page:invoice;display:block!important;position:static!important;inset:auto!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#fff!important;color:#111!important}
+  body.invoice-print-open #modal::backdrop{display:none}
+  body.invoice-print-open #modal-content,body.invoice-print-open .modal-body{max-height:none!important;overflow:visible!important;padding:0!important}
+  body.invoice-print-open .modal-head{padding:0 0 5mm;margin-bottom:5mm;border-bottom:1px solid #ccd4cd}
+  body.invoice-print-open .modal-head h2{font-size:18pt}
+  body.invoice-print-open .invoice-print-toolbar,body.invoice-print-open .form-actions{display:none!important}
+  body.invoice-print-open .detail-grid{break-inside:avoid}
+  body.invoice-print-open .table-wrap{overflow:visible!important}
+  body.invoice-print-open table{width:100%;white-space:normal}
+  body.invoice-print-open th,body.invoice-print-open td{padding:2.5mm 2mm;font-size:8pt}
+  body.invoice-print-open .card,body.invoice-print-open tr{break-inside:avoid}
+}
