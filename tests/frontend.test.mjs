@@ -370,5 +370,10 @@ test('truck details can undo an unused transfer after confirmation',async()=>{
   assert.equal(app.state().state.trucks.length,1);
   assert.equal(app.state().state.trucks[0].farmId,'farm1');
 });
-
-
+test('movement history opens transfer details from its origin truck period',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
+  app.mutateState(state=>{state.trucks=[{id:'origin-period',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];transferTruck(state,'origin-period','farm2','2026-10-20','','destination-period');});
+  await app.poll();app.run("location.hash='#movements';render()");const markup=app.get('#main').innerHTML;
+  assert.match(markup,/data-action="truck-history" data-id="origin-period">Ver \/ estornar/);
+  await app.action('truck-history','origin-period');assert.match(app.get('#modal-content').innerHTML,/Desfazer transferência/);assert.match(app.get('#modal-content').innerHTML,/BCP5583/);
+});
