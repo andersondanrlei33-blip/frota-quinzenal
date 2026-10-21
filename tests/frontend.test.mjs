@@ -337,14 +337,14 @@ test('first access collects company credentials and an administrator can generat
   app.run("location.hash='#settings';render();");assert.match(app.get('#main').innerHTML,/Equipe e acesso/);
   assert.equal(await app.submit('invite-form',{email:'staff@example.test',role:'viewer'}),'');assert.match(app.get('#invite-result').innerHTML,/staff@example.test/);assert.match(app.get('#invite-result').innerHTML,/#activate=/);
 });
-test('discounts view prints a report for the selected fortnight and farm filter',async()=>{
+test('discounts view groups and alphabetizes plates in the printable report',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
  app.mutateState(state=>{
-  state.trucks=[{id:'discount-truck',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];
-  state.discounts=[{id:'discount-one',truckId:'discount-truck',start:'2026-10-20',end:'2026-10-20',reason:'Oficina',note:'Pneu traseiro'}];
+  state.trucks=[{id:'truck-atv',plate:'ATV2C70',driver:'Motorista ATV',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''},{id:'truck-bcd',plate:'BCD5C56',driver:'Motorista BCD',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];
+  state.discounts=[{id:'discount-atv-1',truckId:'truck-atv',start:'2026-10-21',end:'2026-10-21',reason:'Falta',note:''},{id:'discount-bcd',truckId:'truck-bcd',start:'2026-10-21',end:'2026-10-21',reason:'Falta',note:''},{id:'discount-atv-2',truckId:'truck-atv',start:'2026-10-20',end:'2026-10-20',reason:'Oficina',note:'Pneu traseiro'}];
  });
  await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='farm2';location.hash='#discounts';render();");
- const html=app.get('#main').innerHTML;assert.match(html,/Imprimir relatório/);assert.match(html,/Fazenda 2/);assert.match(html,/ABC1D23/);assert.match(html,/Pneu traseiro/);
+ const html=app.get('#main').innerHTML;assert.match(html,/Imprimir relatório/);assert.match(html,/Fazenda 2/);assert.equal((html.match(/class="discount-plate-group"/g)||[]).length,2);assert.ok(html.indexOf('ATV2C70')<html.indexOf('BCD5C56'));assert.ok(html.indexOf('Pneu traseiro')<html.indexOf('BCD5C56'));
  await app.action('discounts-print');assert.equal(app.printCount(),1);assert.equal(app.get('body').classList.contains('discount-print-open'),false);
 });
 test('truck list groups transfers and returns into one plate with a consolidated details view',async()=>{

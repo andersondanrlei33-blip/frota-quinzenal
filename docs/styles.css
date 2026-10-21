@@ -137,3 +137,4 @@ body.report-open{overflow:hidden}
   body.discount-print-open .discount-print-title p{font-size:10pt;color:#42564c;margin-top:1mm}
   body.discount-print-open .discount-report-card .card-header{display:block;padding:0 0 3mm;border:0}
 }
+.discount-plate-groups{display:grid;gap:12px}.discount-plate-group{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff;break-inside:avoid}.discount-plate-heading{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f1f5ef;border-bottom:1px solid var(--line)}.discount-plate-heading .plate{font-size:13px}.discount-plate-heading .secondary{display:inline;margin:0}.discount-plate-group .table-wrap{overflow-x:auto}.discount-plate-group table{margin:0}.discount-plate-group tbody tr:last-child td{border-bottom:0}
