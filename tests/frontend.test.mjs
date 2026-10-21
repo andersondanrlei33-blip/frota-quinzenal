@@ -377,3 +377,10 @@ test('movement history opens transfer details from its origin truck period',asyn
   assert.match(markup,/data-action="truck-history" data-id="origin-period">Ver \/ estornar/);
   await app.action('truck-history','origin-period');assert.match(app.get('#modal-content').innerHTML,/Desfazer transferência/);assert.match(app.get('#modal-content').innerHTML,/BCP5583/);
 });
+test('open fortnight truck details let the user view the linked payment account',async()=>{
+  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
+  app.mutateState(state=>{state.trucks=[{id:'truck-with-payment',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Titular Exemplo',document:'12345678901',pixKey:'pagamento@exemplo.test'}}];});
+  await app.poll();app.run("location.hash='#closings';render()");await app.action('fortnight-plate-detail','',{plate:'BCP5583'});
+  assert.match(app.get('#modal-content').innerHTML,/Ver dados de pagamento/);
+  await app.action('history-payment-details','truck-with-payment');assert.match(app.get('#modal-content').innerHTML,/Chave Pix/);assert.match(app.get('#modal-content').innerHTML,/pagamento@exemplo.test/);
+});
