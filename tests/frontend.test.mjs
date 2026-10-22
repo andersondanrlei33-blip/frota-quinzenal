@@ -199,6 +199,12 @@ test('farm tonnage billing closes by month and lets the farm select CT-es with o
   app.run("cteBillingMonth='2026-09';main.innerHTML=cteBillingView()");const september=app.get('#main').innerHTML;assert.match(september,/CTE-3/);assert.match(september,/R\$\s?270,00/);assert.doesNotMatch(september,/CTE-2/);assert.match(september,/CT-es de setembro de 2026/);
   app.run("currentUser={party:'carrier',role:'operator'};main.innerHTML=cteBillingView()");assert.doesNotMatch(app.get('#main').innerHTML,/data-billing-select=/);assert.doesNotMatch(app.get('#main').innerHTML,/id="cte-billing-payment-form"/);
 });
+test('group billing offers a separate invoice for each farm and limits invoice selection to that farm',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ app.run("currentUser={party:'group',role:'admin'};cteBillingMonth='2026-10';cteFarms=[{id:'farm1',name:'Fazenda Mafra'},{id:'farm2',name:'Fazenda São Jorge'}];cteDocuments=[{id:'cte-mafra',farmId:'farm1',farmName:'Fazenda Mafra',number:'5239',plate:'ATV2C70',driver:'Motorista A',issuedOn:'2026-10-13',billableTons:26.4,billingRate:2.7,billingAmount:71.28},{id:'cte-sao-jorge',farmId:'farm2',farmName:'Fazenda São Jorge',number:'5228',plate:'BCP5583',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:2,billingRate:2.7,billingAmount:5.4}];main.innerHTML=cteBillingView()");
+ const html=app.get('#main').innerHTML;assert.match(html,/Emitir fatura · Fazenda Mafra \(1 CT-e\)/);assert.match(html,/Emitir fatura · Fazenda São Jorge \(1 CT-e\)/);assert.equal((html.match(/data-action="cte-billing-open"/g)||[]).length,2);
+ await app.action('cte-billing-open','',{farmId:'farm1'});const modal=app.get('#modal-content').innerHTML;assert.match(modal,/Emitir fatura · Fazenda Mafra/);assert.match(modal,/CT-e 5239/);assert.doesNotMatch(modal,/5228|Fazenda São Jorge/);
+});
 test('CT-e report columns can be dragged to any position in the saved order',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   app.run("ctePreferences=normalizeCtePreferences({visibleColumns:['number','shipper','plate'],columnOrder:['number','farm','shipper','recipient','plate']});ctePreferencesForm()");
@@ -402,4 +408,3 @@ test('open fortnight truck details let the user view the linked payment account'
   assert.match(app.get('#modal-content').innerHTML,/Ver dados de pagamento/);
   await app.action('history-payment-details','truck-with-payment');assert.match(app.get('#modal-content').innerHTML,/Chave Pix/);assert.match(app.get('#modal-content').innerHTML,/pagamento@exemplo.test/);
 });
-
