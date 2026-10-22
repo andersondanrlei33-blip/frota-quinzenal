@@ -286,8 +286,9 @@ test('farm registration opens a separate form and saves one farm at a time',asyn
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
  assert.doesNotMatch(app.get('#main').innerHTML,/id="farms-form"/);assert.match(app.get('#main').innerHTML,/Cadastrar fazenda/);
  await app.action('add-farm');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/id="farm-form"/);assert.match(modal,/Salvar fazenda/);assert.match(modal,/CPF ou CNPJ do titular/);assert.match(modal,/Nome ou razão social do titular/);
- const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'João da Silva',document:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'65999990000'},{id}), '');
- const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cpf,'330.803.640-15');assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
+ assert.doesNotMatch(modal,/E-mail de contato|contactEmail/);
+ const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'João da Silva',document:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactPhone:'65999990000'},{id}), '');
+ const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cpf,'330.803.640-15');assert.equal('contactEmail' in saved,false);assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
 });
 test('farm registration accepts a CNPJ and displays it after saving',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
@@ -303,14 +304,14 @@ test('farm registration blocks a state registration already used by another farm
  app.mutateState(state=>{state.farms[1].stateRegistration='13.325.682-0';});
  await app.action('cloud-refresh');
  await app.action('edit-farm','farm1');
- const result=await app.submit('farm-form',{name:'Fazenda 1',legalName:'',document:'',stateRegistration:'133256820',address:'',contactName:'',contactEmail:'',contactPhone:''},{id:'farm1'});
+ const result=await app.submit('farm-form',{name:'Fazenda 1',legalName:'',document:'',stateRegistration:'133256820',address:'',contactName:'',contactPhone:''},{id:'farm1'});
  assert.match(result,/já está cadastrada para Fazenda 2/);assert.equal(app.state().state.farms[0].stateRegistration||'','');
 });
 test('farm edit refreshes stale server revision while keeping the form changes',async()=>{
  const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});
  await app.action('edit-farm','farm1');
  app.mutateState(state=>{state.farms[1].contactName='Contato atualizado em paralelo';});
- assert.equal(await app.submit('farm-form',{name:'Fazenda 1 corrigida',legalName:'Titular corrigido',document:'',stateRegistration:'123456',address:'Endereço corrigido',contactName:'',contactEmail:'',contactPhone:''},{id:'farm1'}),'');
+ assert.equal(await app.submit('farm-form',{name:'Fazenda 1 corrigida',legalName:'Titular corrigido',document:'',stateRegistration:'123456',address:'Endereço corrigido',contactName:'',contactPhone:''},{id:'farm1'}),'');
  assert.equal(app.state().state.farms[0].name,'Fazenda 1 corrigida');
  assert.equal(app.state().state.farms[0].legalName,'Titular corrigido');
  assert.equal(app.state().state.farms[1].contactName,'Contato atualizado em paralelo');
@@ -401,3 +402,4 @@ test('open fortnight truck details let the user view the linked payment account'
   assert.match(app.get('#modal-content').innerHTML,/Ver dados de pagamento/);
   await app.action('history-payment-details','truck-with-payment');assert.match(app.get('#modal-content').innerHTML,/Chave Pix/);assert.match(app.get('#modal-content').innerHTML,/pagamento@exemplo.test/);
 });
+

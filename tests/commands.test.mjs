@@ -4,9 +4,10 @@ import {initialState,period,saveClosing,validateState,transferTruck} from '../se
 import {executeCommand} from '../server/commands.js';
 const actor={userId:'admin-test',role:'admin'};
 const truck={id:'a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista',document:'12345678901',pixKey:'motorista@example.com'}};
-test('farm registry saves CPF and contact details and migrates legacy CPF values',()=>{
- const result=executeCommand(initialState(),{type:'farms.save',payload:{farms:[{id:'farm1',name:'Fazenda 1',legalName:'João da Silva',cpf:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000, km 10',contactName:'Ana',contactEmail:'ana@example.test',contactPhone:'(65) 99999-0000'},...initialState().farms.slice(1)]}},actor).state;
- assert.equal(result.farms[0].legalName,'João da Silva');assert.equal(result.farms[0].cpf,'330.803.640-15');assert.equal(result.farms[0].contactEmail,'ana@example.test');assert.deepEqual(validateState(result),result);
+test('farm registry saves profile and contact phone without changing a legacy contact email, and migrates legacy CPF values',()=>{
+ const initial=initialState();initial.farms[0].contactEmail='legacy@example.test';
+ const result=executeCommand(initial,{type:'farms.save',payload:{farms:[{id:'farm1',name:'Fazenda 1',legalName:'João da Silva',cpf:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000, km 10',contactName:'Ana',contactPhone:'(65) 99999-0000'},...initial.farms.slice(1)]}},actor).state;
+ assert.equal(result.farms[0].legalName,'João da Silva');assert.equal(result.farms[0].cpf,'330.803.640-15');assert.equal(result.farms[0].contactEmail,'legacy@example.test');assert.deepEqual(validateState(result),result);
  const legacy=executeCommand(initialState(),{type:'farms.save',payload:{farms:[{...initialState().farms[0],cnpj:'330.803.640-15'},...initialState().farms.slice(1)]}},actor).state;assert.equal(legacy.farms[0].cpf,'330.803.640-15');assert.equal('cnpj' in legacy.farms[0],false);
  assert.throws(()=>executeCommand(initialState(),{type:'farms.save',payload:{farms:[{...initialState().farms[0],cpf:'12345'},...initialState().farms.slice(1)]}},actor),/CPF válido/);
 });
@@ -128,5 +129,6 @@ test('server records and reverses the payment for the selected truck row',()=>{
   const undone=executeCommand(paid,{type:'payment.undo',payload:{requestId,note:'Corrigir referência'}},carrier).state;
   assert.equal(undone.closings[0].rows[0].paid,null);assert.equal(undone.closings[0].rows[0].net,15000);
 });
+
 
 

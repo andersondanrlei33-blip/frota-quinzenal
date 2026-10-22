@@ -86,7 +86,7 @@ export function executeCommand(input,command,actor,context={}){
     case 'farms.save':{
       if(!Array.isArray(p.farms)||!p.farms.length)throw Error('Cadastre pelo menos uma fazenda.');
       if(state.farms.some(farm=>!p.farms.some(item=>item.id===farm.id)))throw Error('Use Remover ou Inativar para alterar a lista de fazendas.');
-      const profileFields={legalName:120,stateRegistration:30,address:180,contactName:100,contactEmail:160,contactPhone:30};
+      const profileFields={legalName:120,stateRegistration:30,address:180,contactName:100,contactPhone:30};
       const farms=p.farms.map(item=>{
         const existing=state.farms.find(farm=>farm.id===item.id)||{};
         const sourceCpf=Object.hasOwn(item,'cpf')?item.cpf:existing.cpf||'';
@@ -123,5 +123,6 @@ export function executeCommand(input,command,actor,context={}){
   applyFixedMonthlyRule(state);state.updatedAt=new Date().toISOString();validateState(state);
   return {state,audit:{action:command.type,actorId:actor.userId,at:state.updatedAt}};
 }
+
 
 
