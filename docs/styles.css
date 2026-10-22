@@ -112,6 +112,30 @@ body.report-open{overflow:hidden}
 
 .cte-farm-filter-setting{display:grid;gap:7px;margin-bottom:16px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:#f7f9f5}.cte-farm-filter-setting label{font-size:12px;font-weight:650}.cte-farm-filter-setting select{max-width:100%;min-height:38px}.cte-farm-filter-setting small{font-size:11px;color:var(--muted)}
 
+.metric-button{appearance:none;text-align:left;font-family:inherit;color:inherit;width:100%;cursor:pointer;transition:border-color .15s,background .15s}.metric-button>span{display:block}.metric-button:hover{border-color:#9ab7a1;background:#f7faf6}.metric-button:focus-visible{outline:3px solid #679476;outline-offset:3px}.pending-cte-summary-table{max-height:min(65vh,620px);overflow:auto}.pending-cte-summary-table table{min-width:780px}
+
+@media print{
+  @page invoice{size:A4 landscape;margin:12mm}
+  body.invoice-print-open{overflow:visible;background:#fff}
+  body.invoice-print-open>:not(#modal){display:none!important}
+  body.invoice-print-open #modal{page:invoice;display:block!important;position:static!important;inset:auto!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;overflow:visible!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#fff}
+  body.invoice-print-open #modal::backdrop{display:none!important}
+  body.invoice-print-open #modal-content{width:100%;max-width:none}
+  body.invoice-print-open #modal-content>.modal-head{padding:0 0 5mm;margin-bottom:5mm;border-bottom:1px solid #cfd8d0}
+  body.invoice-print-open #modal-content>.modal-head h2{font-size:19pt}
+  body.invoice-print-open #modal-content>.modal-head p{font-size:9pt;color:#42564c}
+  body.invoice-print-open #modal-content>.modal-head .close-modal{display:none!important}
+  body.invoice-print-open #modal-content>.modal-body{padding:0;overflow:visible}
+  body.invoice-print-open #modal .form-actions,body.invoice-print-open #modal td:last-child,body.invoice-print-open #modal th:last-child{display:none!important}
+  body.invoice-print-open #modal .form-note{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+  body.invoice-print-open #modal .detail-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8mm}
+  body.invoice-print-open #modal .calculation,body.invoice-print-open #modal .card{break-inside:avoid;overflow:visible}
+  body.invoice-print-open #modal .table-wrap{overflow:visible}
+  body.invoice-print-open #modal table{width:100%;white-space:normal}
+  body.invoice-print-open #modal th,body.invoice-print-open #modal td{padding:2.5mm 2mm;font-size:8pt}
+  body.invoice-print-open #modal .secondary{font-size:7pt}
+}
+
 
 .invoice-print-toolbar{display:flex;align-items:center;gap:12px;padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--line)}.invoice-print-toolbar>span{font-size:11px;color:var(--muted)}
 @media print{
@@ -138,3 +162,4 @@ body.report-open{overflow:hidden}
   body.discount-print-open .discount-report-card .card-header{display:block;padding:0 0 3mm;border:0}
 }
 .discount-plate-groups{display:grid;gap:12px}.discount-plate-group{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff;break-inside:avoid}.discount-plate-heading{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#f1f5ef;border-bottom:1px solid var(--line)}.discount-plate-heading .plate{font-size:13px}.discount-plate-heading .secondary{display:inline;margin:0}.discount-plate-group .table-wrap{overflow-x:auto}.discount-plate-group table{margin:0}.discount-plate-group tbody tr:last-child td{border-bottom:0}
+
