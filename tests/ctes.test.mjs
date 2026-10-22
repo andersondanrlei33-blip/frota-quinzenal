@@ -198,13 +198,14 @@ test('a lista lê e salva uma única vez o peso dos CT-es antigos sem expor o ca
 test('CT-e portal endpoint does not return daily accrual amounts',async()=>{
  const group=setup({party:'carrier'}),groupResponse=await group.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),groupData=await groupResponse.json();
  assert.equal(groupResponse.status,200);assert.equal('accrualRows' in groupData,false);
- const farm=setup({party:'farm',farmId:'farm-a'}),farmResponse=await farm.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),farmData=await farmResponse.json();
- assert.equal(farmResponse.status,200);assert.equal('accrualRows' in farmData,false);assert.ok(farmData.trucks.every(truck=>truck.farmId==='farm-a'));
+ const sharedTruck={...state.trucks[0],id:'truck-shared',farmId:'farm-b',cteAllFarms:true},farm=setup({party:'farm',farmId:'farm-a',trucks:[...state.trucks,sharedTruck]}),farmResponse=await farm.api(new Request('https://example.test/api/ctes?month=2026-10&half=1')),farmData=await farmResponse.json();
+ assert.equal(farmResponse.status,200);assert.equal('accrualRows' in farmData,false);assert.ok(farmData.trucks.some(truck=>truck.id==='truck-shared'&&truck.farmId==='farm-b'&&truck.cteAllFarms));assert.ok(farmData.trucks.some(truck=>truck.farmId==='farm-a'));
 });
 
 test('funcionário de fazenda solicita CT-e com uma ou várias NF-e apenas para suas placas',async()=>{
  const {api,calls}=setup({party:'farm',role:'operator'}),makeRequest=truckId=>{const form=new FormData();form.append('payload',JSON.stringify({truckId,note:'Manifestar carga da Fazenda A'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe.pdf');return new Request('https://example.test/api/cte-requests',{method:'POST',body:form});};
  const request=makeRequest('truck-a'),response=await api(request);assert.equal(response.status,201);assert.equal(calls.request.actor.farmId,'farm-a');assert.equal(calls.request.truck.id,'truck-a');assert.deepEqual(calls.request.invoiceKeys,[]);
+ const sharedTruck={...state.trucks[0],id:'truck-shared',farmId:'farm-b',cteAllFarms:true},shared=setup({party:'farm',role:'operator',trucks:[...state.trucks,sharedTruck]}),sharedResponse=await shared.api(makeRequest('truck-shared'));assert.equal(sharedResponse.status,201);assert.equal(shared.calls.request.truck.farmId,'farm-b');assert.equal(shared.calls.request.farm.id,'farm-a');
  const foreignApi=setup({party:'farm',trucks:[...state.trucks,{...state.trucks[1],id:'truck-c',farmId:'farm-b'}]}).api;await assert.rejects(()=>foreignApi(makeRequest('truck-c')),/não está disponível/);
  const endedApi=setup({party:'farm',trucks:[{...state.trucks[0],end:'2026-10-07'}]}).api;await assert.rejects(()=>endedApi(makeRequest('truck-a')),/não está disponível/);
  assert.equal((await setup({party:'farm',role:'viewer'}).api(request)).status,403);
