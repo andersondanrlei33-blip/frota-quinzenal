@@ -1,0 +1,65 @@
+export function createCloudClient({url,publishableKey,functionName='fleet-api',fetchImpl=fetch,storage=null}) {
+  if(!url?.startsWith('https://')||!publishableKey)throw Error('Configure a conexão com o banco online.');
+  let session=null,refreshing=null,companyId='';
+  const sessionStore=storage||(()=>{try{return globalThis.sessionStorage;}catch{return null;}})();
+  const storageKey='frota-session-v1:'+new URL(url).host+':'+functionName;
+  const saveSession=()=>{try{if(session)sessionStore?.setItem(storageKey,JSON.stringify({session,companyId}));else sessionStore?.removeItem(storageKey);}catch{}};
+  const clearSession=()=>{session=null;companyId='';saveSession();};
+  try{
+    const saved=JSON.parse(sessionStore?.getItem(storageKey)||'null');
+    if(saved&&typeof saved.session?.access_token==='string'&&typeof saved.session?.refresh_token==='string'&&Number.isFinite(saved.session?.expires_at)){
+      session=saved.session;companyId=typeof saved.companyId==='string'?saved.companyId:'';
+    }else if(saved)sessionStore?.removeItem(storageKey);
+  }catch{try{sessionStore?.removeItem(storageKey);}catch{}}
+  const authUrl=path=>url+'/auth/v1/'+path;
+  const request=async (endpoint,{method='GET',body,token=null,company=false,raw=false}={})=>{
+    const response=await fetchImpl(endpoint,{method,cache:'no-store',headers:{apikey:publishableKey,...(token?{Authorization:'Bearer '+token}:{}),...(company&&companyId?{'X-Fleet-Company':companyId}:{}),...(body&&!raw?{'Content-Type':'application/json'}:{})},body:body?(raw?body:JSON.stringify(body)):undefined});
+    let value;try{value=await response.json();}catch{throw Error('O servidor não respondeu corretamente. Tente novamente.');}
+    if(!response.ok){const error=Error(value.error||value.msg||value.message||'Não foi possível concluir a solicitação.');error.status=response.status;error.code=value.code;if(Array.isArray(value.issues))error.issues=value.issues;throw error;}
+    return value;
+  };
+  const setSession=value=>{
+    if(!value?.access_token||!value?.refresh_token)throw Error('O servidor não retornou uma sessão válida.');
+    session={access_token:value.access_token,refresh_token:value.refresh_token,expires_at:Number(value.expires_at)||Math.floor(Date.now()/1000)+(Number(value.expires_in)||3600)};
+    saveSession();
+  };
+  const getToken=async()=>{
+    if(!session)throw Error('Faça login para acessar os registros.');
+    if(session.expires_at<=Math.floor(Date.now()/1000)+60){
+      if(!refreshing)refreshing=request(authUrl('token?grant_type=refresh_token'),{method:'POST',body:{refresh_token:session.refresh_token}}).then(setSession).catch(error=>{if(error.status===400||error.status===401)clearSession();throw error;}).finally(()=>{refreshing=null;});
+      await refreshing;
+    }
+    return session.access_token;
+  };
+  const api=async(path,body)=>request(url+'/functions/v1/'+functionName+path,{method:body?'POST':'GET',body,token:await getToken(),company:true});
+  const access=(body,token=null)=>request(url+'/functions/v1/fleet-access',{method:'POST',body,token});
+  return {
+    async login(email,password,ticket=null,companyName=null){const value=await request(authUrl('token?grant_type=password'),{method:'POST',body:{email,password}});companyId='';setSession(value);if(ticket){const accepted=await access({action:'accept',ticket,companyName},session.access_token);companyId=accepted.companyId;saveSession();}return api('/api/state');},
+    async logout(){try{if(session)await request(authUrl('logout?scope=local'),{method:'POST',token:session.access_token});}finally{clearSession();}},
+    forgetSession(){clearSession();},
+    async load(){return api('/api/state');},
+    async version(){return api('/api/version');},
+    async execute(type,payload,expectedRevision){return api('/api/commands',{type,payload,expectedRevision});},
+    async inspectInvite(ticket){return access({action:'inspect',ticket});},
+    async register(ticket,email,password,companyName){const result=await access({action:'register',ticket,email,password,companyName});companyId=result.companyId;return result;},
+    async team(){return api('/api/team');},
+    async invite(email,role,party='group',farmId=null){return api('/api/team/invite',{email,role,party,farmId});},
+    async updateMember(userId,role,active,party=null,farmId=null){return api('/api/team/status',{userId,role,active,party,farmId});},
+    async uploadReceipt(requestId,file){const body=new FormData();body.append('requestId',requestId);body.append('file',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/receipts',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async receiptLink(id){return api('/api/receipts/'+encodeURIComponent(id));},
+    async ctes(filters={}){const query=new URLSearchParams(filters);return api('/api/ctes'+(query.size?'?'+query.toString():''));},
+    async requestCte(payload){if(payload instanceof FormData)return request(url+'/functions/v1/'+functionName+'/api/cte-requests',{method:'POST',body:payload,token:await getToken(),company:true,raw:true});return api('/api/cte-requests',payload);},
+    async cancelCteRequest(requestId){return api('/api/cte-requests/'+encodeURIComponent(requestId)+'/cancel',{});},
+    async cteRequestFileLink(requestId,fileId){return api('/api/cte-requests/'+encodeURIComponent(requestId)+'/files/'+encodeURIComponent(fileId));},
+    async saveCtePreferences(preferences){return api('/api/ctes/preferences',preferences);},
+    async uploadCte({file,requestId='',confirmPlateCorrection=false,confirmWeightCheck=false,confirmHighValue=false,confirmFarmMismatch=false,confirmAlerts=false}){const body=new FormData();body.append('file',file,file.name);if(requestId)body.append('requestId',requestId);if(confirmPlateCorrection)body.append('confirmPlateCorrection','true');if(confirmWeightCheck)body.append('confirmWeightCheck','true');if(confirmHighValue)body.append('confirmHighValue','true');if(confirmFarmMismatch)body.append('confirmFarmMismatch','true');if(confirmAlerts)body.append('confirmAlerts','true');return request(url+'/functions/v1/'+functionName+'/api/ctes',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async cteLink(id){return api('/api/ctes/'+encodeURIComponent(id));},
+    async submitCtePaymentProofBatch(documentIds,file){const body=new FormData();body.append('documentIds',JSON.stringify(documentIds));body.append('paymentProof',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/cte-payment-batches',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async issueCteBillingInvoice({documentIds,dueOn}){return api('/api/cte-billing-invoices',{documentIds,dueOn});},
+    async payCteBillingInvoice(invoiceId,file){const body=new FormData();body.append('paymentProof',file,file.name);return request(url+'/functions/v1/'+functionName+'/api/cte-billing-invoices/'+encodeURIComponent(invoiceId)+'/payment-proof',{method:'POST',body,token:await getToken(),company:true,raw:true});},
+    async cteInvoicePaymentProofLink(invoiceId){return api('/api/cte-billing-invoices/'+encodeURIComponent(invoiceId)+'/payment-proof');},
+    async ctePaymentProofLink(id){return api('/api/ctes/'+encodeURIComponent(id)+'/payment-proof');},
+    hasSession(){return !!session;}
+  };
+}
+
