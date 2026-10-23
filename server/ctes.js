@@ -2,7 +2,7 @@ export const CTE_LIMIT=20*1024*1024;
 export const NFE_XML_LIMIT=10*1024*1024;
 export const REQUEST_FILE_LIMIT=10*1024*1024;
 export const REQUEST_TOTAL_FILE_LIMIT=20*1024*1024;
-export const CTE_BILLING_RATE_PER_TON=2.70;
+export const CTE_BILLING_RATE_PER_TON=2.50;
 export const CTE_REPORT_COLUMNS=['number','farm','shipper','recipient','serviceTaker','issuer','totalValue','issuedOn','plate','cargoWeight','manifestedNotes','shipperCity','shipperStateRegistration','shipperDocument','recipientCity','recipientStateRegistration','recipientDocument','serviceTakerCity','serviceTakerStateRegistration','serviceTakerDocument','issuerCity','issuerStateRegistration','issuerDocument'];
 const businessToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Cuiaba'}).format(new Date());
 
