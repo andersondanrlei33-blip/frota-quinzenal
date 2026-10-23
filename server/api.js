@@ -39,12 +39,20 @@ export function createFleetApi({repository,authenticate}){
         const receipt=command.type==='payment.record'?await repository.verifyReceipt?.(actor,command.payload.receiptId,command.payload.requestId):command.type==='payment.record-batch'?await repository.verifyReceipt?.(actor,command.payload.receiptId,command.payload.requestIds?.[0]):null;
         const fundingReceipt=command.type==='funding.receipt'?await repository.verifyFundingReceipt?.(actor,command.payload.receiptId,command.payload.id):null;
         let transferUndoFiscalClear;
+        let truckFiscalActivity=false;
+        if(command.type==='truck.save'){
+          const prior=current.state.trucks.find(item=>item.id===command.payload.id);
+          if(prior&&prior.start!==command.payload.start){
+            if(typeof repository.hasTruckFiscalActivity!=='function')throw Error('Não foi possível conferir as movimentações fiscais da placa.');
+            truckFiscalActivity=await repository.hasTruckFiscalActivity(actor.companyId,prior.id);
+          }
+        }
         if(command.type==='truck.transfer.undo'){
           if(typeof repository.hasTruckFiscalActivity!=='function')throw Error('Não foi possível conferir as movimentações fiscais da placa.');
           transferUndoFiscalClear=!(await repository.hasTruckFiscalActivity(actor.companyId,command.payload.id));
           if(!transferUndoFiscalClear)throw Error('Há solicitação de CT-e ou CT-e vinculado ao período de destino. A transferência não pode ser desfeita.');
         }
-        const result=executeCommand(current.state,command,actor,{receipt,fundingReceipt,transferUndoFiscalClear});
+        const result=executeCommand(current.state,command,actor,{receipt,fundingReceipt,transferUndoFiscalClear,truckFiscalActivity});
         const saved=await repository.commit(actor.companyId,command.expectedRevision,result.state,result.audit);
         if(!saved)return json({error:'Outra pessoa atualizou os registros. Atualize os dados antes de salvar.'},409);
         return json(presentState(saved,actor));

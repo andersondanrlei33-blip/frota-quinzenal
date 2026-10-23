@@ -16,6 +16,10 @@ export function executeCommand(input,command,actor,context={}){
   switch(command.type){
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id),farmId=text(p.farmId),paymentAccountId=text(p.paymentAccountId||'',100),account=paymentAccountId?requireRecord(state.paymentAccounts,paymentAccountId,'Conta de pagamento'):null;
+      if(prior&&prior.start!==p.start){
+        const hasOperationalHistory=Boolean(prior.transferIn||prior.transferOut||prior.serviceEnded||context.truckFiscalActivity||state.discounts.some(item=>item.truckId===id)||state.closings.some(item=>item.rows?.some(row=>row.truckId===id))||state.paymentRequests.some(item=>item.truckId===id||item.snapshot?.truckId===id));
+        if(hasOperationalHistory)throw Error('A data de início não pode ser alterada depois que há movimentação registrada para esta placa (CT-e, transferência, desconto, fechamento ou pagamento).');
+      }
       if(prior?.paymentAccountId&&prior.paymentAccountId!==paymentAccountId)throw Error('Esta placa já pertence a uma conta de pagamento. Edite o vínculo atual para liberá-la antes de alterar a conta.');
       let paymentDetails=account?structuredClone(account.details):p.paymentDetails===undefined?prior?.paymentDetails||null:normalizePaymentDetails(p.paymentDetails),linkedAccountId=paymentAccountId;
       if(!linkedAccountId&&paymentDetails&&!paymentDetailsMissing(paymentDetails).length){validatePaymentDetails(paymentDetails,true);linkedAccountId=uid();const generatedName=('Conta de '+paymentDetails.holder).slice(0,80);state.paymentAccounts.push({id:linkedAccountId,name:text(p.paymentAccountName||generatedName,80),details:structuredClone(paymentDetails)});}
