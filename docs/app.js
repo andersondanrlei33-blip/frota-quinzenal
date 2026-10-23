@@ -459,7 +459,8 @@ function cteBillingView(){
 
 function openCteBillingPayment(farmId=''){
  const invoices=billingInvoices||[],invoiced=new Set(invoices.flatMap(invoice=>invoice.documentIds||[])),isGroup=currentUser?.party==='group',docs=cteDocuments.filter(doc=>String(doc.issuedOn||'').startsWith(cteBillingMonth)&&(!isGroup||String(doc.farmId||'')===String(farmId))&&!doc.paymentReceipt&&!invoiced.has(doc.id)&&doc.billableTons!=null&&Number.isFinite(Number(doc.billableTons))&&Number.isFinite(Number(doc.billingAmount??Number(doc.billableTons)*Number(doc.billingRate||2.5))));
- if(!((isCarrier()||currentUser?.party==='group')&&currentUser?.role!=='viewer'))throw Error('Este acesso não pode registrar pagamentos de CT-e.');
+ const canPayFarm=currentUser?.party==='farm'&&currentUser.role!=='viewer'&&currentUser.farmId,canPayGroup=currentUser?.party==='group'&&['admin','operator'].includes(currentUser.role);
+ if(!canPayFarm&&!canPayGroup)throw Error('Este acesso não pode registrar pagamentos de CT-e.');
  if(!docs.length){notify('Não há CT-es elegíveis em aberto neste mês.');return;}
  selectedBillingCteIds=new Set(docs.map(doc=>doc.id));
  const total=docs.reduce((sum,doc)=>sum+Number(doc.billingAmount??Number(doc.billableTons)*Number(doc.billingRate||2.5)),0),label=new Date(`${cteBillingMonth}-01T12:00:00`).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
