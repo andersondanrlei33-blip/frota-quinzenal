@@ -118,7 +118,7 @@ test('valida PDF da NF-e sem exigir leitura da chave pelo PDF',()=>{
 });
 test('confere CPF/CNPJ e inscrição estadual da fazenda no emitente ou destinatário do DANFE',()=>{
  const parties=extractNfeParties(nfeIdentity);
- assert.deepEqual(parties,{issuer:{document:'06338525000118',stateRegistration:'132603632'},recipient:{document:'12345678901',stateRegistration:'133256820'}});
+ assert.deepEqual(parties,{issuer:{document:'06338525000118',stateRegistration:'132603632',stateRegistrations:['132603632']},recipient:{document:'12345678901',stateRegistration:'133256820',stateRegistrations:['133256820']}});
  assert.deepEqual(assertNfeMatchesFarm(nfeIdentity,state.farms[0],'nota.pdf'),parties);
  assert.deepEqual(assertNfeMatchesFarm(nfeIdentity,{name:'Fornecedor',cnpj:'06.338.525/0001-18',stateRegistration:'132603632'},'nota.pdf'),parties);
  assert.throws(()=>assertNfeMatchesFarm(foreignNfeIdentity,state.farms[0],'nota.pdf'),/não corresponde à Fazenda A/);
@@ -230,7 +230,7 @@ test('funcionário envia uma ou mais NF-e somente em PDF, sem XML nem chave',asy
  form.append('payload',JSON.stringify({truckId:'truck-a',note:'Enviar as notas anexas'}));form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-1.pdf');form.append('invoicePdfs',new Blob([pdf],{type:'application/pdf'}),'danfe-2.pdf');
  const response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));assert.equal(response.status,201);assert.deepEqual(calls.request.invoiceKeys,[]);assert.equal(calls.request.invoiceFiles.length,2);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.mime),['application/pdf','application/pdf']);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.cargoWeight),[44222,44222]);assert.deepEqual(calls.request.invoiceFiles.map(item=>item.details.cargoWeightUnit),['kg','kg']);
  const withoutPdf=new FormData();withoutPdf.append('payload',JSON.stringify({truckId:'truck-a',note:'Sem anexo'}));await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:withoutPdf})),/Anexe ao menos um PDF/);
- const xmlOnly=new FormData();xmlOnly.append('payload',JSON.stringify({truckId:'truck-a'}));xmlOnly.append('invoiceFiles',new Blob(['<nfeProc/>'],{type:'application/xml'}),'nota.xml');await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:xmlOnly})),/somente PDFs/);
+ const xmlOnly=new FormData();xmlOnly.append('payload',JSON.stringify({truckId:'truck-a'}));xmlOnly.append('invoiceFiles',new Blob(['<nfeProc/>'],{type:'application/xml'}),'nota.xml');await assert.rejects(()=>api(new Request('https://example.test/api/cte-requests',{method:'POST',body:xmlOnly})),/O arquivo não parece ser um XML de NF-e válido/);
 });
 test('funcionário envia PDF e a transportadora pode baixar o anexo',async()=>{
  const {api,calls}=setup({party:'farm',role:'operator'}),requestId='55555555-5555-4555-8555-555555555555',fileId='66666666-6666-4666-8666-666666666666',danfe=new TextEncoder().encode('%PDF-1.7\nDANFE'),form=new FormData();
@@ -292,13 +292,13 @@ test('associar CT-e à solicitação exige que todas as NF-e pedidas apareçam n
  const {api,calls}=setup({party:'carrier',request}),form=new FormData();form.append('requestId',request.id);form.append('file',new Blob([withNotes],{type:'application/xml'}),'cte.xml');
  const response=await api(new Request('https://example.test/api/ctes',{method:'POST',body:form}));assert.equal(response.status,201);assert.equal(calls.upload.metadata.requestId,request.id);
  const missing={...request,invoiceKeys:[key,'51260956023496000173550010000009991135775140']},secondSetup=setup({party:'carrier',request:missing}),badForm=new FormData();badForm.append('requestId',request.id);badForm.append('file',new Blob([withNotes],{type:'application/xml'}),'cte.xml');
- await assert.rejects(()=>secondSetup.api(new Request('https://example.test/api/ctes',{method:'POST',body:badForm})),/todas as NF-e solicitadas/);
+ await assert.rejects(()=>secondSetup.api(new Request('https://example.test/api/ctes',{method:'POST',body:badForm})),/não contém a chave de acesso da\(s\) NF-e 999 solicitada\(s\)/);
 });
 
 test('carta de correção anexada permite confirmar placa diferente e associa o CT-e à placa do pedido',async()=>{
  const key='51260956023496000173550010000008571135775140',request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[key],invoiceFiles:[{id:'correction-one',name:'CARTA-CORRECAO-MINUTA-PLACA-ABC1D23.pdf',documentType:'correction'},{id:'danfe-one',name:'danfe.pdf',cargoWeight:44222,cargoWeightUnit:'kg'}]},withOtherPlate=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<placa>ABC1D23</placa>','<placa>BCD5C56</placa>').replace('</infCTeNorm>','<infDoc><infNFe><chave>'+key+'</chave></infNFe></infDoc></infCTeNorm>'));
  const makeForm=confirm=>{const form=new FormData();form.append('requestId',request.id);if(confirm)form.append('confirmPlateCorrection','true');form.append('file',new Blob([withOtherPlate],{type:'application/xml'}),'cte.xml');return new Request('https://example.test/api/ctes',{method:'POST',body:form});};
- const withoutConfirmation=setup({party:'carrier',request});await assert.rejects(()=>withoutConfirmation.api(makeForm(false)),/Confira a carta de correção e marque a confirmação/);
+ const withoutConfirmation=setup({party:'carrier',request});await assert.rejects(()=>withoutConfirmation.api(makeForm(false)),/Confira a carta de correção e confirme antes de enviar/);
  const {api,calls}=setup({party:'carrier',request}),response=await api(makeForm(true));assert.equal(response.status,201);assert.equal(calls.upload.metadata.plate,'ABC1D23');assert.equal(calls.upload.metadata.truckId,'truck-a');assert.equal(calls.upload.metadata.farmId,'farm-a');assert.equal(calls.upload.metadata.participantDetails.plateCorrection.documentPlate,'BCD5C56');assert.equal(calls.upload.metadata.participantDetails.plateCorrection.linkedPlate,'ABC1D23');assert.deepEqual(calls.upload.metadata.participantDetails.plateCorrection.files,['CARTA-CORRECAO-MINUTA-PLACA-ABC1D23.pdf']);assert.equal(calls.upload.metadata.participantDetails.plateCorrection.confirmedBy,userId);assert.ok(calls.upload.metadata.participantDetails.plateCorrection.confirmedAt);
 });
 
@@ -310,13 +310,13 @@ test('peso do CT-e diferente da soma das NF-e exige confirmação e registra a d
 
 test('peso ilegível exige confirmação manual e registra que a comparação não foi possível',async()=>{
  const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[],invoiceFiles:[{name:'danfe-antigo.pdf'}]},form=confirm=>{const data=new FormData();data.append('requestId',request.id);if(confirm)data.append('confirmWeightCheck','true');data.append('file',new Blob([xml],{type:'application/xml'}),'cte.xml');return new Request('https://example.test/api/ctes',{method:'POST',body:data});};
- const first=setup({party:'carrier',request});await assert.rejects(first.api(form(false)),error=>error.code==='CTE_WEIGHT_UNAVAILABLE'&&/peso de todas as NF-e/.test(error.message));
+ const first=setup({party:'carrier',request});await assert.rejects(first.api(form(false)),error=>error.code==='CTE_WEIGHT_UNAVAILABLE'&&/Não consegui ler o peso da NF-e danfe-antigo\.pdf/.test(error.message));
  const accepted=setup({party:'carrier',request}),response=await accepted.api(form(true));assert.equal(response.status,201);assert.equal(accepted.calls.upload.metadata.participantDetails.weightConference.status,'unavailable');assert.equal(accepted.calls.upload.metadata.participantDetails.weightConference.cteWeightKg,44222);assert.equal(accepted.calls.upload.metadata.participantDetails.weightConference.confirmedBy,userId);
 });
 
 test('placa divergente sem carta de correção continua bloqueada',async()=>{
  const request={id:'55555555-5555-4555-8555-555555555555',status:'pending',farmId:'farm-a',truckId:'truck-a',plate:'ABC1D23',invoiceKeys:[]},withOtherPlate=new TextEncoder().encode(new TextDecoder().decode(xml).replace('<placa>ABC1D23</placa>','<placa>BCD5C56</placa>')),form=new FormData();form.append('requestId',request.id);form.append('confirmPlateCorrection','true');form.append('file',new Blob([withOtherPlate],{type:'application/xml'}),'cte.xml');
- const {api}=setup({party:'carrier',request});await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),/placa do CT-e precisa ser a mesma placa/);
+ const {api}=setup({party:'carrier',request});await assert.rejects(()=>api(new Request('https://example.test/api/ctes',{method:'POST',body:form})),/CT-e enviado é da placa BCD5C56, mas a solicitação é da placa ABC1D23/);
 });
 
 test('a tarifa por tonelada é calculada com o peso do CT-e',async()=>{

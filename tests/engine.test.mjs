@@ -43,18 +43,15 @@ test('inactive farms with pending trucks can close their period while inactive e
   assert.ok(openFarmIds(s,p).includes('farm1'));assert.ok(!openFarmIds(s,p).includes('farm3'));assert.throws(()=>saveClosing(s,p,'farm3'),/inativa/);
   const c=saveClosing(s,p,'farm1','closed','2026-10-31');assert.equal(c.rows.length,1);assert.equal(c.rows[0].net,20000);assert.deepEqual(validateState(JSON.parse(JSON.stringify(s))),s);
 });
-test('the second fortnight cannot close until the first fortnight is closed for the same farm',()=>{
+test('each farm can close the second fortnight independently of the first fortnight',()=>{
   const s=initialState(),first=period('2026-10',1),second=period('2026-10',2);s.farms=s.farms.slice(0,2);
   s.trucks=[{...truck,id:'farm1-truck',farmId:'farm1',start:'2026-10-01',end:''},{...truck,id:'farm2-truck',plate:'DEF1G23',farmId:'farm2',start:'2026-10-01',end:''}];
   saveClosing(s,first,'farm1','first-farm1','2026-10-15');
-  const before=structuredClone(s);
-  assert.throws(()=>saveClosing(s,second,'','second-all','2026-10-31'),/1ª quinzena de Fazenda 2 ainda está aberta/);
-  assert.deepEqual(s,before);
+  const secondFarm1=saveClosing(s,second,'farm1','second-farm1','2026-10-31');
+  assert.equal(secondFarm1.rows.length,1);assert.equal(secondFarm1.rows[0].farmId,'farm1');
   saveClosing(s,first,'farm2','first-farm2','2026-10-15');
-  const closed=saveClosing(s,second,'','second-all','2026-10-31');
-  assert.equal(closed.rows.length,2);
-  reopenClosing(s,second,'farm1');reopenClosing(s,first,'farm1');
-  assert.throws(()=>saveClosing(s,second,'farm1','second-again','2026-10-31'),/1ª quinzena de Fazenda 1 ainda está aberta/);
+  const secondFarm2=saveClosing(s,second,'farm2','second-farm2','2026-10-31');
+  assert.equal(secondFarm2.rows.length,1);assert.equal(secondFarm2.rows[0].farmId,'farm2');
   assert.deepEqual(validateState(s),s);
 });
 test('current fixed monthly rule pays the agreed amount in 28, 29, 30 and 31 day months',()=>{
