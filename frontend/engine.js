@@ -255,6 +255,7 @@ export function discountLocked(d,state) {
 }
 export function validateTruck(t,state,requireDetails=false) {
   if (!/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(t.plate)) throw Error('Informe uma placa válida, como ABC1D23 ou ABC1234.');
+  if(t.cteAllFarms!==undefined&&typeof t.cteAllFarms!=='boolean')throw Error('Confira a disponibilidade do caminhão para solicitações de CT-e.');
   if (!t.driver.trim() || !t.carrier.trim()) throw Error('Informe o motorista e o transportador.');
   const farm=state.farms.find(f=>f.id===t.farmId),existing=state.trucks.find(x=>x.id===t.id);
   if (!farm) throw Error('Selecione uma fazenda.');
