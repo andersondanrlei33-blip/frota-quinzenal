@@ -1,418 +1,534 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
-import crypto from 'node:crypto';
-import {initialState,period,saveClosing,transferTruck} from '../server/engine.js';
-import {executeCommand} from '../server/commands.js';
-import {createFleetApi} from '../server/api.js';
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛ~<å:-jZ.¶›­–)Ş³V–×÷'BFW7Bg&öÒvæöFS§FW7Bs°Ğ¦–×÷'B76W'Bg&öÒvæöFS¦76W'B÷7G&–7Bs°Ğ¦–×÷'Bg2g&öÒvæöFS¦g2s°Ğ¦–×÷'BfÒg&öÒvæöFS§fÒs°Ğ¦–×÷'B7'—Fòg&öÒvæöFS¦7'—Fòs°Ğ¦–×÷'B¶–æ—F–Å7FFRÇW&–öBÇ6fT6Æ÷6–ærÇG&ç6fW%G'V6·Òg&öÒrââ÷6W'fW"öVæv–æRæ§2s°Ğ¦–×÷'B¶W†V7WFT6öÖÖæGÒg&öÒrââ÷6W'fW"ö6öÖÖæG2æ§2s°Ğ¦–×÷'B¶7&VFTfÆVWD—Òg&öÒrââ÷6W'fW"ö’æ§2s°Ğ Ğ¦6öç7B&sÖæÖSÓæg2ç&VDf–ÆU7–æ2†æWrU$Â‚rââög&öçFVæBòr¶æÖRÆ–×÷'BæÖWFçW&Â’ÂwWFc‚r’ç&WÆ6R‚õæ–×÷'Bâ£óµÇ#õÆâövÒÂrr’ç&WÆ6R‚õæW‡÷'BövÒÂrr“°Ğ¦6öç7B6öFSÕ·&r‚vVæv–æRæ§2r’Ç&r‚w&W÷'G2æ§2r’Ç&r‚v6Æ÷VBÖ6Æ–VçBæ§2r’Â&6öç7B4ÄõTEô4ôäd”s×·W&Ã¢v‡GG3¢òöW†×ÆRç7W&6Ræ6òrÇV&Æ—6†&ÆT¶W“¢wV&Æ–2×FW7BÖ¶W’wÓ¶6öç7BôTåd•$ôäÔTåCÒw&öGV7F–öâs²"Ç&r‚v6Æ÷VB×V’æ§2r’Ç&r‚væ§2r•Òæ¦ö–â‚uÆâr“°Ğ¦gVæ7F–öâFöÔæöFR‚—¶6öç7B6Æ76W3ÖæWr6WB‚“·&WGW&â¶–ææW$…DÔÃ¢rrÇFW‡D6öçFVçC¢rrÇfÇVS¢rrÆF—6&ÆVC¦fÇ6RÇ&WV—&VC¦fÇ6RÆ†–FFVã¦fÇ6RÆ÷Vã¦fÇ6RÆ–C¢rrÆFF6WC§·ÒÆGG&–'WFW3§·ÒÆ6Æ74Æ—7C§¶FC¢‚ââæ—FV×2“Óæ—FV×2æf÷$V6‚†—FVÓÓæ6Æ76W2æFB†—FVÒ’’Ç&VÖ÷fS¢‚ââæ—FV×2“Óæ—FV×2æf÷$V6‚†—FVÓÓæ6Æ76W2æFVÆWFR†—FVÒ’’ÇFövvÆS¢†—FVÒÆVæ&ÆVB“ÓæVæ&ÆVCö6Æ76W2æFB†—FVÒ“¦6Æ76W2æFVÆWFR†—FVÒ’Æ6öçF–ç3¦—FVÓÓæ6Æ76W2æ†2†—FVÒ—ÒÇ6WDGG&–'WFR†¶W’ÇfÇVR—·F†—2æGG&–'WFW5¶¶W•Ó×fÇVS·ÒÇ6WD7W7FöÕfÆ–F—G’‡fÇVR—·F†—2çfÆ–FF–öäÖW76vS×fÇVS·ÒÆFDWfVçDÆ—7FVæW"‚—·ÒÇ67&öÆÄ–çFõf–Wr‚—·ÒÆfö7W2‚—·ÒÇ6WE6VÆV7F–öå&ævR‚—·ÒÇ6†÷tÖöFÂ‚—·F†—2æ÷Vã×G'VS·ÒÆ6Æ÷6R‚—·F†—2æ÷VãÖfÇ6S·ÒÆ–ç6W'DF¦6VçD…DÔÂ‡÷6—F–öâÆ‡FÖÂ—·F†—2æ–ææW$…DÔÂ³Ö‡FÖÃ·×Ó·ĞĞ¦7–æ2gVæ7F–öâ&ö÷B‡&öÆSÒvFÖ–ârÆ7F—fF–öãÖfÇ6RÇ7F÷&vSÖçVÆÂÇ'G“Òvw&÷WrÇFVÔf—‡GW&SÕµÒ—°Ğ¢6öç7BæöFW3ÖæWrÖ‚’Æ†æFÆW'3ÖæWrÖ‚’Æ–çFW'fÇ3ÕµÒÆvWC×6VÆV7F÷#Óç¶–b‚æöFW2æ†2‡6VÆV7F÷"’—¶6öç7BæöFSÖFöÔæöFR‚“¶æöFRçVW'•6VÆV7F÷#ÖvWC¶æöFW2ç6WB‡6VÆV7F÷"ÆæöFR“·×&WGW&âæöFW2ævWB‡6VÆV7F÷"“·Ó°Ğ¢6öç7BFö7VÖVçC×¶&öG“¦FöÔæöFR‚’Çf—6–&–Æ—G•7FFS¢wf—6–&ÆRrÇVW'•6VÆV7F÷#¦vWBÇVW'•6VÆV7F÷$ÆÃ¢‚“ÓåµÒÆFDWfVçDÆ—7FVæW"‡G—RÆfâ—¶–b‚†æFÆW'2æ†2‡G—R’–†æFÆW'2ç6WB‡G—RÅµÒ“¶†æFÆW'2ævWB‡G—R’çW6‚†fâ“·×Ó¶vWB‚r6ÖöFÂr’çVW'•6VÆV7F÷#ÖvWC°Ğ¢ÆWB7F÷&VC×·7FFS¦–æ—F–Å7FFR‚’Ç&Wf—6–öã£Æ6ö×ç“§¶–C¢v6ö×ç’ÖöæRrÆæÖS¢tV×&W6FRFW7FRw×Ó°Ğ¢ÆWB66÷VçC×·&öÆRÇ'G—Ó¶6öç7B&öög3ÖæWrÖ‚“°Ğ¢6öç7B&W÷6—F÷'“×¶7–æ2ÆöB‚—·&WGW&â7G'V7GW&VD6ÆöæR‡7F÷&VB“·ÒÆ7–æ2fW'6–öâ‚—·&WGW&â7F÷&VBç&Wf—6–öã·ÒÆ7–æ26öÖÖ—B†6ö×ç’Ç&Wf—6–öâÇ7FFR—¶–b‡&Wf—6–öâÓ×7F÷&VBç&Wf—6–öâ—&WGW&âçVÆÃ·7F÷&VC×²ââç7F÷&VBÇ7FFS§7G'V7GW&VD6ÆöæR‡7FFR’Ç&Wf—6–öã§&Wf—6–öâ³Ó·&WGW&â7G'V7GW&VD6ÆöæR‡7F÷&VB“·×Ó°Ğ¢&W÷6—F÷'’æ†5G'V6´f—66Ä7F—f—G“Ö7–æ2‚“ÓæfÇ6S°Ğ¢&W÷6—F÷'’çfW&–g•&V6V—CÖ7–æ2†7F÷"Æ–BÇ&WVW7D–B“Óç¶6öç7B&ööc×&öög2ævWB†–B“¶–b‚&öögÇÇ&ööbç&WVW7D–BÓ×&WVW7D–B—F‡&÷rW'&÷"‚t6ö×&÷fçFR–çl:Æ–Fòâr“·&WGW&â&ööc·Ó°Ğ¢&W÷6—F÷'’çfW&–g”gVæF–æu&V6V—CÖ7–æ2†7F÷"Æ–BÇG&ç6fW$–B“Óç¶6öç7B&ööc×&öög2ævWB†–B“¶–b‚&öögÇÇ&ööbçG&ç6fW$–BÓ×G&ç6fW$–GÇÇ&ööbçWÆöFVD'’ÓÖ7F÷"çW6W$–B—F‡&÷rW'&÷"‚u&V6–&ò–çl:Æ–Fòâr“·&WGW&â&ööc·Ó°Ğ¢6öç7B“Ö7&VFTfÆVWD’‡·&W÷6—F÷'’ÆWF†VçF–6FS¦7–æ2&WVW7CÓç&WVW7Bæ†VFW'2ævWB‚tWF†÷&—¦F–öâr“÷·W6W$–C¦66÷VçBç'G“ÓÓÒv6'&–W"sòv6'&–W"×FW7Bs¢vw&÷W×FW7BrÆ6ö×ç”–C¢v6ö×ç’ÖöæRrÆVÖ–Ã¢wW6W$W†×ÆRçFW7BrÂââæ66÷VçGÓ¦çVÆÇÒ“°Ğ¢6öç7B6ÆÇ3ÕµÓ°Ğ¢6öç7BfWF6ƒÖ7–æ2‡W&ÂÆ÷F–öç2“Óç¶6ÆÇ2çW6‚‡·W&ÂÆ÷F–öç7Ò“¶–b‡W&ÂæVæG5v—F‚‚rö’÷&V6V—G2r—ÇÇW&ÂæVæG5v—F‚‚rö’ögVæF–ær×&V6V—G2r’—¶6öç7B–CÖ7'—Fòç&æFöÕUT”B‚’Ç&ööc×¶–BÇ&WVW7D–C¦÷F–öç2æ&öG’ævWB‚w&WVW7D–Br’ÇG&ç6fW$–C¦÷F–öç2æ&öG’ævWB‚wG&ç6fW$–Br’Æ6ö×ç”–C¢v6ö×ç’ÖöæRrÇWÆöFVD'“¢v6'&–W"×FW7BrÆæÖS¦÷F–öç2æ&öG’ævWB‚vf–ÆRr’ææÖRÆÖ–ÖS¢vÆ–6F–öâ÷FbrÇ6—¦S¦÷F–öç2æ&öG’ævWB‚vf–ÆRr’ç6—¦WÓ·&öög2ç6WB†–BÇ&ööb“·&WGW&â&W7öç6Ræ§6öâ‡&ööb“·Ö–b‡W&ÂæVæG5v—F‚‚röfÆVWBÖ66W72r’—¶6öç7B&öG“Ô¥4ôâç'6R†÷F–öç2æ&öG’“·&WGW&â&W7öç6Ræ§6öâ†&öG’æ7F–öãÓÓÒv–ç7V7Bs÷¶f—'7D66W73§G'VRÆVÖ–Ã¢rrÆ6ö×ç”æÖS¢tg&÷FwÓ§¶6ö×ç”–C¢v6ö×ç’ÖöæRrÇ&öÆS¢vFÖ–âwÒ“·Ö–b‡W&Âæ–æ6ÇVFW2‚röWF‚÷c÷Fö¶Vâr’—&WGW&â&W7öç6Ræ§6öâ‡¶66W75÷Fö¶Vã¢vf¶RÖ§wBrÇ&Vg&W6…÷Fö¶Vã¢vf¶R×&Vg&W6‚rÆW‡—&W5ö–ã£3cÒ“¶–b‡W&Âæ–æ6ÇVFW2‚röWF‚÷cöÆöv÷WBr’—&WGW&â&W7öç6Ræ§6öâ‡·Ò“¶–b‡W&ÂæVæG5v—F‚‚rö’÷FVÒr’—&WGW&â&W7öç6Ræ§6öâ‡¶ÖVÖ&W'3§FVÔf—‡GW&WÒ“¶–b‡W&ÂæVæG5v—F‚‚rö’÷FVÒö–çf—FRr’—&WGW&â&W7öç6Ræ§6öâ‡¶VÖ–Ã¢w7FfdW†×ÆRçFW7BrÇ&öÆS¢wf–WvW"rÇF–6¶WC¢v"rç&WVBƒcB—Ò“·&WGW&â’†æWr&WVW7B‡W&ÂÆ÷F–öç2’“·Ó°Ğ¢6Æ72f÷&ÔFF¶6öç7G'V7F÷"†f÷&Ò—·F†—2çfÇVW3Öf÷&ÓòæFFÇÆæWrÖ‚“·ÖvWB†æÖR—·&WGW&âF†—2çfÇVW2ævWB†æÖR“·Ö†2†æÖR—·&WGW&âF†—2çfÇVW2æ†2†æÖR“·ÖVæB†æÖRÇfÇVR—·F†—2çfÇVW2ç6WB†æÖRÇfÇVR“·×ĞĞ¢ÆWB&–çD6÷VçCÓ°Ğ¢6öç7B6æF&÷ƒ×fÒæ7&VFT6öçFW‡B‡¶Fö7VÖVçBÇv–æF÷s§¶FDWfVçDÆ—7FVæW"‚—·ÒÇ67&öÆÅFò‚—·ÒÇ&–çB‚—·&–çD6÷VçB²³·×ÒÆÆö6F–öã§¶÷&–v–ã¢v‡GG3¢òöfÆVWBçFW7BrÇF†æÖS¢ròrÆ†6ƒ¦7F—fF–öãòr67F—fFSÒr²vrç&WVBƒcB“¢r6÷fW'f–WrwÒÇ6W76–öå7F÷&vS§7F÷&vRÆÆö6Å7F÷&vS§¶vWD—FVÒ‚—·F‡&÷rW'&÷"‚tfÆVWB&V6÷&G2×W7Bæ÷B&R7F÷&VB–âF†R'&÷w6W"r“·ÒÇ6WD—FVÒ‚—·F‡&÷rW'&÷"‚tfÆVWB&V6÷&G2×W7Bæ÷B&R7F÷&VB–âF†R'&÷w6W"r“·×ÒÄ–çFÂÅU$ÂÄ&Æö"Å&WVW7BÅ&W7öç6RÄf÷&ÔFFÆ7'—FòÇ7G'V7GW&VD6ÆöæRÆfWF6‚Ç6WEF–ÖV÷WC¢‚“ÓãÆ6ÆV%F–ÖV÷WB‚—·ÒÇ6WD–çFW'fÃ¦fãÓç¶–çFW'fÇ2çW6‚†fâ“·&WGW&â–çFW'fÇ2æÆVæwFƒ·ÒÆ6öç6öÆWÒ“°Ğ¢fÒç'Vä–ä6öçFW‡B†6öFRÇ6æF&÷‚Ç·F–ÖV÷WC£Ò“¶v—BæWr&öÖ—6R‡&W6öÇfSÓç6WD–ÖÖVF–FR‡&W6öÇfR’“°Ğ¢6öç7BVÖ—CÖ7–æ2‡G—RÆWfVçB“Óç¶f÷"†6öç7B†æFÆW"öb†æFÆW'2ævWB‡G—R—ÇÅµÒ–v—B†æFÆW"†WfVçB“·Ó°Ğ¢6öç7B7V&Ö—CÖ7–æ2†–BÆFFÆFF6WC×·Ò“Óç¶6öç7BW'&÷#ÖFöÔæöFR‚’Æ'WGFöãÖFöÔæöFR‚’Æf÷&Ó×¶–BÆFF6WBÆFF¦æWrÖ„ö&¦V7BæVçG&–W2†FF’’ÇVW'•6VÆV7F÷#§6VÆV7F÷#Óç6VÆV7F÷#ÓÓÒu·G—SÒ'7V&Ö—B%Òsö'WGFöã¦W'&÷'Ó¶v—BVÖ—B‚w7V&Ö—BrÇ·F&vWC¦f÷&ÒÇ&WfVçDFVfVÇB‚—·×Ò“·&WGW&âW'&÷"çFW‡D6öçFVçC·Ó°Ğ¢6öç7B7F–öãÖ7–æ2†æÖRÆ–CÒrrÆW‡G&×·Ò“ÓæVÖ—B‚v6Æ–6²rÇ·F&vWC§¶6Æ÷6W7C¢‚“Óâ‡¶F—6&ÆVC¦fÇ6RÆFF6WC§¶7F–öã¦æÖRÆ–BÂââæW‡G&×Ò—×Ò“°Ğ¢&WGW&â¶vWBÇ7V&Ö—BÆ7F–öâÆ–çWC§F&vWCÓæVÖ—B‚v–çWBrÇ·F&vWGÒ’Æ6†ævS§F&vWCÓæVÖ—B‚v6†ævRrÇ·F&vWGÒ’Æ¶W–F÷vã¢‡F&vWBÆ¶W’“ÓæVÖ—B‚v¶W–F÷vârÇ·F&vWBÆ¶W’Ç&WfVçDFVfVÇB‚—·×Ò’Æ6ÆÇ2Ç'Vã§6÷W&6SÓçfÒç'Vä–ä6öçFW‡B‡6÷W&6RÇ6æF&÷‚’Ç7FFS¢‚“Óç7G'V7GW&VD6ÆöæR‡7F÷&VB’Æ66÷VçC¢‡'G’Ç&öÆSÒv÷W&F÷"r“Óç¶66÷VçC×·'G’Ç&öÆWÓ·ÒÇöÆÃ¦7–æ2‚“Óç¶f÷"†6öç7Bfâöb–çFW'fÇ2–v—Bfâ‚“·ÒÇ&–çD6÷VçC¢‚“Óç&–çD6÷VçBÆ×WFFU7FFS¦fãÓç¶6öç7B7FFS×7G'V7GW&VD6ÆöæR‡7F÷&VBç7FFR“¶fâ‡7FFR“·7F÷&VC×²ââç7F÷&VBÇ7FFRÇ&Wf—6–öã§7F÷&VBç&Wf—6–öâ³Ó·×Ó°Ğ§ĞĞ§FW7B‚v6'&–W"&V6V—fW2æWr&WVW7G2WFöÖF–6ÆÇ’v—F†÷WB6Æ÷6–ærâ÷Vâ–ÖVçBF–ÆörrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚v÷W&F÷"rÆfÇ6RÆçVÆÂÂv6'&–W"r“°Ğ¢76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢v6'&–W$W†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BÖ¶U&WVW7CÒ†–BÇÆFR“Óâ‡¶–BÆ6Æ÷6–æt–C¢v–çfö–6R×6†&VBrÇW&–öC§W&–öB‚s##bÓrÃ’Ç&WVW7FVDC¢s##bÓÓuC££ã¢rÇ7FGW3¢wVæF–ærrÇ6æ6†÷C§·ÆFRÆG&—fW#¢tÖ÷F÷&—7FrÆf&Ô–C¢vf&ÓrÆf&ÔæÖS¢tf¦VæFrÆæWC£#Ç–ÖVçDFWF–Ç3§¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"rÆFö7VÖVçC¢sSSSc“rÇ—„¶W“¢sSSSc“w×ÒÇ–ÖVçC¦çVÆÂÇ–ÖVçD†—7F÷'“¥µ×Ò“°Ğ¢æ×WFFU7FFR‡7FFSÓç7FFRç–ÖVçE&WVW7G2çW6‚†Ö¶U&WVW7B‚w&WVW7BÖöæRrÂtr’’“°Ğ¢v—BçöÆÂ‚“¶76W'BæÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂóÆ6Â‡5Â’ò“¶76W'BæFöW4æ÷DÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂôò“¶76W'BæÖF6‚†ævWB‚r7Fö7Br’çFW‡D6öçFVçBÂôæ÷f6öÆ–6—F:|:6òò“°Ğ¢ÆWBw&÷WÖç'Vâ‚vVæ6öFUU$”6ö×öæVçB‡–ÖVçDw&÷W¶W’‡÷'FÅ&WVW7G5³Ò’’r“¶v—Bæ7F–öâ‚w&WVW7BÖ66÷VçBÖFWF–ÂrÂrrÇ¶w&÷WÒ“¶76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂôò“°Ğ¢ævWB‚r6ÖöFÂr’æ÷Vã×G'VS°Ğ¢æ×WFFU7FFR‡7FFSÓç7FFRç–ÖVçE&WVW7G2çW6‚†Ö¶U&WVW7B‚w&WVW7B×GvòrÂt$$#$##"r’’“°Ğ¢v—BçöÆÂ‚“¶76W'BæFöW4æ÷DÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂô$$#$##"ò“¶76W'BæWVÂ†ævWB‚r6ÖöFÂr’æ÷VâÇG'VR“°Ğ¢ævWB‚r6ÖöFÂr’æ÷VãÖfÇ6S°Ğ¢v—BçöÆÂ‚“¶76W'BæÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂó"Æ6Â‡5Â’ò“¶76W'BæFöW4æ÷DÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂô$$#$##"ò“°Ğ¢w&÷WÖç'Vâ‚vVæ6öFUU$”6ö×öæVçB‡–ÖVçDw&÷W¶W’‡÷'FÅ&WVW7G5³Ò’’r“¶v—Bæ7F–öâ‚w&WVW7BÖ66÷VçBÖFWF–ÂrÂrrÇ¶w&÷WÒ“¶76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂôò“¶76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂô$$#$##"ò“°Ğ§Ò“°Ğ§FW7B‚vf&×2VæF–ær5BÖRÖWG&–2÷Vç2ÖævW"Æ—7Bv—F‚ÆFRÂf&ÒÂæ÷FW2æBv—F–ærF–ÖRrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7B66W74¶W“Òsrç&WVBƒ#R’²s#3Br²srç&WVBƒ“°Ğ¢ç'Vâ†7FU7VÖÖ'”ÆöFVC×G'VS¶7FU&WVW7G3Õ·¶–C¢v7FR×VæF–ærrÇ7FGW3¢wVæF–ærrÇÆFS¢t$4CT3SbrÆG&—fW#¢tÖ÷F÷&—7FFW7FRrÆf&ÔæÖS¢tf¦VæFÖg&rÇ&WVW7FVDC¦æWrFFR‚’çFô•4õ7G&–ær‚’Ç&WVW7FVDVÖ–Ã¢vgVæ6–öæ&–ôW†×ÆRçFW7BrÆ–çfö–6T¶W—3¥²rG¶66W74¶W—ÒuÒÆ–çfö–6Tf–ÆW3¥µÒÆæ÷FS¢u&–÷&–FFRwÕÓ¶Ö–âæ–ææW$…DÔÃÖf&×5f–Wr‚–“°Ğ¢76W'BæÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂöFFÖ7F–öãÒ&f&Ò×VæF–ærÖ7FW2"ò“¶v—Bæ7F–öâ‚vf&Ò×VæF–ærÖ7FW2r“°Ğ¢6öç7BFWF–Ç3ÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†FWF–Ç2Âô$4CT3Sbò“¶76W'BæÖF6‚†FWF–Ç2Âôf¦VæFÖg&ò“¶76W'BæÖF6‚†FWF–Ç2ÂôäbÖR#3Bò“¶76W'BæÖF6‚†FWF–Ç2ÂögVæ6–öæ&–ôW†×ÆUÂçFW7Bò“¶76W'BæÖF6‚†FWF–Ç2Âõ&–÷&–FFRò“¶76W'BæÖF6‚†FWF–Ç2ÂôÖVæ÷2FRÖ–âò“°Ğ§Ò“°Ğ§FW7B‚vf&ÒFVÒ6WGF–æw2W6R6ö×7B6VÆV7F&ÆRF'2æB&Vf–ÆÂf&Ò×7V6–f–2–çf—FRrÆ7–æ2‚“Óç°Ğ¢6öç7Bf—‡GW&SÕ··W6W%ö–C¢w7FfbÓrÆVÖ–Ã¢w7FfdW†×ÆRçFW7BrÇ'G“¢vf&ÒrÆf&Õö–C¢vf&Ó"rÇ&öÆS¢v÷W&F÷"rÆ7F—fS§G'VWÕÓ°Ğ¢6öç7BÖv—B&ö÷B‚vFÖ–ârÆfÇ6RÆçVÆÂÂvw&÷WrÆf—‡GW&R“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢ç'Vâ‚&Æö6F–öâæ†6ƒÒr76WGF–æw2s·&VæFW"‚’"“¶v—BçöÆÂ‚“¶ÆWB‡FÖÃÖævWB‚r7FVÒÖÆ—7Br’æ–ææW$…DÔÃ°Ğ¢76W'BæÖF6‚†‡FÖÂÂ÷FVÒÖf&Ò×F'2ò“¶76W'BæÖF6‚†‡FÖÂÂôf¦VæFò“¶76W'BæÖF6‚†‡FÖÂÂôf¦VæF"ò“¶76W'BæÖF6‚†‡FÖÂÂö&–×&W76VCÒ'G'VR"FFÖ7F–öãÒ'FVÒÖf&Ò×6VÆV7B"FFÖf&ÒÖ–CÒ&f&Ó"ò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂôf¦VæF5µÇ5Å5Ò¤f¦VæFEµÇ5Å5Ò¤f¦VæF6VÒl:Öæ7VÆòò“°Ğ¢v—Bæ7F–öâ‚wFVÒÖf&Ò×6VÆV7BrÂrrÇ¶f&Ô–C¢vf&Ó"wÒ“¶‡FÖÃÖævWB‚r7FVÒÖf&Ò×æVÂr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂ÷7FfdW†×ÆUÂçFW7Bò“¶76W'BæÖF6‚†‡FÖÂÂô6F7G&"W7\:&–òò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂôæVæ‡VÒgVæ6–öì:&–ò6öÒ6W76òò“°Ğ¢v—Bæ7F–öâ‚wFVÒÖ–çf—FRÖf&ÒrÂrrÇ¶f&Ô–C¢vf&Ó"wÒ“¶76W'BæWVÂ†ævWB‚r6–çf—FR×&öf–ÆRr’çfÇVRÂvf&Ó¦÷W&F÷"r“¶76W'BæWVÂ†ævWB‚r6–çf—FRÖf&Òr’çfÇVRÂvf&Ó"r“¶76W'BæWVÂ†ævWB‚r6–çf—FRÖf&Òr’ç&WV—&VBÇG'VR“¶76W'BæWVÂ†ævWB‚r6–çf—FRÖf&ÒÖf–VÆBr’æ†–FFVâÆfÇ6R“°Ğ§Ò“°Ğ§FW7B‚v6'&–W"–ÖVçG2&Rw&÷WVBæBf–ÇFW&VB'’f÷'Fæ–v‡BæB–çfö–6RrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚v÷W&F÷"rÆfÇ6RÆçVÆÂÂv6'&–W"r“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢v6'&–W$W†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BÖ¶SÒ†–BÇ7FGW2ÇÆFRÆæWBÆ6Æ÷6–æt–B“Óâ‡¶–BÆ6Æ÷6–æt–BÇW&–öC§W&–öB‚s##bÓrÃ’Ç&WVW7FVDC¢s##bÓÓuC££ã¢rÇ7FGW2Ç6æ6†÷C§·ÆFRÆG&—fW#¢tÖ÷F÷&—7Fr·ÆFRÆf&Ô–C¢vf&ÓrÆf&ÔæÖS¢tf¦VæFrÆæWBÆw&÷73¦æWBÆF—66÷VçC£Ç–&ÆTF—3£RÆ6'&–W#¢uG&ç7÷'FF÷&rÇ–ÖVçDFWF–Ç3§¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"rÆFö7VÖVçC¢sSSSc“rÇ—„¶W“¢sSSSc“w×ÒÇ–ÖVçC§7FGW3ÓÓÒw–Bs÷¶FFS¢s##bÓÓRrÇ&V6V—C§¶–C¢w&ööbÒr¶–BÆæÖS¢wvÖVçFòçFbw×Ó¦çVÆÂÇ–ÖVçD†—7F÷'“¥µÒÂâââ‡7FGW3ÓÓÒv6æ6VÆÆVBs÷¶6æ6VÆÆVDC¢s##bÓÓ…C££ã¢rÆ6æ6VÅ&V6öã¢u6öÆ–6—F:|:6ò&VfV—FwÓ§·Ò—Ò“°Ğ¢æ×WFFU7FFR‡7FFSÓç·7FFRæ6Æ÷6–æw2çW6‚‡¶–C¢v–çfö–6RÓrÇW&–öC§W&–öB‚s##bÓrÃ’Æf&Ô–G3¥²vf&ÓuÒÆ6Æ÷6VDFFS¢s##bÓÓbrÇ&÷w3¥·¶f&Ô–C¢vf&ÓrÇG'V6´–C¢w&W×VæF–ærwÒÇ¶f&Ô–C¢vf&ÓrÇG'V6´–C¢w&W×–BwÕ×ÒÇ¶–C¢v–çfö–6RÓ"rÇW&–öC§W&–öB‚s##bÓrÃ’Æf&Ô–G3¥²vf&ÓuÒÆ6Æ÷6VDFFS¢s##bÓÓ‚rÇ&÷w3¥·¶f&Ô–C¢vf&ÓrÇG'V6´–C¢w&WÖ6æ6VÆÆVBwÕ×Ò“·7FFRç–ÖVçE&WVW7G2çW6‚†Ö¶R‚w&W×VæF–ærrÂwVæF–ærrÂtrÃ#Âv–çfö–6RÓr’ÆÖ¶R‚w&W×–BrÂw–BrÂt$$#$##"rÃCÂv–çfö–6RÓr’ÆÖ¶R‚w&WÖ6æ6VÆÆVBrÂv6æ6VÆÆVBrÂt4434332rÃƒÂv–çfö–6RÓ"r’“·Ò“°Ğ¢v—BçöÆÂ‚“¶ÆWB‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂôwV&FæFòvÖVçFòò“¶76W'BæÖF6‚†‡FÖÂÂô†—7L;7&–6òFRvÖVçF÷2ò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂôò“¶76W'BæÖF6‚†‡FÖÂÂô$$#$##"ò“¶76W'BæÖF6‚†‡FÖÂÂô4434332ò“¶76W'BæÖF6‚†‡FÖÂÂõvòVÒUÂóÂó##bò“¶76W'BæÖF6‚†‡FÖÂÂõ6öÆ–6—F:|:6ò6æ6VÆFò“¶76W'BæÖF6‚†‡FÖÂÂõF÷FÂvó¢%ÂEÇ3óEÂãÃò“¶76W'BæÖF6‚†‡FÖÂÂõV–ç¦VæÂóÂó##bUÂóÂó##bò“¶76W'BæÖF6‚†‡FÖÂÂôfGW&ò“¶76W'BæÖF6‚†‡FÖÂÂôfGW&"ò“¶76W'BæÖF6‚†‡FÖÂÂö–CÒ'&WVW7BÖ–çfö–6R"ò“°Ğ¢6öç7BVæF–ætw&÷WÖç'Vâ‚vVæ6öFUU$”6ö×öæVçB‡–ÖVçDw&÷W¶W’‡÷'FÅ&WVW7G2æf–æB‡&WVW7CÓç&WVW7Bæ–CÓÓÕÂw&W×VæF–æuÂr’’’r“¶v—Bæ7F–öâ‚w&WVW7BÖ66÷VçBÖFWF–ÂrÂrrÇ¶w&÷W§VæF–ætw&÷WÒ“¶76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂôò“¶ævWB‚r6ÖöFÂr’æ÷VãÖfÇ6S°Ğ¢6öç7B–çfö–6SÖævWB‚r7&WVW7BÖ–çfö–6Rr“¶–çfö–6Ræ–CÒw&WVW7BÖ–çfö–6Rs¶–çfö–6RçfÇVSÒv–çfö–6RÓ"s¶v—Bæ6†ævR†–çfö–6R“¶6öç7Bf–ÇFW&VCÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†f–ÇFW&VBÂô4434332ò“¶76W'BæFöW4æ÷DÖF6‚†f–ÇFW&VBÂôÄ$$#$##"ò“°Ğ¢v—Bæ7F–öâ‚w&WVW7BÖFWF–ÂrÂw&W×–Br“¶6öç7BFWF–ÃÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†FWF–ÂÂô'&—"6ö×&÷fçFRò“¶76W'BæFöW4æ÷DÖF6‚†FWF–ÂÂô6÷'&–v—"&Vv—7G&÷Æ6÷'&V7B×&WVW7Bò“°Ğ§Ò“°Ğ§FW7B‚v6'&–W"6VW2öæR–ÖVçBW"6†&VB66÷VçBv—F‚ÆFRfÇVW2W‡æF&ÆR–âFWF–Ç2rÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚v÷W&F÷"rÆfÇ6RÆçVÆÂÂv6'&–W"r“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢v6'&–W$W†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BFWF–Ç3×¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"Fò—‚rÆFö7VÖVçC¢s#3CScsƒ“rÇ—„¶W“¢w—„W†×ÆRæ6öÒwÒÇ7FFSÖ–æ—F–Å7FFR‚“·7FFRç–ÖVçD66÷VçG3Õ·¶–C¢w—‚Ö66÷VçBrÆf&Ô–C¢vf&ÓrÆæÖS¢t6öçFFò¦ü:6òrÆFWF–Ç7ÕÓ·7FFRçG'V6·3Õ³ÃÒæÖ†–æFWƒÓâ‡¶–C¢wG'V6²Òr¶–æFW‚ÇÆFS¢t$3C"r¶–æFW‚ÆG&—fW#¢tÖ÷F÷&—7Fr¶–æFW‚Æ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¢w—‚Ö66÷VçBrÇ–ÖVçDFWF–Ç3¦FWF–Ç7Ò’“·6fT6Æ÷6–ær‡7FFRÇW&–öB‚s##bÓrÃ’Âvf&ÓrÂv–çfö–6RÖ66÷VçBrÂs##bÓÓbr“°Ğ¢6öç7Bw&÷W×·W6W$–C¢vw&÷W×W6W"rÆVÖ–Ã¢vw&÷WW†×ÆRçFW7BrÇ&öÆS¢vFÖ–ârÇ'G“¢vw&÷WrÆ6ö×ç”–C¢v6ö×ç’ÖöæRwÒÇ&WVW7FVCÖW†V7WFT6öÖÖæB‡7FFRÇ·G—S¢w–ÖVçBç&WVW7BrÇ–ÆöC§¶ÖöçFƒ¢s##bÓrÆ†Æc£Æf&Ô–C¢vf&Ów×ÒÆw&÷W’ç7FFS¶æ×WFFU7FFR‡6fVCÓäö&¦V7Bæ76–vâ‡6fVBÇ&WVW7FVB’“¶v—BçöÆÂ‚“°Ğ¢ÆWB‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂô6öçFFò¦ü:6òò“¶76W'BæÖF6‚†‡FÖÂÂó"Æ6Â‡5Â’ò“¶76W'BæÖF6‚†‡FÖÂÂöFFÖ7F–öãÒ'&WVW7BÖ66÷VçBÖFWF–Â"ò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂô$3C#Ä$3C#ÆFF×–ÖVçBÖw&÷W×&WVW7Bò“°Ğ¢6öç7B¶W“Öç'Vâ‚w–ÖVçDw&÷W¶W’‡÷'FÅ&WVW7G5³Ò’r“¶v—Bæ7F–öâ‚w&WVW7BÖ66÷VçBÖFWF–ÂrÂrrÇ¶w&÷W¦Væ6öFUU$”6ö×öæVçB†¶W’—Ò“¶6öç7Bf÷&ÓÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†f÷&ÒÂõ&Vv—7G&"vÖVçFòFW7F6öçFò“¶76W'BæÖF6‚†f÷&ÒÂ÷—„W†×ÆUÂæ6öÒò“¶76W'BæÖF6‚†f÷&ÒÂô$3C#ò“¶76W'BæÖF6‚†f÷&ÒÂô$3C#ò“¶76W'BæÖF6‚†f÷&ÒÂõfÆ÷"FW7F6öçFò“°Ğ§Ò“°Ğ§FW7B‚vw&÷W6âföÆÆ÷r–ÖVçB&WVW7G2'WB6ææ÷B&Vv—7FW"–ÖVçBrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚v÷W&F÷"r“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢vw&÷WW†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BFWF–Ç3×¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"Fò—‚rÆFö7VÖVçC¢s#3CScsƒ“rÇ—„¶W“¢w—„W†×ÆRæ6öÒwÒÇ7FFSÖ–æ—F–Å7FFR‚“·7FFRç–ÖVçD66÷VçG3Õ·¶–C¢w—‚Ö66÷VçBrÆf&Ô–C¢vf&ÓrÆæÖS¢t6öçFFò¦ü:6òrÆFWF–Ç7ÕÓ·7FFRçG'V6·3Õ·¶–C¢wG'V6²ÓrÇÆFS¢t$3C#rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¢w—‚Ö66÷VçBrÇ–ÖVçDFWF–Ç3¦FWF–Ç7ÕÓ·6fT6Æ÷6–ær‡7FFRÇW&–öB‚s##bÓrÃ’Âvf&ÓrÂv–çfö–6RÖ66÷VçBrÂs##bÓÓbr“°Ğ¢6öç7B7F÷#×·W6W$–C¢vw&÷W×W6W"rÆVÖ–Ã¢vw&÷WW†×ÆRçFW7BrÇ&öÆS¢v÷W&F÷"rÇ'G“¢vw&÷WrÆ6ö×ç”–C¢v6ö×ç’ÖöæRwÒÇ&WVW7FVCÖW†V7WFT6öÖÖæB‡7FFRÇ·G—S¢w–ÖVçBç&WVW7BrÇ–ÆöC§¶ÖöçFƒ¢s##bÓrÆ†Æc£Æf&Ô–C¢vf&Ów×ÒÆ7F÷"’ç7FFS¶æ×WFFU7FFR‡6fVCÓäö&¦V7Bæ76–vâ‡6fVBÇ&WVW7FVB’“¶v—BçöÆÂ‚“¶ç'Vâ‚&Æö6F–öâæ†6ƒÒr7&WVW7G2s·&VæFW"‚’"“°Ğ¢6öç7B‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂô6öçFFò¦ü:6òò“¶76W'BæÖF6‚†‡FÖÂÂôwV&FæFòvÖVçFòò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂöFFÖ7F–öãÒ'’Öw&÷W'Å&Vv—7G&"vÖVçFòò“°Ğ¢6öç7B¶W“Öç'Vâ‚w–ÖVçDw&÷W¶W’‡÷'FÅ&WVW7G5³Ò’r“¶v—Bæ7F–öâ‚w’Öw&÷WrÂrrÇ¶w&÷W¦Væ6öFUU$”6ö×öæVçB†¶W’—Ò“¶76W'BæWVÂ†ævWB‚r6ÖöFÂr’æ÷VâÆfÇ6R“¶76W'BæÖF6‚†ævWB‚r7Fö7Br’çFW‡D6öçFVçBÂô6W76R6öÖòG&ç7÷'FF÷&ò“°Ğ§Ò“°Ğ§FW7B‚wG&ç7÷'FF÷&Vçf–5BÖR6öÖVçFRVÆ6öÆ–6—F:|:6ò6öÒÆ6Rf¦VæFFVf–æ–F2rÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚v÷W&F÷"rÆfÇ6RÆçVÆÂÂv6'&–W"r“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢v6'&–W$W†×ÆRçFW7BrÇ77v÷&C¢wFW7B×77v÷&BwÒ’Ârr“°Ğ¢ç'Vâ‚'f–WsÒv7FW2s¶7FU7VÖÖ'”ÆöFVC×G'VS·&VæFW"‚’"“¶6öç7B‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ°Ğ¢76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂöFFÖ7F–öãÒ&7FR×WÆöB'ÄVçf–"&–ÖV—&ò5BÖRò“°Ğ¢v—Bæ7F–öâ‚v7FR×WÆöBr“¶76W'BæWVÂ†ævWB‚r6ÖöFÂr’æ÷VâÆfÇ6R“°Ğ¢ç'Vâ‚&7FU&WVW7G3Õ·¶–C¢w&WVW7BÖöæRrÇ7FGW3¢wVæF–ærrÆf&ÔæÖS¢tf¦VæFfVæW¦rÇÆFS¢tEc$3srÇ&WVW7FVDVÖ–Ã¢vgVæ6–öæ&–ôW†×ÆRçFW7BrÆ–çfö–6T¶W—3¥µ×ÕÓ¶7FUWÆöDf÷&Ò‚w&WVW7BÖöæRr’"“°Ğ¢76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂôf¦VæFfVæW¦+rEc$3sò“°Ğ¢ç'Vâ‚&7FU&WVW7G3Õ·¶–C¢w&WVW7BÖ6÷'&V7F–öârÇ7FGW3¢wVæF–ærrÆf&ÔæÖS¢tf¦VæF6÷76VvòrÇÆFS¢tEc$3srÆ–çfö–6T¶W—3¥²v6†fRuÒÆ–çfö–6Tf–ÆW3¥·¶æÖS¢t4%DÔ4õ%$T4òÔÔ”åUDÕÄ4ÔEc$3sçFbrÆFö7VÖVçEG—S¢v6÷'&V7F–öâwÕ×ÕÓ¶7FUWÆöDf÷&Ò‚w&WVW7BÖ6÷'&V7F–öâr’"“°Ğ¢6öç7B6÷'&V7F–öäÖöFÃÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†6÷'&V7F–öäÖöFÂÂö6'FFR6÷'&\:|:6òæW†Fö’“¶76W'BæÖF6‚†6÷'&V7F–öäÖöFÂÂö6öæf—&ÕÆFT6÷'&V7F–öâò“¶76W'BæÖF6‚†6÷'&V7F–öäÖöFÂÂ÷f–æ7VÆFò:Æ6Ec$3sò“°Ğ¢76W'BçF‡&÷w2‚‚“Óæç'Vâ‚&7FUWÆöDf÷&Ò‚’"’Â÷6öÆ–6—F:|:6òVæFVçFRFf¦VæFò“°Ğ§Ò“°Ğ§FW7B‚w–ÖVçB†—7F÷'’6†÷w2V6‚¦ö–çBG&ç6fW"öæ6RæB÷Vç2—G2ÆFW2ÂÖ÷VçG2æB&V6V—BrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BFWF–Ç4×¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"rÆFö7VÖVçC¢s#3CScsƒ“rÇ—„¶W“¢v6öçFÖW†×ÆRæ6öÒwÒÆFWF–Ç4#×¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ""rÆFö7VÖVçC¢s#3CScsƒ“rÇ—„¶W“¢v6öçFÖ$W†×ÆRæ6öÒwÒÇ7FFSÖ–æ—F–Å7FFR‚“°Ğ¢7FFRç–ÖVçD66÷VçG3Õ·¶–C¢v66÷VçBÖrÆæÖS¢t6öçFrÆFWF–Ç3¦FWF–Ç4ÒÇ¶–C¢v66÷VçBÖ"rÆæÖS¢t6öçF"rÆFWF–Ç3¦FWF–Ç4'ÕÓ·7FFRçG'V6·3Õ³ÃÃ"Ã5ÒæÖ†–æFWƒÓâ‡¶–C¢wG'V6²Òr¶–æFW‚ÇÆFS¢t$3C"r¶–æFW‚ÆG&—fW#¢tÖ÷F÷&—7Fr¶–æFW‚Æ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¦–æFWƒÃ#òv66÷VçBÖs¢v66÷VçBÖ"rÇ–ÖVçDFWF–Ç3¦–æFWƒÃ#öFWF–Ç4¦FWF–Ç4'Ò’“·6fT6Æ÷6–ær‡7FFRÇW&–öB‚s##bÓrÃ’Âvf&ÓrÂv–çfö–6RÖ¦ö–çBrÂs##bÓÓbr“°Ğ¢6öç7Bw&÷W×·W6W$–C¢vw&÷W×FW7BrÆVÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ&öÆS¢vFÖ–ârÇ'G“¢vw&÷WrÆ6ö×ç”–C¢v6ö×ç’ÖöæRwÒÆ6'&–W#×·W6W$–C¢v6'&–W"×FW7BrÆVÖ–Ã¢v6'&–W$W†×ÆRçFW7BrÇ&öÆS¢v÷W&F÷"rÇ'G“¢v6'&–W"rÆ6ö×ç”–C¢v6ö×ç’ÖöæRwÓ¶ÆWB–CÖW†V7WFT6öÖÖæB‡7FFRÇ·G—S¢w–ÖVçBç&WVW7BrÇ–ÆöC§¶ÖöçFƒ¢s##bÓrÆ†Æc£Æf&Ô–C¢vf&Ów×ÒÆw&÷W’ç7FFS°Ğ¢f÷"†6öç7B66÷VçD–Böb²v66÷VçBÖrÂv66÷VçBÖ"uÒ—¶6öç7B&WVW7G3×–Bç–ÖVçE&WVW7G2æf–ÇFW"‡&WVW7CÓç&WVW7Bç6æ6†÷Bç–ÖVçD66÷VçD–CÓÓÖ66÷VçD–B’Æf—'7C×&WVW7G5³ÒÇ&ööc×¶–C¢w&V6V—BÒr¶66÷VçD–BÇ&WVW7D–C¦f—'7Bæ–BÆ6ö×ç”–C¢v6ö×ç’ÖöæRrÇWÆöFVD'“¢v6'&–W"×FW7BrÆæÖS¦66÷VçD–B²rçFbrÆÖ–ÖS¢vÆ–6F–öâ÷FbrÇ6—¦S£Ó·–CÖW†V7WFT6öÖÖæB‡–BÇ·G—S¢w–ÖVçBç&V6÷&BÖ&F6‚rÇ–ÆöC§·&WVW7D–G3§&WVW7G2æÖ‡&WVW7CÓç&WVW7Bæ–B’ÆFFS¢s##bÓÓ’rÇ&V6V—D–C§&ööbæ–G×ÒÆ6'&–W"Ç·&V6V—C§&öögÒ’ç7FFS·ĞĞ¢æ×WFFU7FFR‡6fVCÓäö&¦V7Bæ76–vâ‡6fVBÇ–B’“¶v—BçöÆÂ‚“¶ç'Vâ‚&Æö6F–öâæ†6ƒÒr7&WVW7G2s·&VæFW"‚’"“¶6öç7B‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ°Ğ¢76W'BæÖF6‚†‡FÖÂÂô†—7L;7&–6òFRvÖVçF÷2ò“¶76W'BæWVÂ‚†‡FÖÂæÖF6‚‚öFFÖ7F–öãÒ'–ÖVçBÖw&÷WÖFWF–Â"ör—ÇÅµÒ’æÆVæwF‚Ã"“¶76W'BæWVÂ‚†‡FÖÂæÖF6‚‚öFFÖ7F–öãÒ'&V6V—B×f–Wr"ör—ÇÅµÒ’æÆVæwF‚Ã"“¶76W'BæÖF6‚†‡FÖÂÂô6öçFò“¶76W'BæÖF6‚†‡FÖÂÂô6öçF"ò“¶76W'BæÖF6‚†‡FÖÂÂó"vÖVçFõÂ‡5Â’+r6öÆ–6—F:|:6õÂŒ;VW5Â’6æ6VÆFÂ‡5Â’ò“°Ğ¢6öç7Bf—'7Dw&÷W×–Bç–ÖVçE&WVW7G5³Òç–ÖVçBç–ÖVçDw&÷W–C¶v—Bæ7F–öâ‚w–ÖVçBÖw&÷WÖFWF–ÂrÂwG&ç6fW#¢r¶f—'7Dw&÷W“¶6öç7BFWF–ÃÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†FWF–ÂÂõÆ62FW7FRvÖVçFòò“¶76W'BæÖF6‚†FWF–ÂÂô$3C#ò“¶76W'BæÖF6‚†FWF–ÂÂô$3C#ò“¶76W'BæÖF6‚†FWF–ÂÂõDõDÂDE$å4dU,8¤ä4”ò“¶76W'BæÖF6‚†FWF–ÂÂô'&—"6ö×&÷fçFRò“¶76W'BæFöW4æ÷DÖF6‚†FWF–ÂÂô$3C#'Ä$3C#2ò“°Ğ§Ò“°Ğ§FW7B‚w–ÖVçB66÷VçBVF—F÷"6†÷w2VæÆ–æ¶VBæB7W'&VçBÖ66÷VçBÆFW2'WB†–FW2ÆFW2Æ–æ¶VBVÇ6Wv†W&RrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7BFWF–Ç3×¶ÖWF†öC¢w—‚rÆ†öÆFW#¢uF—GVÆ"rÆFö7VÖVçC¢s#3CScsƒ“rÇ—„¶W“¢w—„W†×ÆRæ6öÒwÒÇ6VVCÖ–æ—F–Å7FFR‚“·6VVBç–ÖVçD66÷VçG3Õ·¶–C¢w—‚Ö66÷VçBrÆf&Ô–C¢vf&ÓrÆæÖS¢t6öçF6ö×'F–Æ†FrÆFWF–Ç7ÒÇ¶–C¢v÷F†W"Ö66÷VçBrÆæÖS¢t÷WG&6öçFrÆFWF–Ç3§²ââæFWF–Ç2Ç—„¶W“¢v÷F†W$W†×ÆRæ6öÒw×ÕÓ·6VVBçG'V6·3Õ·¶–C¢vrÇÆFS¢t$3C#2rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¢w—‚Ö66÷VçBrÇ–ÖVçDFWF–Ç3¦FWF–Ç7ÒÇ¶–C¢v"rÇÆFS¢tDTcs#2rÆG&—fW#¢tÖ÷F÷&—7F"rÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&Ó"rÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¢w—‚Ö66÷VçBrÇ–ÖVçDFWF–Ç3¦FWF–Ç7ÒÇ¶–C¢v2rÇÆFS¢tt„“£#2rÆG&—fW#¢tÖ÷F÷&—7F2rÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rrÇ–ÖVçD66÷VçD–C¢v÷F†W"Ö66÷VçBrÇ–ÖVçDFWF–Ç3¦FWF–Ç7ÒÇ¶–C¢vBrÇÆFS¢t¤´ÃDÓSbrÆG&—fW#¢tÖ÷F÷&—7FBrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rwÕÓ°Ğ¢æ×WFFU7FFR‡7FFSÓäö&¦V7Bæ76–vâ‡7FFRÇ6VVB’“¶v—BçöÆÂ‚“¶v—Bæ7F–öâ‚w–ÖVçBÖ66÷VçG2r“¶v—Bæ7F–öâ‚vVF—B×–ÖVçBÖ66÷VçBrÂw—‚Ö66÷VçBr“°Ğ¢6öç7B‡FÖÃÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂ÷–ÖVçBÖ66÷VçBÖf&×ÆæÖSÒ&f&Ô–B'Äf¦VæFÂ¢ò“¶76W'BæÖF6‚†‡FÖÂÂô$3C#2ò“¶76W'BæÖF6‚†‡FÖÂÂôDTcs#2ò“¶76W'BæÖF6‚†‡FÖÂÂôf¦VæFò“¶76W'BæÖF6‚†‡FÖÂÂôf¦VæF"ò“¶76W'BæÖF6‚†‡FÖÂÂô¤´ÃDÓSbò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂôt„“£#2ò“¶76W'BæÖF6‚†‡FÖÂÂöFW6Ö'VRÖR6ÇfRò“°Ğ§Ò“°Ğ§FW7B‚vf÷'Fæ–v‡B†—7F÷'’w&÷W2×VÇF—ÆRf&Ò–çfö–6W2æBVæÆö6·26W&FR–çfö–6Rf÷"ÆFRG'V6²rÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7B6VVCÖ–æ—F–Å7FFR‚“·6VVBçG'V6·3Õ·¶–C¢vrÇÆFS¢t$3C#2rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rwÒÇ¶–C¢v"rÇÆFS¢tDTcs#2rÆG&—fW#¢tÖ÷F÷&—7F"rÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&Ó"rÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rwÕÓ·6fT6Æ÷6–ær‡6VVBÇW&–öB‚s##bÓrÃ’Âvf&ÓrÂvcrÂs##bÓÓbr“·6fT6Æ÷6–ær‡6VVBÇW&–öB‚s##bÓrÃ’Âvf&Ó"rÂvc"rÂs##bÓÓbr“·6VVBçG'V6·2çW6‚‡²ââç6VVBçG'V6·5³ÒÆ–C¢vÆFRrÇÆFS¢u…•£”#ƒrrÇ7F'C¢s##bÓÓ‚wÒ“·6fT6Æ÷6–ær‡6VVBÇW&–öB‚s##bÓrÃ"’Âvf&ÓrÂvc2rÂs##bÓÓ#r“¶æ×WFFU7FFR‡7FFSÓäö&¦V7Bæ76–vâ‡7FFRÇ6VVB’“¶v—BçöÆÂ‚“¶ç'Vâ†7W'&VçDÖöçFƒÒs##bÓs¶7W'&VçD†ÆcÓ¶Æö6F–öâæ†6ƒÒr66Æ÷6–æw2s·&VæFW"‚–“°Ğ¢ÆWB‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæWVÂ‚†‡FÖÂæÖF6‚‚ö6Æ73Ò&6&Bf÷'Fæ–v‡BÖ†—7F÷'’"ör—ÇÅµÒ’æÆVæwF‚Ã“¶76W'BæÖF6‚†‡FÖÂÂóÇ7G&öæsäfGW&ÅÂ÷7G&öæsâò“¶76W'BæÖF6‚†‡FÖÂÂóÇ7G&öæsäfGW&#ÅÂ÷7G&öæsâò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂóÇ7G&öæsäfGW&3ÅÂ÷7G&öæsâò“¶76W'BæÖF6‚†‡FÖÂÂôVÖ—F—"fGW&6ö×ÆVÖVçF"ò“¶76W'BæÖF6‚†‡FÖÂÂôfGW&2FV–ç¦Væ6VÆV6–öæFò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂóeÂóÂó##b3ÂóÂó##bò“°Ğ¢ç'Vâ‚&f&Ôf–ÇFW#Òvf&Ós·&VæFW"‚’"“¶‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæWVÂ‚†‡FÖÂæÖF6‚‚ö6Æ73Ò&6&Bf÷'Fæ–v‡BÖ†—7F÷'’"ör—ÇÅµÒ’æÆVæwF‚Ã“¶76W'BæWVÂ‚†‡FÖÂæÖF6‚‚ö6Æ73Ò&–çfö–6R×&÷r"ör—ÇÅµÒ’æÆVæwF‚Ã“¶6öç7Bf–ÇFW&VD†—7F÷'“Ö‡FÖÂç6Æ–6R†‡FÖÂæ–æFW„öb‚tfGW&2FV–ç¦Væ6VÆV6–öæFr’“¶76W'BæÖF6‚†f–ÇFW&VD†—7F÷'’Âôf¦VæFò“¶76W'BæFöW4æ÷DÖF6‚†f–ÇFW&VD†—7F÷'’Âôf¦VæF'ÄfGW&"ò“¶ç'Vâ‚&f&Ôf–ÇFW#Òrs·&VæFW"‚’"“°Ğ¢v—Bæ7F–öâ‚v†—7F÷'’ÖFWF–Ç2rÂvcr“¶6öç7B–çfö–6TFWF–Ç3ÖævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†–çfö–6TFWF–Ç2Âô–ì:Ö6–ó¢ÂóÂó##bò“¶76W'BæÖF6‚†–çfö–6TFWF–Ç2ÂôÖVç6Ã¢%ÂBâò“¶76W'BæÖF6‚†–çfö–6TFWF–Ç2Âó3ÂãÃò“¶76W'BæÖF6‚†–çfö–6TFWF–Ç2ÂõF—ó¢6:vÖ&ò“¶76W'BæÖF6‚†–çfö–6TFWF–Ç2ÂôV—†÷3¢’V—†÷2ò“¶76W'BæÖF6‚†–çfö–6TFWF–Ç2ÂöFFÖ7F–öãÒ&–çfö–6R×&–çB"ò“¶v—Bæ7F–öâ‚v–çfö–6R×&–çBr“¶76W'BæWVÂ†ç&–çD6÷VçB‚’Ã“¶76W'BæWVÂ†ævWB‚v&öG’r’æ6Æ74Æ—7Bæ6öçF–ç2‚v–çfö–6R×&–çBÖ÷Vâr’ÆfÇ6R“°Ğ¢v—Bæ7F–öâ‚v6ö×ÆVÖVçF'’Ö–çfö–6RrÂrrÇ¶ÖöçFƒ¢s##bÓrÆ†Æc¢swÒ“¶ævWB‚r66ö×ÆVÖVçF'’Öf&Òr’çfÇVSÒvf&Ós¶ç'Vâ‚wWFFT6ö×ÆVÖVçF'”–çfö–6U&Wf–Wr‚’r“¶6öç7B&Wf–WsÖævWB‚r66ö×ÆVÖVçF'’×&Wf–Wrr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†ævWB‚r6ÖöFÂÖ6öçFVçBr’æ–ææW$…DÔÂÂôVÖ—F—"fGW&6ö×ÆVÖVçF"ò“¶76W'BæÖF6‚‡&Wf–WrÂõ…•£”#ƒrò“¶76W'BæÖF6‚‡&Wf–WrÂ÷6öÖVçFRW7F2Æ62ö’“°Ğ¢v—Bæ7F–öâ‚v6öæf—&ÒÖ6ö×ÆVÖVçF'’Ö–çfö–6Rr“¶6öç7B6fVCÖç7FFR‚’ç7FFS¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw2æÆVæwF‚ÃB“¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw5³5Òç&÷w2æÆVæwF‚Ã“¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw5³5Òç&÷w5³ÒçG'V6´–BÂvÆFRr“¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw5³Òç&÷w5³ÒçG'V6´–BÂvr“¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw5³Òç&÷w5³ÒçG'V6´–BÂv"r“¶76W'BæWVÂ‡6fVBæ–çfö–6U&V÷Vç2æÆVæwF‚Ã“¶76W'BæÖF6‚†ævWB‚r6Ö–âr’æ–ææW$…DÔÂÂóÇ7G&öæsäfGW&CÅÂ÷7G&öæsâò“°Ğ¢v—Bæ7F–öâ‚v†ÆbrÂrrÇ¶†Æc¢s"wÒ“¶‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂóeÂóÂó##b3ÂóÂó##bò“¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂóÂóÂó##bUÂóÂó##bò“°Ğ§Ò“°Ğ§FW7B‚v÷Væ–ær6Æ÷6–æw2WFöÖF–6ÆÇ’6W&FW2ÆVv7’–çfö–6RF†BÖ—†VBf&×2rÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7B6VVCÖ–æ—F–Å7FFR‚“·6VVBçG'V6·3Õ·¶–C¢vf&ÒÖrÇÆFS¢t$3C#2rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rwÒÇ¶–C¢vf&ÒÖ"rÇÆFS¢tDTcs#2rÆG&—fW#¢tÖ÷F÷&—7F"rÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&Ó"rÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£3Ç7F'C¢s##bÓÓrÆVæC¢rwÕÓ°Ğ¢æ×WFFU7FFR‡7FFSÓç´ö&¦V7Bæ76–vâ‡7FFRÇ6VVB“¶6öç7B6Æ÷6–æs×6fT6Æ÷6–ær‡7FFRÇW&–öB‚s##bÓrÃ’ÂrrÂvÆVv7’ÖÖ—†VBrÂs##bÓÓbr“¶6Æ÷6–ærç&÷w5³Òç–C×¶FFS¢s##bÓÓbrÆæ÷FS¢uvÖVçFò&W6W'fFòwÓ·Ò“¶v—BçöÆÂ‚“°Ğ¢ç'Vâ‚&7W'&VçDÖöçFƒÒs##bÓs¶7W'&VçD†ÆcÓ¶Æö6F–öâæ†6ƒÒr66Æ÷6–æw2s·&VæFW"‚’"“¶v—BæWr&öÖ—6R‡&W6öÇfSÓç6WD–ÖÖVF–FR‡&W6öÇfR’“¶v—BæWr&öÖ—6R‡&W6öÇfSÓç6WD–ÖÖVF–FR‡&W6öÇfR’“°Ğ¢6öç7B6fVCÖç7FFR‚’ç7FFS¶76W'BæWVÂ‡6fVBæ6Æ÷6–æw2æÆVæwF‚Ã"“¶76W'Bæö²‡6fVBæ6Æ÷6–æw2æWfW'’†6Æ÷6–æsÓæ6Æ÷6–æræf&Ô–G2æÆVæwFƒÓÓÓbf6Æ÷6–ærç&÷w2æWfW'’‡&÷sÓç&÷ræf&Ô–CÓÓÖ6Æ÷6–æræf&Ô–G5³Ò’’“¶76W'Bæö²‡6fVBæ6Æ÷6–æw2ç6öÖR†6Æ÷6–æsÓæ6Æ÷6–ærç&÷w2ç6öÖR‡&÷sÓç&÷rç–Còææ÷FSÓÓÒuvÖVçFò&W6W'fFòr’’“°Ğ§Ò“°Ğ§FW7B‚w6V6öæBf÷'Fæ–v‡B&VÖ–æG2&÷WBG'V6²7F'FVB–âF†Rf—'7BæBÆ–æ·2Fò—G2VæF–ær–çfö–6RrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7B6VVCÖ–æ—F–Å7FFR‚“·6VVBçG'V6·3Õ·¶–C¢vö7C‚rÇÆFS¢t$3C#2rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£CÇ7F'C¢s##bÓÓ‚rÆVæC¢rwÕÓ°Ğ¢æ×WFFU7FFR‡7FFSÓäö&¦V7Bæ76–vâ‡7FFRÇ6VVB’“¶v—BçöÆÂ‚“¶ç'Vâ‚&7W'&VçDÖöçFƒÒs##bÓs¶7W'&VçD†ÆcÓ#¶f&Ôf–ÇFW#Òrs¶Æö6F–öâæ†6ƒÒr66Æ÷6–æw2s·&VæFW"‚’"“°Ğ¢ÆWB‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂö6öÖ\:v&Òæ*¢V–ç¦VæR–æFì:6òf÷&ÒfGW&F÷2æVÆò“¶76W'BæÖF6‚†‡FÖÂÂöFFÖ7F–öãÒ'f–Wr×W&–öB"FFÖÖöçFƒÒ###bÓ"FFÖ†ÆcÒ#"ò“°Ğ¢v—Bæ7F–öâ‚wf–Wr×W&–öBrÂrrÇ¶ÖöçFƒ¢s##bÓrÆ†Æc£Ò“¶‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæÖF6‚†‡FÖÂÂóÂóÂó##bUÂóÂó##bò“¶76W'BæÖF6‚†‡FÖÂÂô$3C#2ò“°Ğ§Ò“°Ğ§FW7B‚v6Æ÷6–æw26†÷rF†Rf÷'Fæ–v‡BF÷FÂæBF–Ç’6÷VçBv—F†÷WBâ67V×VÆFVBf÷&V67BrÆ7–æ2‚“Óç°Ğ¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°Ğ¢6öç7B7FFSÖ–æ—F–Å7FFR‚“·7FFRçG'V6·3Õ·¶–C¢vF–Ç’rÇÆFS¢t$3C#2rÆG&—fW#¢tÖ÷F÷&—7FrÆ6'&–W#¢uG&ç7÷'FF÷&rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢t6:vÖ&rÆ†ÆW3£’ÆÖöçF†Ç“£CÇ7F'C¢s##bÓÓrÆVæC¢rwÕÓ¶æ×WFFU7FFR‡6fVCÓäö&¦V7Bæ76–vâ‡6fVBÇ7FFR’“¶v—BçöÆÂ‚“¶ç'Vâ‚&7W'&VçDÖöçFƒÒs##bÓs¶7W'&VçD†ÆcÓ¶Æö6F–öâæ†6ƒÒr66Æ÷6–æw2s·&VæFW"‚’"“°Ğ¢6öç7B‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÃ¶76W'BæFöW4æ÷DÖF6‚†‡FÖÂÂö7V×VÆE¶ö×3òL:—ÅF÷FÂÌ:×V–Fò7V×VÆF÷Ç&Wf—<:6òL:’òf–ÒFV–ç¦Væò“¶76W'BæÖF6‚†‡FÖÂÂôFœ:&–2&Wf—7F2æV–ç¦Væò“¶76W'BæÖF6‚†‡FÖÂÂóRF–Â‡5Â’æV–ç¦Væò“¶76W'BæÖF6‚†‡FÖÂÂôÌ:×V–Fò&Wf—7Fó¢%ÂEÇ3ó#ÂãÃò“¶76W'BæÖF6‚†‡FÖÂÂõ6ÆFòv"ò“¶76W'BæÖF6‚†‡FÖÂÂõvÖVçF÷2&VÆ—¦F÷2ò“¶76W'BæÖF6‚†‡FÖÂÂôFW66öçF÷2FV–ç¦Væò“°Ğ§Ò“°Ğ§FW7B‚vf÷'Fæ–v‡B&Wf–Wrw&÷W2G&ç6fW'&VBW&–öG2–çFòöæRÆFR&÷ræBöæRVæBÖ7F—f—F–W27F–öârÆ7–æ2‚“Óç°¢6öç7BÖv—B&ö÷B‚“¶76W'BæWVÂ†v—Bç7V&Ö—B‚v66W72Öf÷&ÒrÇ¶VÖ–Ã¢wW6W$W†×ÆRçFW7BrÇ77v÷&C¢vÖÆöær×FW7B×77v÷&BwÒ’Ârr“°¢6öç7B7FFSÖ–æ—F–Å7FFR‚“·7FFRçG'V6·3Õ·¶–C¢vGbÖ÷&–v–ârÇÆFS¢tEc$3srÆG&—fW#¢t¥Tä”õ"rÆ6'&–W#¢t$%$õ2rÆf&Ô–C¢vf&ÓrÆ&öG•G—S¢tw&æVÆV—&òrÆ†ÆW3£rÆÖöçF†Ç“£3SÇ7F'C¢s##bÓÓrÆVæC¢rwÕÓ°¢G&ç6fW%G'V6²‡7FFRÂvGbÖ÷&–v–ârÂvf&Ó"rÂs##bÓÓ"rÂrrÂvGb×fVæW¦r“·G&ç6fW%G'V6²‡7FFRÂvGb×fVæW¦rÂvf&ÓrÂs##bÓÓ2rÂrrÂvGb×&WGW&âr“°¢æ×WFFU7FFR‡6fVCÓäö&¦V7Bæ76–vâ‡6fVBÇ7FFR’“¶v—BçöÆÂ‚“¶ç'Vâ‚&7W'&VçDÖöçFƒÒs##bÓs¶7W'&VçD†ÆcÓ¶f&Ôf–ÇFW#Òrs¶Æö6F–öâæ†6ƒÒr66Æ÷6–æw2s·&VæFW"‚’"“°¢6öç7B‡FÖÃÖævWB‚r6Ö–âr’æ–ææW$…DÔÂÇ&Wf–WsÖ‡FÖÂç6Æ–6R†‡FÖÂæ–æFW„öb‚tFœ:&–2&Wf—7F2æV–ç¦Vær’Æ‡FÖÂæ–æFW„öb‚uF÷F—2÷"G&ç7÷'FF÷"r’“°¢76W'BæWVÂ‚‡&Wf–WræÖF6‚‚ö6Æ73Ò'ÆFR#äEc$3sör—ÇÅµÒ’æÆVæwF‚Ã“¶76W'BæÖF6‚‡&Wf–WrÂó2W,:ÖöFõÂ‡5Â’ò“¶76W'BæÖF6‚‡&Wf–WrÂóSÇ7â6Æ73Ò'6V6öæF'’#çF÷FÂæV–ç¦Væò“¶øó›h‘éì¶»§q«^vˆ]ØZ]\˜Xİ[ÛŠ	ØİKXš[[™Ë[Ü[‰ÊNØÛÛœİš[[™Ó[Ù[X\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+š[[™Ó[Ù[ĞÛÛ\›İ˜[HÈYØ[Y[È0î›šXÛËÊNØ\ÜÙ\›X]Ú
+š[[™Ó[Ù[Ñ\İH0î›šXÛÈÛÛ\›İ˜[HÙ\°èHš[˜İ[YÈHÙÜÈÜÈÕY\ÈX\˜ØYÜËÊNØ\ÜÙ\™\]X[
 
-const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
-const code=[raw('engine.js'),raw('reports.js'),raw('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key'};const APP_ENVIRONMENT='production';",raw('cloud-ui.js'),raw('app.js')].join('\n');
-function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,required:false,hidden:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},setCustomValidity(value){this.validationMessage=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
-async function boot(role='admin',activation=false,storage=null,party='group',teamFixture=[]){
-  const nodes=new Map(),handlers=new Map(),intervals=[],get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
-  const document={body:domNode(),visibilityState:'visible',querySelector:get,querySelectorAll:()=>[],addEventListener(type,fn){if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};get('#modal').querySelector=get;
-  let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
-  let account={role,party};const proofs=new Map();
-  const repository={async load(){return structuredClone(stored);},async version(){return stored.revision;},async commit(company,revision,state){if(revision!==stored.revision)return null;stored={...stored,state:structuredClone(state),revision:revision+1};return structuredClone(stored);}};
-  repository.hasTruckFiscalActivity=async()=>false;
-  repository.verifyReceipt=async(actor,id,requestId)=>{const proof=proofs.get(id);if(!proof||proof.requestId!==requestId)throw Error('Comprovante invÃ¡lido.');return proof;};
-  repository.verifyFundingReceipt=async(actor,id,transferId)=>{const proof=proofs.get(id);if(!proof||proof.transferId!==transferId||proof.uploadedBy!==actor.userId)throw Error('Recibo invÃ¡lido.');return proof;};
-  const api=createFleetApi({repository,authenticate:async request=>request.headers.get('Authorization')?{userId:account.party==='carrier'?'carrier-test':'group-test',companyId:'company-one',email:'user@example.test',...account}:null});
-  const calls=[];
-  const fetch=async(url,options)=>{calls.push({url,options});if(url.endsWith('/api/receipts')||url.endsWith('/api/funding-receipts')){const id=crypto.randomUUID(),proof={id,requestId:options.body.get('requestId'),transferId:options.body.get('transferId'),companyId:'company-one',uploadedBy:'carrier-test',name:options.body.get('file').name,mime:'application/pdf',size:options.body.get('file').size};proofs.set(id,proof);return Response.json(proof);}if(url.endsWith('/fleet-access')){const body=JSON.parse(options.body);return Response.json(body.action==='inspect'?{firstAccess:true,email:'',companyName:'Frota'}:{companyId:'company-one',role:'admin'});}if(url.includes('/auth/v1/token'))return Response.json({access_token:'fake-jwt',refresh_token:'fake-refresh',expires_in:3600});if(url.includes('/auth/v1/logout'))return Response.json({});if(url.endsWith('/api/team'))return Response.json({members:teamFixture});if(url.endsWith('/api/team/invite'))return Response.json({email:'staff@example.test',role:'viewer',ticket:'b'.repeat(64)});return api(new Request(url,options));};
-  class FormData {constructor(form){this.values=form?.data||new Map();}get(name){return this.values.get(name);}has(name){return this.values.has(name);}append(name,value){this.values.set(name,value);}}
-  let printCount=0;
-  const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){printCount++;}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return intervals.length;},console});
-  vm.runInContext(code,sandbox,{timeout:1000});await new Promise(resolve=>setImmediate(resolve));
-  const emit=async(type,event)=>{for(const handler of handlers.get(type)||[])await handler(event);};
-  const submit=async(id,data,dataset={})=>{const error=domNode(),button=domNode(),form={id,dataset,data:new Map(Object.entries(data)),querySelector:selector=>selector==='[type="submit"]'?button:error};await emit('submit',{target:form,preventDefault(){}});return error.textContent;};
-  const action=async(name,id='',extra={})=>emit('click',{target:{closest:()=>({disabled:false,dataset:{action:name,id,...extra}})}});
-  return {get,submit,action,input:target=>emit('input',{target}),change:target=>emit('change',{target}),keydown:(target,key)=>emit('keydown',{target,key,preventDefault(){}}),calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};},poll:async()=>{for(const fn of intervals)await fn();},printCount:()=>printCount,mutateState:fn=>{const state=structuredClone(stored.state);fn(state);stored={...stored,state,revision:stored.revision+1};}};
-}
-test('carrier receives new requests automatically without closing an open payment dialog',async()=>{
-  const app=await boot('operator',false,null,'carrier');
-  assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
-  const makeRequest=(id,plate)=>({id,period:period('2026-10',1),requestedAt:'2026-10-07T10:00:00.000Z',status:'pending',snapshot:{plate,driver:'Motorista',farmId:'farm1',farmName:'Fazenda 1',net:12000,paymentDetails:{method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'}},payment:null,paymentHistory:[]});
-  app.mutateState(state=>state.paymentRequests.push(makeRequest('request-one','AAA1A11')));
-  await app.poll();assert.match(app.get('#main').innerHTML,/AAA1A11/);assert.match(app.get('#toast').textContent,/Nova solicitaÃ§Ã£o/);
-  app.get('#modal').open=true;
-  app.mutateState(state=>state.paymentRequests.push(makeRequest('request-two','BBB2B22')));
-  await app.poll();assert.doesNotMatch(app.get('#main').innerHTML,/BBB2B22/);assert.equal(app.get('#modal').open,true);
-  app.get('#modal').open=false;
-  await app.poll();assert.match(app.get('#main').innerHTML,/BBB2B22/);
-});
-test('farms pending CT-e metric opens a manager list with plate, farm, notes and waiting time',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'test-password'}),'');
- const accessKey='1'.repeat(25)+'000001234'+'1'.repeat(10);
- app.run(`cteSummaryLoaded=true;cteRequests=[{id:'cte-pending',status:'pending',plate:'BCD5C56',driver:'Motorista Teste',farmName:'Fazenda Mafra',requestedAt:new Date().toISOString(),requestedEmail:'funcionario@example.test',invoiceKeys:['${accessKey}'],invoiceFiles:[],note:'Prioridade'}];main.innerHTML=farmsView()`);
- assert.match(app.get('#main').innerHTML,/data-action="farm-pending-ctes"/);await app.action('farm-pending-ctes');
- const details=app.get('#modal-content').innerHTML;assert.match(details,/BCD5C56/);assert.match(details,/Fazenda Mafra/);assert.match(details,/NF-e 1234/);assert.match(details,/funcionario@example\.test/);assert.match(details,/Prioridade/);assert.match(details,/Menos de 1 min/);
-});
-test('farm team settings use compact selectable tabs and prefill a farm-specific invite',async()=>{
- const fixture=[{user_id:'staff-1',email:'staff@example.test',party:'farm',farm_id:'farm2',role:'operator',active:true}];
- const app=await boot('admin',false,null,'group',fixture);assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- app.run("location.hash='#settings';render()");await app.poll();let html=app.get('#team-list').innerHTML;
- assert.match(html,/team-farm-tabs/);assert.match(html,/Fazenda 1/);assert.match(html,/Fazenda 2/);assert.match(html,/aria-pressed="true" data-action="team-farm-select" data-farm-id="farm1"/);assert.doesNotMatch(html,/Fazenda 3[\s\S]*Fazenda 4[\s\S]*Fazenda sem vÃ­nculo/);
- await app.action('team-farm-select','',{farmId:'farm2'});html=app.get('#team-farm-panel').innerHTML;assert.match(html,/staff@example\.test/);assert.match(html,/Cadastrar usuÃ¡rio/);assert.doesNotMatch(html,/Nenhum funcionÃ¡rio com acesso/);
- await app.action('team-invite-farm','',{farmId:'farm2'});assert.equal(app.get('#invite-profile').value,'farm:operator');assert.equal(app.get('#invite-farm').value,'farm2');assert.equal(app.get('#invite-farm').required,true);assert.equal(app.get('#invite-farm-field').hidden,false);
-});
-test('carrier payments are grouped and filtered by fortnight and invoice',async()=>{
-  const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
-  const make=(id,status,plate,net,closingId)=>({id,closingId,period:period('2026-10',1),requestedAt:'2026-10-07T10:00:00.000Z',status,snapshot:{plate,driver:'Motorista '+plate,farmId:'farm1',farmName:'Fazenda 1',net,gross:net,discount:0,payableDays:15,carrier:'Transportadora',paymentDetails:{method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'}},payment:status==='paid'?{date:'2026-10-15',receipt:{id:'proof-'+id,name:'pagamento.pdf'}}:null,paymentHistory:[],...(status==='cancelled'?{cancelledAt:'2026-10-08T10:00:00.000Z',cancelReason:'SolicitaÃ§Ã£o refeita'}:{})});
-  app.mutateState(state=>{state.closings.push({id:'invoice-1',period:period('2026-10',1),farmIds:['farm1'],closedDate:'2026-10-06',rows:[{farmId:'farm1',truckId:'req-pending'},{farmId:'farm1',truckId:'req-paid'}]},{id:'invoice-2',period:period('2026-10',1),farmIds:['farm1'],closedDate:'2026-10-08',rows:[{farmId:'farm1',truckId:'req-cancelled'}]});state.paymentRequests.push(make('req-pending','pending','AAA1A11',12000,'invoice-1'),make('req-paid','paid','BBB2B22',14000,'invoice-1'),make('req-cancelled','cancelled','CCC3C33',8000,'invoice-2'));});
-  await app.poll();const html=app.get('#main').innerHTML;assert.match(html,/Aguardando pagamento/);assert.match(html,/HistÃ³rico de pagamentos/);assert.match(html,/AAA1A11/);assert.match(html,/BBB2B22/);assert.match(html,/CCC3C33/);assert.match(html,/Pago em 15\/10\/2026/);assert.match(html,/SolicitaÃ§Ã£o cancelada/);assert.match(html,/Total pago: R\$\s?14\.000,00/);assert.match(html,/Quinzena 01\/10\/2026 a 15\/10\/2026/);assert.match(html,/Fatura 1/);assert.match(html,/Fatura 2/);assert.match(html,/id="request-invoice"/);
-  const invoice=app.get('#request-invoice');invoice.id='request-invoice';invoice.value='invoice-2';await app.change(invoice);const filtered=app.get('#main').innerHTML;assert.match(filtered,/CCC3C33/);assert.doesNotMatch(filtered,/AAA1A11|BBB2B22/);
-  await app.action('request-detail','req-paid');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Abrir comprovante/);assert.doesNotMatch(detail,/Corrigir registro|correct-request/);
-});
-test('carrier sees one payment per shared account with plate values expandable in details',async()=>{
- const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
- const details={method:'pix',holder:'Titular do Pix',document:'12345678901',pixKey:'pix@example.com'},state=initialState();state.paymentAccounts=[{id:'pix-account',farmId:'farm1',name:'Conta do JoÃ£o',details}];state.trucks=[0,1].map(index=>({id:'truck-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'pix-account',paymentDetails:details}));saveClosing(state,period('2026-10',1),'farm1','invoice-account','2026-10-06');
- const group={userId:'group-user',email:'group@example.test',role:'admin',party:'group',companyId:'company-one'},requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1,farmId:'farm1'}},group).state;app.mutateState(saved=>Object.assign(saved,requested));await app.poll();
- let html=app.get('#main').innerHTML;assert.match(html,/Conta do JoÃ£o/);assert.match(html,/Ver placas e valores individuais/);assert.equal((html.match(/data-action="pay-group"/g)||[]).length,1);assert.doesNotMatch(html,/data-payment-group-request/);
- const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});const form=app.get('#modal-content').innerHTML;assert.match(form,/Registrar pagamento da conta/);assert.match(form,/pix@example\.com/);assert.match(form,/ABC1D20/);assert.match(form,/ABC1D21/);assert.match(form,/Total da transferÃªncia/);
-});
-test('group can follow payment requests but cannot register a payment',async()=>{
- const app=await boot('operator');assert.equal(await app.submit('access-form',{email:'group@example.test',password:'test-password'}),'');
- const details={method:'pix',holder:'Titular do Pix',document:'12345678901',pixKey:'pix@example.com'},state=initialState();state.paymentAccounts=[{id:'pix-account',farmId:'farm1',name:'Conta do JoÃ£o',details}];state.trucks=[{id:'truck-1',plate:'ABC1D20',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'pix-account',paymentDetails:details}];saveClosing(state,period('2026-10',1),'farm1','invoice-account','2026-10-06');
- const actor={userId:'group-user',email:'group@example.test',role:'operator',party:'group',companyId:'company-one'},requested=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1,farmId:'farm1'}},actor).state;app.mutateState(saved=>Object.assign(saved,requested));await app.poll();app.run("location.hash='#requests';render()");
- const html=app.get('#main').innerHTML;assert.match(html,/Conta do JoÃ£o/);assert.match(html,/Aguardando pagamento/);assert.doesNotMatch(html,/data-action="pay-group"|Registrar pagamento/);
- const key=app.run('paymentGroupKey(portalRequests[0])');await app.action('pay-group','',{group:encodeURIComponent(key)});assert.equal(app.get('#modal').open,false);assert.match(app.get('#toast').textContent,/Acesse como transportadora/);
-});
-test('transportadora envia CT-e somente pela solicitaÃ§Ã£o com placa e fazenda definidas',async()=>{
- const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
- app.run("view='ctes';cteSummaryLoaded=true;render()");const html=app.get('#main').innerHTML;
- assert.doesNotMatch(html,/data-action="cte-upload"|Enviar primeiro CT-e/);
- await app.action('cte-upload');assert.equal(app.get('#modal').open,false);
- app.run("cteRequests=[{id:'request-one',status:'pending',farmName:'Fazenda Veneza',plate:'ATV2C70',requestedEmail:'funcionario@example.test',invoiceKeys:[]}];cteUploadForm('request-one')");
- assert.match(app.get('#modal-content').innerHTML,/Fazenda Veneza Â· ATV2C70/);
- app.run("cteRequests=[{id:'request-correction',status:'pending',farmName:'Fazenda Sossego',plate:'ATV2C70',invoiceKeys:['chave'],invoiceFiles:[{name:'CARTA-CORRECAO-MINUTA-PLACA-ATV2C70.pdf',documentType:'correction'}]}];cteUploadForm('request-correction')");
- const correctionModal=app.get('#modal-content').innerHTML;assert.match(correctionModal,/carta de correÃ§Ã£o anexada/i);assert.match(correctionModal,/confirmPlateCorrection/);assert.match(correctionModal,/vinculado Ã  placa ATV2C70/);
- assert.throws(()=>app.run("cteUploadForm()"),/solicitaÃ§Ã£o pendente da fazenda/);
-});
-test('payment history shows each joint transfer once and opens its plates, amounts and receipt',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const detailsA={method:'pix',holder:'Titular A',document:'12345678901',pixKey:'conta-a@example.com'},detailsB={method:'pix',holder:'Titular B',document:'12345678901',pixKey:'conta-b@example.com'},state=initialState();
- state.paymentAccounts=[{id:'account-a',name:'Conta A',details:detailsA},{id:'account-b',name:'Conta B',details:detailsB}];state.trucks=[0,1,2,3].map(index=>({id:'truck-'+index,plate:'ABC1D2'+index,driver:'Motorista '+index,carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:index<2?'account-a':'account-b',paymentDetails:index<2?detailsA:detailsB}));saveClosing(state,period('2026-10',1),'farm1','invoice-joint','2026-10-06');
- const group={userId:'group-test',email:'user@example.test',role:'admin',party:'group',companyId:'company-one'},carrier={userId:'carrier-test',email:'carrier@example.test',role:'operator',party:'carrier',companyId:'company-one'};let paid=executeCommand(state,{type:'payment.request',payload:{month:'2026-10',half:1,farmId:'farm1'}},group).state;
- for(const accountId of ['account-a','account-b']){const requests=paid.paymentRequests.filter(request=>request.snapshot.paymentAccountId===accountId),first=requests[0],proof={id:'receipt-'+accountId,requestId:first.id,companyId:'company-one',uploadedBy:'carrier-test',name:accountId+'.pdf',mime:'application/pdf',size:100};paid=executeCommand(paid,{type:'payment.record-batch',payload:{requestIds:requests.map(request=>request.id),date:'2026-10-09',receiptId:proof.id}},carrier,{receipt:proof}).state;}
- app.mutateState(saved=>Object.assign(saved,paid));await app.poll();app.run("location.hash='#requests';render()");const html=app.get('#main').innerHTML;
- assert.match(html,/HistÃ³rico de pagamentos/);assert.equal((html.match(/data-action="payment-group-detail"/g)||[]).length,2);assert.equal((html.match(/data-action="receipt-view"/g)||[]).length,2);assert.match(html,/Conta A/);assert.match(html,/Conta B/);assert.match(html,/2 pagamento\(s\) Â· 0 solicitaÃ§Ã£o\(Ãµes\) cancelada\(s\)/);
- const firstGroup=paid.paymentRequests[0].payment.paymentGroupId;await app.action('payment-group-detail','transfer:'+firstGroup);const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Placas deste pagamento/);assert.match(detail,/ABC1D20/);assert.match(detail,/ABC1D21/);assert.match(detail,/TOTAL DA TRANSFERÃŠNCIA/);assert.match(detail,/Abrir comprovante/);assert.doesNotMatch(detail,/ABC1D22|ABC1D23/);
-});
-test('payment account editor shows unlinked and current-account plates but hides plates linked elsewhere',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const details={method:'pix',holder:'Titular',document:'12345678901',pixKey:'pix@example.com'},seed=initialState();seed.paymentAccounts=[{id:'pix-account',farmId:'farm1',name:'Conta compartilhada',details},{id:'other-account',name:'Outra conta',details:{...details,pixKey:'other@example.com'}}];seed.trucks=[{id:'a',plate:'ABC1D23',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'pix-account',paymentDetails:details},{id:'b',plate:'DEF1G23',driver:'Motorista B',carrier:'Transportadora',farmId:'farm2',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'pix-account',paymentDetails:details},{id:'c',plate:'GHI1J23',driver:'Motorista C',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentAccountId:'other-account',paymentDetails:details},{id:'d',plate:'JKL4M56',driver:'Motorista D',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:''}];
- app.mutateState(state=>Object.assign(state,seed));await app.poll();await app.action('payment-accounts');await app.action('edit-payment-account','pix-account');
- const html=app.get('#modal-content').innerHTML;assert.doesNotMatch(html,/payment-account-farm|name="farmId"|Fazenda \*/);assert.match(html,/ABC1D23/);assert.match(html,/DEF1G23/);assert.match(html,/Fazenda 1/);assert.match(html,/Fazenda 2/);assert.match(html,/JKL4M56/);assert.doesNotMatch(html,/GHI1J23/);assert.match(html,/desmarque-a e salve/);
-});
-test('fortnight history groups multiple farm invoices and unlocks a separate invoice for a late truck',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  const seed=initialState();seed.trucks=[{id:'a',plate:'ABC1D23',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:''},{id:'b',plate:'DEF1G23',driver:'Motorista B',carrier:'Transportadora',farmId:'farm2',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:''}];saveClosing(seed,period('2026-10',1),'farm1','f1','2026-10-06');saveClosing(seed,period('2026-10',1),'farm2','f2','2026-10-06');seed.trucks.push({...seed.trucks[0],id:'late',plate:'XYZ9B87',start:'2026-10-08'});saveClosing(seed,period('2026-10',2),'farm1','f3','2026-10-20');app.mutateState(state=>Object.assign(state,seed));await app.poll();app.run(`currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()`);
-  let html=app.get('#main').innerHTML;assert.equal((html.match(/class="card fortnight-history"/g)||[]).length,1);assert.match(html,/<strong>Fatura 1<\/strong>/);assert.match(html,/<strong>Fatura 2<\/strong>/);assert.doesNotMatch(html,/<strong>Fatura 3<\/strong>/);assert.match(html,/Emitir fatura complementar/);assert.match(html,/Faturas da quinzena selecionada/);assert.doesNotMatch(html,/16\/10\/2026 a 31\/10\/2026/);
-  app.run("farmFilter='farm1';render()");html=app.get('#main').innerHTML;assert.equal((html.match(/class="card fortnight-history"/g)||[]).length,1);assert.equal((html.match(/class="invoice-row"/g)||[]).length,1);const filteredHistory=html.slice(html.indexOf('Faturas da quinzena selecionada'));assert.match(filteredHistory,/Fazenda 1/);assert.doesNotMatch(filteredHistory,/Fazenda 2|Fatura 2/);app.run("farmFilter='';render()");
-  await app.action('history-details','f1');const invoiceDetails=app.get('#modal-content').innerHTML;assert.match(invoiceDetails,/InÃ­cio: 01\/10\/2026/);assert.match(invoiceDetails,/Mensal: R\$./);assert.match(invoiceDetails,/30\.000,00/);assert.match(invoiceDetails,/Tipo: CaÃ§amba/);assert.match(invoiceDetails,/Eixos: 9 eixos/);assert.match(invoiceDetails,/data-action="invoice-print"/);await app.action('invoice-print');assert.equal(app.printCount(),1);assert.equal(app.get('body').classList.contains('invoice-print-open'),false);
-  await app.action('complementary-invoice','',{month:'2026-10',half:'1'});app.get('#complementary-farm').value='farm1';app.run('updateComplementaryInvoicePreview()');const preview=app.get('#complementary-preview').innerHTML;assert.match(app.get('#modal-content').innerHTML,/Emitir fatura complementar/);assert.match(preview,/XYZ9B87/);assert.match(preview,/somente estas placas/i);
-  await app.action('confirm-complementary-invoice');const saved=app.state().state;assert.equal(saved.closings.length,4);assert.equal(saved.closings[3].rows.length,1);assert.equal(saved.closings[3].rows[0].truckId,'late');assert.equal(saved.closings[0].rows[0].truckId,'a');assert.equal(saved.closings[1].rows[0].truckId,'b');assert.equal(saved.invoiceReopens.length,0);assert.match(app.get('#main').innerHTML,/<strong>Fatura 4<\/strong>/);
-  await app.action('half','',{half:'2'});html=app.get('#main').innerHTML;assert.match(html,/16\/10\/2026 a 31\/10\/2026/);assert.doesNotMatch(html,/01\/10\/2026 a 15\/10\/2026/);
-});
-test('opening closings automatically separates a legacy invoice that mixed farms',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  const seed=initialState();seed.trucks=[{id:'farm-a',plate:'ABC1D23',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:''},{id:'farm-b',plate:'DEF1G23',driver:'Motorista B',carrier:'Transportadora',farmId:'farm2',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:''}];
-  app.mutateState(state=>{Object.assign(state,seed);const closing=saveClosing(state,period('2026-10',1),'','legacy-mixed','2026-10-06');closing.rows[0].paid={date:'2026-10-06',note:'Pagamento preservado'};});await app.poll();
-  app.run("currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()");await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
-  const saved=app.state().state;assert.equal(saved.closings.length,2);assert.ok(saved.closings.every(closing=>closing.farmIds.length===1&&closing.rows.every(row=>row.farmId===closing.farmIds[0])));assert.ok(saved.closings.some(closing=>closing.rows.some(row=>row.paid?.note==='Pagamento preservado')));
-});
-test('second fortnight reminds about a truck started in the first and links to its pending invoice',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  const seed=initialState();seed.trucks=[{id:'oct8',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:40000,start:'2026-10-08',end:''}];
-  app.mutateState(state=>Object.assign(state,seed));await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='';location.hash='#closings';render()");
-  let html=app.get('#main').innerHTML;assert.match(html,/comeÃ§aram na 1Âª quinzena e ainda nÃ£o foram faturados nela/);assert.match(html,/data-action="view-period" data-month="2026-10" data-half="1"/);
-  await app.action('view-period','',{month:'2026-10',half:1});html=app.get('#main').innerHTML;assert.match(html,/01\/10\/2026 a 15\/10\/2026/);assert.match(html,/ABC1D23/);
-});
-test('closings show the fortnight total and daily count without an accumulated forecast',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const state=initialState();state.trucks=[{id:'daily',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:40000,start:'2026-10-01',end:''}];app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;location.hash='#closings';render()");
- const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/acumulad[oa]s? atÃ©|Total lÃ­quido acumulado|previsÃ£o atÃ© o fim da quinzena/);assert.match(html,/DiÃ¡rias previstas na quinzena/);assert.match(html,/15 dia\(s\) na quinzena/);assert.match(html,/LÃ­quido previsto da quinzena: R\$\s?20\.000,00/);assert.match(html,/Saldo a pagar/);assert.match(html,/Pagamentos realizados/);assert.match(html,/Descontos da quinzena/);
-});
-test('fortnight preview groups transferred periods into one plate row and one end-activities action',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const state=initialState();state.trucks=[{id:'atv-origin',plate:'ATV2C70',driver:'JUNIOR',carrier:'BARROS',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:''}];
- transferTruck(state,'atv-origin','farm2','2026-10-12','','atv-veneza');transferTruck(state,'atv-veneza','farm1','2026-10-13','','atv-return');
- app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=1;farmFilter='';location.hash='#closings';render()");
- const html=app.get('#main').innerHTML,preview=html.slice(html.indexOf('DiÃ¡rias previstas na quinzena'),html.indexOf('Totais por transportador'));
- assert.equal((preview.match(/class="plate">ATV2C70/g)||[]).length,1);assert.match(preview,/3 perÃ­odo\(s\)/);assert.match(preview,/15<span class="secondary">total na quinzena/);assert.match(preview,/R\$\s?17\.500,00/);assert.match(preview,/Detalhes \(3\)/);
- await app.action('fortnight-plate-detail','',{plate:'ATV2C70'});const details=app.get('#modal-content').innerHTML;
- assert.match(details,/Dados do caminhÃ£o/);assert.match(details,/Transportadora/);assert.match(details,/Valor mensal[\s\S]*R\$\s?35\.000,00/);assert.match(details,/Graneleiro/);assert.match(details,/7 eixos/);assert.match(details,/InÃ­cio do contrato[\s\S]*01\/10\/2026/);
- assert.match(details,/Fazenda 1 Â· Fazenda 2/);assert.match(details,/PerÃ­odos considerados/);assert.match(details,/11\/10\/2026/);assert.equal((details.match(/data-action="end-activities"/g)||[]).length,1);assert.match(details,/data-id="atv-return"/);
-});
-test('open fortnight plate details explain each applied discount',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const state=initialState();state.trucks=[{id:'discount-truck',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];
- state.discounts=[{id:'absence',truckId:'discount-truck',start:'2026-10-19',end:'2026-10-20',reason:'Falta',note:'AusÃªncia sem justificativa'},{id:'advance',truckId:'discount-truck',start:'2026-10-21',end:'2026-10-21',kind:'amount',reason:'Valor',amount:500,note:'Adiantamento'}];
- app.mutateState(saved=>Object.assign(saved,state));await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='';location.hash='#closings';render()");await app.action('fortnight-plate-detail','',{plate:'BCP5583'});
- const details=app.get('#modal-content').innerHTML;assert.match(details,/O que estÃ¡ sendo descontado/);assert.match(details,/Falta/);assert.match(details,/19\/10\/2026 a 20\/10\/2026/);assert.match(details,/2 dia\(s\)/);assert.match(details,/AusÃªncia sem justificativa/);assert.match(details,/Por valor/);assert.match(details,/21\/10\/2026/);assert.match(details,/R\$\s?500,00/);assert.match(details,/Adiantamento/);
-});
-test('navigation is grouped by workflow and the sample-data controls are removed',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const shell=fs.readFileSync(new URL('../frontend/index.html',import.meta.url),'utf8'),html=app.get('#main').innerHTML;
- assert.match(shell,/data-nav-section="operation"/);assert.match(shell,/data-nav-section="payments"/);assert.match(shell,/data-nav-section="fiscal"/);assert.match(shell,/data-nav-section="admin"/);
- assert.match(shell,/DIÃRIAS E PAGAMENTOS/);assert.match(shell,/CT-e recebidos/);assert.doesNotMatch(shell,/ETAPA 01|Uma quinzena de cada vez/);
- assert.doesNotMatch(html,/Testar com exemplos|Carregar dados de exemplo|ConheÃ§a o controle|data-action="demo"/);
-});
-test('payment details display CPF and CNPJ with punctuation',async()=>{
-  const app=await boot();
-  assert.equal(app.run("formatPaymentDocument('05556110190')"),'055.561.101-90');
-  assert.equal(app.run("formatPaymentDocument('12345678000199')"),'12.345.678/0001-99');
-  assert.match(app.run("paymentDetailsMarkup({method:'pix',holder:'Titular',document:'05556110190',pixKey:'05556110190'})"),/CPF\/CNPJ: <strong>055\.561\.101-90<\/strong>/);
-});
-test('CT-e print uses the selected farm, visible columns and applied column filters',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("cteDocuments=[{id:'cte-one',farmId:'farm1',farmName:'Fazenda 1',number:'5219',plate:'ABC1234',issuedOn:'2026-10-08',totalValue:100,shipper:'Remetente A'},{id:'cte-two',farmId:'farm1',farmName:'Fazenda 1',number:'5181',plate:'DEF5678',issuedOn:'2026-10-09',totalValue:200,shipper:'Remetente B'}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['number','plate'],columnOrder:['number','plate']};cteFarmFilter='farm1';cteColumnFilters={plate:['ABC1234']};main.innerHTML=ctesView()");
-  const html=app.get('#main').innerHTML;assert.doesNotMatch(html,/id="cte-farm-filter"/);assert.match(html,/Imprimir \/ Salvar PDF/);assert.match(html,/Fazenda: Fazenda 1 Â· 1 documento\(s\)/);assert.match(html,/ABC1234/);assert.doesNotMatch(html,/DEF5678|Remetente A/);
-  app.run('ctePreferencesForm()');const modal=app.get('#modal-content').innerHTML;assert.doesNotMatch(modal,/Fazenda do relatÃ³rio|cte-preference-farm-filter/);assert.match(modal,/data-cte-pref-column="farm"/);assert.match(modal,/<span>Fazenda<\/span>/);assert.match(modal,/filtro fica no cabeÃ§alho da coluna/);
-  app.run("ctePreferences={visibleColumns:['farm','number'],columnOrder:['farm','number']};main.innerHTML=ctesView()");const farmColumn=app.get('#main').innerHTML;assert.match(farmColumn,/FAZENDA/);assert.match(farmColumn,/Fazenda 1/);assert.match(farmColumn,/data-field="farm" aria-label="Filtrar por Fazenda"/);
-  const css=fs.readFileSync(new URL('../frontend/styles.css',import.meta.url),'utf8');assert.match(css,/main:has\(\.cte-report-card\)>:not\(\.cte-report-card\)\{display:none!important\}/);assert.match(css,/@page cte-report\{size:A4 landscape;margin:0\}/);
-  await app.action('cte-print');assert.equal(app.printCount(),1);
-});
-test('CPF and CNPJ share one CT-e report field per participant without losing saved preferences',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  const parties=['shipper','recipient','serviceTaker','issuer'],oldColumns=parties.flatMap(party=>[party+'Cnpj',party+'Cpf']),mergedColumns=parties.map(party=>party+'Document');
-  const prior=JSON.stringify({visibleColumns:oldColumns,columnOrder:[...oldColumns,'plate']}),saved=JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(prior)})))`));
-  assert.deepEqual(saved.visibleColumns,[...mergedColumns,'cargoWeight']);assert.deepEqual(saved.columnOrder.slice(0,4),mergedColumns);assert.equal(saved.columnOrder.length,app.run('ALL_CTE_COLUMNS.length'));
-  assert.equal(app.run("CTE_FILTER_FIELDS.shipperDocument.get({participantDetails:{shipper:{cnpj:'06338525000118',cpf:''}}})"),'06.338.525/0001-18');
-  assert.equal(app.run("CTE_FILTER_FIELDS.recipientDocument.get({participantDetails:{recipient:{cnpj:'',cpf:'12345678901'}}})"),'123.456.789-01');
-  app.run(`ctePreferences=JSON.parse(${JSON.stringify(JSON.stringify(saved))});ctePreferencesForm()`);const html=app.get('#modal-content').innerHTML;assert.equal((html.match(/<span>CPF\/CNPJ d[oa] [^<]+<\/span>/g)||[]).length,4);const checkboxFields=[...html.matchAll(/data-cte-pref-column="([^"]+)"/g)].map(match=>match[1]);assert.deepEqual(checkboxFields.filter(field=>field.endsWith('Document')),mergedColumns);assert.equal(checkboxFields.filter(field=>/(?:Cnpj|Cpf)$/.test(field)).length,0);
-});
-test('CT-e report offers all manifested invoice numbers in one customizable column',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("cteDocuments=[{id:'cte-notes',farmId:'farm1',farmName:'Fazenda 1',number:'5079',plate:'BCD5C56',issuedOn:'2026-09-22',totalValue:46875.32,manifestedNotes:['857','858']}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['manifestedNotes'],columnOrder:['manifestedNotes']};main.innerHTML=ctesView()");
-  assert.match(app.get('#main').innerHTML,/NOTAS FISCAIS MANIFESTADAS/);assert.match(app.get('#main').innerHTML,/857, 858/);
-  app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Notas fiscais manifestadas/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="manifestedNotes"/);
-});
-test('CT-e report shows the cargo weight and adds it to existing saved preferences',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  const saved=JSON.stringify({visibleColumns:['number','plate'],columnOrder:['number','plate']});
-  assert.deepEqual(JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(saved)})))`)).visibleColumns,['number','plate','cargoWeight']);
-  app.run("cteDocuments=[{id:'cte-weight',farmId:'farm1',farmName:'Fazenda 1',number:'123',plate:'ABC1234',cargoWeight:44222,cargoWeightUnit:'kg',issuedOn:'2026-10-08',totalValue:100}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['cargoWeight'],columnOrder:['cargoWeight']};main.innerHTML=ctesView()");
-  assert.match(app.get('#main').innerHTML,/PESO DA CARGA/);assert.match(app.get('#main').innerHTML,/44\.222\s?kg/);
-  app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Peso da carga/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="cargoWeight" checked/);
-});
-test('farm tonnage billing closes by month and lets the farm select CT-es with one shared proof',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("currentUser={party:'farm',role:'operator',farmId:'farm1'};cteFarms=[{id:'farm1',name:'Fazenda 1'}];cteDocuments=[{id:'cte-paid',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-1',plate:'ABC1D23',driver:'Motorista A',issuedOn:'2026-10-08',billableTons:44.222,billingRate:2.7,billingAmount:119.4,paymentReceipt:{paidAt:'2026-10-10T12:00:00.000Z',name:'pix.pdf'}},{id:'cte-open',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-2',plate:'DEF4G56',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:10,billingRate:2.7,billingAmount:27,paymentReceipt:null},{id:'cte-september',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-3',plate:'GHI7J89',driver:'Motorista C',issuedOn:'2026-09-20',billableTons:100,billingRate:2.7,billingAmount:270,paymentReceipt:null}];cteBillingMonth='';main.innerHTML=cteBillingView()");
-  const html=app.get('#main').innerHTML;assert.match(html,/R\$\s?146,40/);assert.match(html,/54,222 t/);assert.match(html,/CTE-1/);assert.match(html,/CTE-2/);assert.doesNotMatch(html,/CTE-3/);assert.match(html,/type="month" value="2026-10"/);assert.match(html,/Confirmar pagamento/);assert.match(html,/um comprovante para todos eles/i);assert.match(html,/Pago/);assert.match(html,/Em aberto/);assert.equal((html.match(/data-billing-select=/g)||[]).length,1);assert.equal((html.match(/id="cte-billing-payment-form"/g)||[]).length,1);
-  app.run("cteBillingMonth='2026-09';main.innerHTML=cteBillingView()");const september=app.get('#main').innerHTML;assert.match(september,/CTE-3/);assert.match(september,/R\$\s?270,00/);assert.doesNotMatch(september,/CTE-2/);assert.match(september,/CT-es de setembro de 2026/);
-  app.run("currentUser={party:'carrier',role:'operator'};main.innerHTML=cteBillingView()");assert.doesNotMatch(app.get('#main').innerHTML,/data-billing-select=/);assert.doesNotMatch(app.get('#main').innerHTML,/id="cte-billing-payment-form"/);
-});
-test('group billing offers a separate invoice for each farm and limits invoice selection to that farm',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- app.run("currentUser={party:'group',role:'admin'};cteBillingMonth='2026-10';cteFarms=[{id:'farm1',name:'Fazenda Mafra'},{id:'farm2',name:'Fazenda SÃ£o Jorge'}];cteDocuments=[{id:'cte-mafra',farmId:'farm1',farmName:'Fazenda Mafra',number:'5239',plate:'ATV2C70',driver:'Motorista A',issuedOn:'2026-10-13',billableTons:26.4,billingRate:2.7,billingAmount:71.28},{id:'cte-sao-jorge',farmId:'farm2',farmName:'Fazenda SÃ£o Jorge',number:'5228',plate:'BCP5583',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:2,billingRate:2.7,billingAmount:5.4}];main.innerHTML=cteBillingView()");
- const html=app.get('#main').innerHTML;assert.match(html,/Emitir fatura Â· Fazenda Mafra \(1 CT-e\)/);assert.match(html,/Emitir fatura Â· Fazenda SÃ£o Jorge \(1 CT-e\)/);assert.equal((html.match(/data-action="cte-billing-open"/g)||[]).length,2);
- await app.action('cte-billing-open','',{farmId:'farm1'});const modal=app.get('#modal-content').innerHTML;assert.match(modal,/Emitir fatura Â· Fazenda Mafra/);assert.match(modal,/CT-e 5239/);assert.doesNotMatch(modal,/5228|Fazenda SÃ£o Jorge/);
-});
-test('CT-e report columns can be dragged to any position in the saved order',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
-  app.run("ctePreferences=normalizeCtePreferences({visibleColumns:['number','shipper','plate'],columnOrder:['number','farm','shipper','recipient','plate']});ctePreferencesForm()");
-  assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-row="farm"/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="farm"/);
-  assert.match(app.get('#modal-content').innerHTML,/draggable="true" data-cte-pref-row="number"/);assert.match(app.get('#modal-content').innerHTML,/arraste cada linha para a posiÃ§Ã£o desejada/);
-  assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,4)')],['number','shipper','plate','cargoWeight']);
-  app.run("moveCtePreference('number','plate',true)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,3)')],['shipper','plate','number']);
-  app.run("moveCtePreference('number','recipient',false)");assert.deepEqual([...app.run('ctePreferenceDraft.columnOrder.slice(0,3)')],['shipper','plate','number']);
-  await app.change({closest:()=>({dataset:{ctePrefColumn:'number'},checked:false})});const order=[...app.run('ctePreferenceDraft.columnOrder')],visible=new Set([...app.run('ctePreferenceDraft.visibleColumns')]),firstUnchecked=order.findIndex(field=>!visible.has(field));assert.ok(order.indexOf('number')>=firstUnchecked);assert.ok(order.slice(0,firstUnchecked).every(field=>visible.has(field)));assert.ok(order.slice(firstUnchecked).every(field=>!visible.has(field)));
-});
-test('account reconciliation compares lifetime payments and CT-es across farm transfers',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- const state=initialState();state.trucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm1',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',carrier:'Transportadora',farmId:'farm2',bodyType:'CaÃ§amba',axles:9,monthly:30000,start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'}}];
- state.closings=[{id:'invoice-a',period:period('2026-10',1),farmIds:['farm1'],rows:[{truckId:'truck-a',plate:'ABC1234',net:12000,paid:{date:'2026-10-15'}}]},{id:'invoice-b',period:period('2026-10',2),farmIds:['farm2'],rows:[{truckId:'truck-b',plate:'ABC1234',net:13000,paid:{date:'2026-10-31'}}]}];
- const docs=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-09-30',totalValue:8000},{id:'cte-b',truckId:'truck-b',plate:'ABC1234',number:'101',issuedOn:'2026-10-05',totalValue:12000},{id:'cte-unlinked',plate:'ABC1234',number:'099',issuedOn:'2026-09-30',totalValue:9000}];app.run(`state=JSON.parse(${JSON.stringify(JSON.stringify(state))});cteDocuments=JSON.parse(${JSON.stringify(JSON.stringify(docs))});location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
- const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);assert.match(html,/class="num">2<span/);
- await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/CT-es manifestados/);assert.match(detail,/Pagamentos Ã  placa/);assert.match(detail,/TOTAL MANIFESTADO/);assert.match(detail,/R\$\s?5\.000,00/);
-});
-test('reconciliation keeps only the lifetime payment versus CT-e comparison',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
- app.run("location.hash='#reconciliation';render()");const html=app.get('#main').innerHTML;
- assert.match(html,/Encontro de contas/);assert.match(html,/Total pago Ã s placas/);assert.match(html,/CT-es manifestados/);assert.match(html,/ConferÃªncia por perÃ­odo de atividade/);
- assert.doesNotMatch(html,/DiÃ¡rias em aberto|ACUMULADO NA QUINZENA|Acumulado de diÃ¡rias|diÃ¡ria\(s\) em aberto/);
- assert.doesNotMatch(fs.readFileSync(new URL('../frontend/index.html',import.meta.url),'utf8'),/data-nav="farm-accrual"/);
-});
-test('carrier portal can reconcile its paid requests with CT-es across transfers',async()=>{
- const app=await boot('operator',false,null,'carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
- app.run(`cteTrucks=[{id:'truck-a',plate:'ABC1234',driver:'Motorista A',start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'truck-b'}},{id:'truck-b',plate:'ABC1234',driver:'Motorista A',start:'2026-10-03',end:'',transferIn:{fromTruckId:'truck-a'}}];cteDocuments=[{id:'cte-a',truckId:'truck-a',plate:'ABC1234',number:'100',issuedOn:'2026-09-30',totalValue:20000}];portalRequests=[{id:'request-a',truckId:'truck-a',snapshot:{truckId:'truck-a',plate:'ABC1234',net:12000},status:'paid',payment:{date:'2026-10-15',receipt:{id:'receipt-a'}}},{id:'request-b',truckId:'truck-b',snapshot:{truckId:'truck-b',plate:'ABC1234',net:13000},status:'paid',payment:{date:'2026-10-31',receipt:{id:'receipt-b'}}}];location.hash='#reconciliation';cteLoading=true;render();cteLoading=false`);
- const html=app.get('#main').innerHTML;assert.match(html,/Encontro de contas/);assert.match(html,/R\$\s?25\.000,00/);assert.match(html,/R\$\s?20\.000,00/);assert.match(html,/Falta manifestar R\$\s?5\.000,00/);assert.doesNotMatch(html,/ACUMULADO NA QUINZENA|diÃ¡ria\(s\) em aberto/);assert.match(html,/01\/10\/2026 a hoje \(em atividade\)/);
- await app.action('reconciliation-detail','truck-a');const detail=app.get('#modal-content').innerHTML;assert.match(detail,/Comprovante/);assert.match(detail,/Pagamentos Ã  placa/);
-});
-test('basic workflow hides the farm-to-carrier receipt panel and receipt settings',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'group@example.test',password:'sixchars'}),'');
-  app.run("location.hash='#settings';render()");assert.doesNotMatch(app.get('#main').innerHTML,/Dados do recibo padrÃ£o/);
-  await app.action('cloud-logout');app.account('carrier');assert.equal(await app.submit('access-form',{email:'carrier@example.test',password:'sixchars'}),'');
-  assert.match(app.get('#main').innerHTML,/Pagamentos da transportadora/);assert.doesNotMatch(app.get('#main').innerHTML,/Repasses da fazenda|Gerar recibo padrÃ£o|Anexar recibo assinado/);
-});test('CPF and CNPJ are masked as entered or pasted, with editable separators',async()=>{
-  const app=await boot();
-  for(const id of ['truck-payment-document','payment-account-document']){
-    const field={id,value:'0555',selectionStart:4,selectionEnd:4,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
-    await app.input(field);assert.equal(field.value,'055.5');assert.equal(field.selectionStart,5);
-    field.value='05556110190';field.selectionStart=11;field.selectionEnd=11;
-    await app.input(field);assert.equal(field.value,'055.561.101-90');assert.equal(field.selectionStart,14);
-    field.selectionStart=4;field.selectionEnd=4;
-    await app.keydown(field,'Backspace');assert.equal(field.value,'055.611.019-0');assert.equal(field.selectionStart,2);
-    field.value='12345678000199';field.selectionStart=14;field.selectionEnd=14;
-    await app.input(field);assert.equal(field.value,'12.345.678/0001-99');assert.equal(field.selectionStart,18);
-    field.value='123456780001991234';field.selectionStart=18;field.selectionEnd=18;
-    await app.input(field);assert.equal(field.value,'12.345.678/0001-99');
-  }
-});
-test('the carrier portal returns after a page refresh and logout ends that tab session',async()=>{
-  const values=new Map(),storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
-  const first=await boot('operator',false,storage,'carrier');
-  assert.equal(await first.submit('access-form',{email:'carrier@example.test',password:'test-password'}),'');
-  assert.match(first.get('#main').innerHTML,/Pagamentos da transportadora/);
-  const reloaded=await boot('operator',false,storage,'carrier');
-  assert.match(reloaded.get('#main').innerHTML,/Pagamentos da transportadora/);
-  assert.ok(reloaded.calls.some(call=>call.url.endsWith('/api/state')));
-  await reloaded.action('cloud-logout');
-  assert.equal(values.size,0);
-  const signedOut=await boot('operator',false,storage,'carrier');
-  assert.match(signedOut.get('#main').innerHTML,/Entrar no sistema/);
-});
-test('the online interface requires login, saves truck and payment commands on the server and survives a data reload',async()=>{
-  const app=await boot();assert.match(app.get('#main').innerHTML,/Entrar no sistema/);
-  assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');assert.match(app.get('#main').innerHTML,/VisÃ£o geral/);
-  const today=app.run('today()'),month=today.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
-  await app.action('new-truck');assert.match(app.get('#modal-content').innerHTML,/Nome para identificar a conta/);assert.match(app.get('#modal-content').innerHTML,/criar e vincular uma conta automaticamente/);assert.match(app.get('#modal-content').innerHTML,/DisponÃ­vel para solicitaÃ§Ãµes de CT-e em todas as fazendas/);
-  assert.equal(await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'CaÃ§amba',axles:'9',monthly:'30.000,00',start:month+'-01',end:'',cteAllFarms:'true',paymentMethod:'pix',paymentHolder:'Motorista',paymentDocument:'12345678901',paymentPixKey:'motorista@example.com'}),'');
-  const id=app.state().state.trucks[0].id,truck=app.state().state.trucks[0];assert.equal(app.state().state.trucks.length,1);assert.equal(truck.cteAllFarms,true);assert.equal(app.state().state.paymentAccounts.length,1);assert.equal(truck.paymentAccountId,app.state().state.paymentAccounts[0].id);assert.match(app.state().state.paymentAccounts[0].name,/Conta de Motorista/);
-  app.get('#closing-farm').value='farm1';await app.action('confirm-close');const closing=app.state().state.closings[0];assert.equal(closing.rows[0].net,15000);
-  assert.match(await app.submit('payment-form',{date:today,note:'Teste'},{id}),/transportadora/);
-  assert.equal(await app.submit('request-payments-form',{},{}),'');const requestId=app.state().state.paymentRequests[0].id;assert.equal(app.state().state.paymentRequests[0].snapshot.paymentDetails.pixKey,'motorista@example.com');
-  await app.action('cloud-logout');app.account('carrier');await app.submit('access-form',{email:'carrier@example.test',password:'aB3!xY'});assert.match(app.get('#main').innerHTML,/Pagamentos da transportadora/);assert.equal(app.run('state.trucks.length'),0);
-  assert.match(await app.submit('payment-form',{date:today,note:'Teste'},{requestId}),/comprovante/);
-  const file=new File(['%PDF-1.4\nTechnical fixture'],'receipt.pdf',{type:'application/pdf'});
-  assert.equal(await app.submit('payment-form',{date:today,note:'Teste',receipt:file},{requestId}),'');assert.equal(app.state().state.closings[0].rows[0].paid.date,today);
-  await app.action('cloud-refresh');assert.equal(app.run('portalRequests[0].payment.date'),today);
-  await app.action('cloud-logout');app.account('group','admin');await app.submit('access-form',{email:'group@example.test',password:'aB3!xY'});assert.equal(app.run('state.closings[0].rows[0].paid.date'),today);
-  await app.action('cloud-logout');assert.match(app.get('#main').innerHTML,/Entrar no sistema/);assert.equal(app.run('state.trucks.length'),0);
-  assert.ok(app.calls.filter(call=>call.url.includes('/api/commands')).every(call=>call.options.cache==='no-store'));
-});
-test('farm registration opens a separate form and saves one farm at a time',async()=>{
- const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
- assert.doesNotMatch(app.get('#main').innerHTML,/id="farms-form"/);assert.match(app.get('#main').innerHTML,/Cadastrar fazenda/);
- await app.action('add-farm');const modal=app.get('#modal-content').innerHTML;assert.match(modal,/id="farm-form"/);assert.match(modal,/Salvar fazenda/);assert.match(modal,/CPF ou CNPJ do titular/);assert.match(modal,/Nome ou razÃ£o social do titular/);
- assert.doesNotMatch(modal,/E-mail de contato|contactEmail/);
- const id=modal.match(/<form id="farm-form" data-id="([^"]+)"/)[1];assert.equal(await app.submit('farm-form',{name:'Fazenda Nova',legalName:'JoÃ£o da Silva',document:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000',contactName:'Ana',contactPhone:'65999990000'},{id}), '');
- const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.name,'Fazenda Nova');assert.equal(saved.cpf,'330.803.640-15');assert.equal('contactEmail' in saved,false);assert.match(app.get('#main').innerHTML,/Fazenda Nova/);
-});
-test('farm registration accepts a CNPJ and displays it after saving',async()=>{
- const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});app.run("location.hash='#farms';render()");
- await app.action('add-farm');const id=app.get('#modal-content').innerHTML.match(/<form id="farm-form" data-id="([^"]+)"/)[1];
- const document={id:'farm-document',value:'12345678000195',selectionStart:14,selectionEnd:14,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
- await app.input(document);assert.equal(document.value,'12.345.678/0001-95');
- assert.equal(await app.submit('farm-form',{name:'Fazenda Empresa',legalName:'AgropecuÃ¡ria Exemplo Ltda',document:document.value,stateRegistration:'123456',address:'Rodovia MT-000'},{id}),'');
- const saved=app.state().state.farms.find(farm=>farm.id===id);assert.equal(saved.cnpj,'12.345.678/0001-95');assert.equal(saved.cpf,'');assert.match(app.get('#main').innerHTML,/CNPJ 12\.345\.678\/0001-95/);
- await app.action('edit-farm',id);assert.match(app.get('#modal-content').innerHTML,/value="12\.345\.678\/0001-95"/);
-});
-test('farm registration blocks a state registration already used by another farm',async()=>{
- const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});
- app.mutateState(state=>{state.farms[1].stateRegistration='13.325.682-0';});
- await app.action('cloud-refresh');
- await app.action('edit-farm','farm1');
- const result=await app.submit('farm-form',{name:'Fazenda 1',legalName:'',document:'',stateRegistration:'133256820',address:'',contactName:'',contactPhone:''},{id:'farm1'});
- assert.match(result,/jÃ¡ estÃ¡ cadastrada para Fazenda 2/);assert.equal(app.state().state.farms[0].stateRegistration||'','');
-});
-test('farm edit refreshes stale server revision while keeping the form changes',async()=>{
- const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});
- await app.action('edit-farm','farm1');
- app.mutateState(state=>{state.farms[1].contactName='Contato atualizado em paralelo';});
- assert.equal(await app.submit('farm-form',{name:'Fazenda 1 corrigida',legalName:'Titular corrigido',document:'',stateRegistration:'123456',address:'EndereÃ§o corrigido',contactName:'',contactPhone:''},{id:'farm1'}),'');
- assert.equal(app.state().state.farms[0].name,'Fazenda 1 corrigida');
- assert.equal(app.state().state.farms[0].legalName,'Titular corrigido');
- assert.equal(app.state().state.farms[1].contactName,'Contato atualizado em paralelo');
-});
-test('farm contact phone formats DDD and landline or mobile numbers while typing',async()=>{
- const app=await boot();
- const field={id:'farm-contactPhone',value:'66999995976',selectionStart:11,selectionEnd:11,setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;}};
- await app.input(field);assert.equal(field.value,'(66) 99999-5976');assert.equal(field.selectionStart,15);
- field.value='6533331234';field.selectionStart=10;field.selectionEnd=10;await app.input(field);assert.equal(field.value,'(65) 3333-1234');
- field.value='659999959768123';field.selectionStart=15;field.selectionEnd=15;await app.input(field);assert.equal(field.value,'(65) 99999-5976');
-});
-test('selecting a monetary discount requires an explanation and the submitted amount reaches the closing',async()=>{
- const app=await boot();await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'});const date=app.run('today()'),month=date.slice(0,7);app.run(`currentMonth='${month}';currentHalf=1;`);
- await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'CaÃ§amba',axles:'9',monthly:'30.000,00',start:month+'-01',end:''});const truckId=app.state().state.trucks[0].id;
- const form=app.get('#discount-form');form.id='discount-form';form.elements=Object.fromEntries(['kind','reason','start','end','date','amount','note'].map(name=>[name,domNode()]));form.elements.kind.value='amount';form.elements.reason.value='Falta';
- app.run("updateDiscountKind(document.querySelector('#discount-form'))");assert.equal(form.elements.note.required,true);assert.equal(form.elements.date.required,true);assert.equal(form.elements.start.disabled,true);assert.equal(form.querySelector('#discount-day-fields').hidden,true);
- const values={kind:'amount',truckId,date:month+'-07',amount:'500,25',note:''};assert.match(await app.submit('discount-form',values),/obrigatoriamente/);assert.equal(app.state().state.discounts.length,0);
- assert.equal(await app.submit('discount-form',{...values,note:'Adiantamento combinado'}),'');assert.equal(app.state().state.discounts[0].amount,500.25);
- app.get('#closing-farm').value='farm1';await app.action('confirm-close');const row=app.state().state.closings[0].rows[0];assert.equal(row.net,14499.75);assert.equal(row.payableDays,15);assert.equal(row.discountDays,0);
- form.elements.kind.value='days';form.elements.start.value=month+'-07';form.elements.end.value=month+'-08';app.run("updateDiscountKind(document.querySelector('#discount-form'))");assert.equal(form.elements.amount.disabled,true);assert.equal(form.elements.note.required,false);
-});
-test('a failed online write never changes the authoritative record or displays a saved confirmation',async()=>{
-  const app=await boot('viewer');await app.submit('access-form',{email:'viewer@example.test',password:'a-long-test-password'});
-  const today=app.run('today()');const error=await app.submit('truck-form',{plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'CaÃ§amba',axles:'9',monthly:'30.000,00',start:today,end:''});
-  assert.match(error,/consulta/);assert.equal(app.state().state.trucks.length,0);assert.doesNotMatch(app.get('#toast').textContent,/Cadastro salvo/);
-});
-test('first access collects company credentials and an administrator can generate a staff link',async()=>{
-  const app=await boot('admin',true);assert.match(app.get('#main').innerHTML,/Configurar seu acesso/);assert.match(app.get('#main').innerHTML,/Nome da empresa/);assert.match(app.get('#main').innerHTML,/minlength="6"/);assert.match(app.get('#main').innerHTML,/pelo menos 6 caracteres/);
-  assert.equal(await app.submit('access-form',{companyName:'Minha empresa',email:'user@example.test',password:'aB3!xY'}),'');
-  const registration=app.calls.find(call=>call.url.endsWith('/fleet-access')&&JSON.parse(call.options.body).action==='register');assert.ok(registration);assert.equal(JSON.parse(registration.options.body).companyName,'Minha empresa');assert.equal(app.run('inviteTicket'),null);
-  app.run("location.hash='#settings';render();");assert.match(app.get('#main').innerHTML,/Equipe e acesso/);
-  assert.equal(await app.submit('invite-form',{email:'staff@example.test',role:'viewer'}),'');assert.match(app.get('#invite-result').innerHTML,/staff@example.test/);assert.match(app.get('#invite-result').innerHTML,/#activate=/);
-});
-test('discounts view groups and alphabetizes plates in the printable report',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
- app.mutateState(state=>{
-  state.trucks=[{id:'truck-atv',plate:'ATV2C70',driver:'Motorista ATV',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''},{id:'truck-bcd',plate:'BCD5C56',driver:'Motorista BCD',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];
-  state.discounts=[{id:'discount-atv-1',truckId:'truck-atv',start:'2026-10-21',end:'2026-10-21',reason:'Falta',note:''},{id:'discount-bcd',truckId:'truck-bcd',start:'2026-10-21',end:'2026-10-21',reason:'Falta',note:''},{id:'discount-atv-2',truckId:'truck-atv',start:'2026-10-20',end:'2026-10-20',reason:'Oficina',note:'Pneu traseiro'}];
- });
- await app.poll();app.run("currentMonth='2026-10';currentHalf=2;farmFilter='farm2';location.hash='#discounts';render();");
- const html=app.get('#main').innerHTML;assert.match(html,/Imprimir relatÃ³rio/);assert.match(html,/Fazenda 2/);assert.equal((html.match(/class="discount-plate-group"/g)||[]).length,2);assert.ok(html.indexOf('ATV2C70')<html.indexOf('BCD5C56'));assert.ok(html.indexOf('Pneu traseiro')<html.indexOf('BCD5C56'));
- await app.action('discounts-print');assert.equal(app.printCount(),1);assert.equal(app.get('body').classList.contains('discount-print-open'),false);
-});
-test('truck list groups transfers and returns into one plate with a consolidated details view',async()=>{
- const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
- const state=initialState();
- state.trucks=[
-  {id:'period-a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:'2026-10-02',transferOut:{toTruckId:'period-b',toFarmId:'farm2',toFarmName:'Fazenda 2',date:'2026-10-03'}},
-  {id:'period-b',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-03',end:'2026-10-04',transferIn:{fromTruckId:'period-a',fromFarmId:'farm1',fromFarmName:'Fazenda 1',date:'2026-10-03'},transferOut:{toTruckId:'period-c',toFarmId:'farm1',toFarmName:'Fazenda 1',date:'2026-10-05'}},
-   {id:'period-c',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-05',end:'',paymentAccountId:'account-1',transferIn:{fromTruckId:'period-b',fromFarmId:'farm2',fromFarmName:'Fazenda 2',date:'2026-10-05'}},
-   {id:'other',plate:'DEF1G23',driver:'Outro motorista',carrier:'Transportadora',farmId:'farm2',bodyType:'CaÃ§amba',axles:9,monthly:40000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Outro titular',document:'12345678901',pixKey:'chave@exemplo.test'}}
- ];
-  state.paymentAccounts=[{id:'account-1',name:'Conta conjunta',details:{method:'bank',holder:'Titular Exemplo',document:'12345678901',bankName:'Banco Teste',agency:'0001',account:'12345-6',accountType:'corrente'}}];
- app.mutateState(saved=>Object.assign(saved,state));await app.poll();
- app.run("location.hash='#trucks';render()");
- const all=app.get('#main').innerHTML;assert.match(all,/2 placa\(s\) Â· 4 perÃ­odo\(s\)/);assert.equal((all.match(/data-action="truck-history"/g)||[]).length,2);
- app.run("farmFilter='farm1';render()");const html=app.get('#main').innerHTML;assert.match(html,/1 placa\(s\) Â· 3 perÃ­odo\(s\)/);assert.match(html,/Passou por 2 fazendas/);assert.match(html,/Detalhes/);
-  await app.action('truck-history','period-c');const details=app.get('#modal-content').innerHTML;assert.match(details,/PerÃ­odos de trabalho/);assert.match(details,/Fazenda 2/);assert.match(details,/Transferir fazenda/);assert.match(details,/Editar perÃ­odo atual/);
-  assert.match(details,/Conta conjunta/);assert.match(details,/Titular Exemplo/);assert.match(details,/Banco Teste/);assert.match(details,/12345-6/);
-  await app.action('truck-history','other');const pixDetails=app.get('#modal-content').innerHTML;assert.match(pixDetails,/Chave Pix/);assert.match(pixDetails,/chave@exemplo.test/);
-})
-test('truck details can undo an unused transfer after confirmation',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
-  app.mutateState(state=>{
-    state.trucks=[{id:'original',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:7,monthly:35000,start:'2026-10-01',end:''}];
-    transferTruck(state,'original','farm2','2026-10-10','','destination');
-  });
-  await app.poll();
-  await app.action('truck-history','destination');
-  assert.match(app.get('#modal-content').innerHTML,/Desfazer transferÃªncia/);
-  await app.action('undo-transfer','destination');
-  assert.match(app.get('#modal-content').innerHTML,/serÃ¡ removido/);
-  await app.action('confirm-undo-transfer','destination');
-  assert.equal(app.state().state.trucks.length,1);
-  assert.equal(app.state().state.trucks[0].farmId,'farm1');
-});
-test('movement history opens transfer details from its origin truck period',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
-  app.mutateState(state=>{state.trucks=[{id:'origin-period',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];transferTruck(state,'origin-period','farm2','2026-10-20','','destination-period');});
-  await app.poll();app.run("location.hash='#movements';render()");const markup=app.get('#main').innerHTML;
-  assert.match(markup,/data-action="truck-history" data-id="origin-period">Ver \/ estornar/);
-  await app.action('truck-history','origin-period');assert.match(app.get('#modal-content').innerHTML,/Desfazer transferÃªncia/);assert.match(app.get('#modal-content').innerHTML,/BCP5583/);
-});
-test('open fortnight truck details let the user view the linked payment account',async()=>{
-  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
-  app.mutateState(state=>{state.trucks=[{id:'truck-with-payment',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Titular Exemplo',document:'12345678901',pixKey:'pagamento@exemplo.test'}}];});
-  await app.poll();app.run("location.hash='#closings';render()");await app.action('fortnight-plate-detail','',{plate:'BCP5583'});
-  assert.match(app.get('#modal-content').innerHTML,/Ver dados de pagamento/);
-  await app.action('history-payment-details','truck-with-payment');assert.match(app.get('#modal-content').innerHTML,/Chave Pix/);assert.match(app.get('#modal-content').innerHTML,/pagamento@exemplo.test/);
-});
+š[[™Ó[Ù[›X]Ú
+Ù]KXš[[™Ë\Ù[XİKÙÊ_×JK›[™İJNØ\ÜÙ\™\]X[
 
+š[[™Ó[Ù[›X]Ú
+ÚYH˜İKXš[[™Ë\^[Y[Y›Ü›H‹ÙÊ_×JK›[™İJNÃBˆ\œ[Š˜İPš[[™Ó[ÛIÌŒ‹LIÎÛXZ[‹š[›™\’SXİPš[[™ÕšY]Ê
+HŠNØÛÛœİÙ\[X™\X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+Ù\[X™\‹ĞÕKLËÊNØ\ÜÙ\›X]Ú
+Ù\[X™\‹Ô—	ÏÌÌÊNØ\ÜÙ\™Ù\Ó›İX]Ú
+Ù\[X™\‹ĞÕKL‹ÊNØ\ÜÙ\›X]Ú
+Ù\[X™\‹ĞÕY\ÈHÙ][Xœ›ÈHŒ‹ÊNÃBˆ\œ[Š˜İ\œ™[\Ù\^Ü\N‰Ù˜\›IË›ÛN‰İšY]Ù\‰Ë˜\›RY‰Ù˜\›LIßHŠNØ\ÜÙ\›İÜÊ
+
+OO˜\œ[Š	ÛÜ[İPš[[™Ô^[Y[
+
+IÊKÑ\İHXÙ\ÜÛÈ°èÛÈÙH™YÚ\İ˜\ˆYØ[Y[ÜÈHÕYKÊNÃBˆ\œ[Š˜İ\œ™[\Ù\^Ü\N‰ØØ\œšY\‰Ë›ÛN‰ÛÜ\˜]Ü‰ßNÛXZ[‹š[›™\’SXİPš[[™ÕšY]Ê
+HŠNØ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÙ]KXš[[™Ë\Ù[XİKÊNØ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÚYH˜İKXš[[™Ë\^[Y[Y›Ü›H‹ÊNÃBŸJNÃB\İ
+	ÙÜ›İ\š[[™ÈÙ™™\œÈHÙ\\˜]H[›ÚXÙH›ÜˆXXÚ˜\›H[™[Z]È[›ÚXÙHÙ[Xİ[ÛˆÈ]˜\›IË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆ\œ[Š˜İ\œ™[\Ù\^Ü\N‰ÙÜ›İ\	Ë›ÛN‰ØYZ[‰ßNØİPš[[™Ó[ÛIÌŒ‹LL	ÎØİQ˜\›\ÏVŞÚY‰Ù˜\›LIË˜[YN‰Ñ˜^™[™HXYœ˜IßKÚY‰Ù˜\›L‰Ë˜[YN‰Ñ˜^™[™HğèÛÈ›Ü™ÙIßWNØİQØİ[Y[ÏVŞÚY‰ØİK[XYœ˜IË˜\›RY‰Ù˜\›LIË˜\›S˜[YN‰Ñ˜^™[™HXYœ˜IË[X™\‰ÍLŒÎIË]N‰ĞUŒÍÌ	Ëš]™\‰Ó[İÜš\İHIË\ÜİYYÛ‰ÌŒ‹LLLLÉËš[X›UÛœÎŒ‹š[[™Ô˜]NŒ‹Ëš[[™Ğ[[İ[ÌKŒKÚY‰ØİK\Ø[ËZ›Ü™ÙIË˜\›RY‰Ù˜\›L‰Ë˜\›S˜[YN‰Ñ˜^™[™HğèÛÈ›Ü™ÙIË[X™\‰ÍLŒ	Ë]N‰ĞÔMNÉËš]™\‰Ó[İÜš\İH‰Ë\ÜİYYÛ‰ÌŒ‹LLLIËš[X›UÛœÎŒ‹š[[™Ô˜]NŒ‹Ëš[[™Ğ[[İ[KWNÛXZ[‹š[›™\’SXİPš[[™ÕšY]Ê
+HŠNÃBˆÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ñ[Z]\ˆ˜]\˜H0­È˜^™[™HXYœ˜H
+HÕYW
+KÊNØ\ÜÙ\›X]Ú
+[Ñ[Z]\ˆ˜]\˜H0­È˜^™[™HğèÛÈ›Ü™ÙH
+HÕYW
+KÊNØ\ÜÙ\™\]X[
+
+[›X]Ú
+Ù]KXXİ[ÛH˜İKXš[[™Ë[Ü[ˆ‹ÙÊ_×JK›[™İŠNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØİKXš[[™Ë[Ü[‰Ë	ÉËÙ˜\›RY‰Ù˜\›LIßJNØÛÛœİ[Ù[X\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ù[Ñ[Z]\ˆ˜]\˜H0­È˜^™[™HXYœ˜KÊNØ\ÜÙ\›X]Ú
+[Ù[ĞÕYHLŒÎKÊNØ\ÜÙ\™Ù\Ó›İX]Ú
+[Ù[ÍLŒ˜^™[™HğèÛÈ›Ü™ÙKÊNÃBŸJNÃB\İ
+	ĞÕYH™\ÜÛÛ[[œÈØ[ˆ™H˜YÙÙYÈ[HÜÚ][Ûˆ[ˆHØ]™YÜ™\‰Ë\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆ\œ[Š˜İT™Y™\™[˜Ù\Ï[›Ü›X[^™PİT™Y™\™[˜Ù\Êİš\ÚX›PÛÛ[[œÎ–ÉÛ[X™\‰Ë	ÜÚ\\‰Ë	Ü]I×KÛÛ[[“Ü™\–ÉÛ[X™\‰Ë	Ù˜\›IË	ÜÚ\\‰Ë	Ü™XÚ\Y[	Ë	Ü]I×_JNØİT™Y™\™[˜Ù\Ñ›Ü›J
+HŠNÃBˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÙ]KXİK\™Y‹\›İÏH™˜\›H‹ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÙ]KXİK\™Y‹XÛÛ[[H™˜\›H‹ÊNÃBˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÙ˜YÙØX›OHYHˆ]KXİK\™Y‹\›İÏH›[X™\ˆ‹ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\œ˜\İHØYH[šH\˜HHÜÚpéğèÛÈ\ÙZ˜YKÊNÃBˆ\ÜÙ\™Y\\]X[
+Ë‹‹˜\œ[Š	ØİT™Y™\™[˜ÙQ˜Y˜ÛÛ[[“Ü™\‹œÛXÙJ
+IÊWKÉÛ[X™\‰Ë	ÜÚ\\‰Ë	Ü]IË	ØØ\™ÛÕÙZYÚ	×JNÃBˆ\œ[Š›[İ™PİT™Y™\™[˜ÙJ	Û[X™\‰Ë	Ü]IËYJHŠNØ\ÜÙ\™Y\\]X[
+Ë‹‹˜\œ[Š	ØİT™Y™\™[˜ÙQ˜Y˜ÛÛ[[“Ü™\‹œÛXÙJÊIÊWKÉÜÚ\\‰Ë	Ü]IË	Û[X™\‰×JNÃBˆ\œ[Š›[İ™PİT™Y™\™[˜ÙJ	Û[X™\‰Ë	Ü™XÚ\Y[	Ë˜[ÙJHŠNØ\ÜÙ\™Y\\]X[
+Ë‹‹˜\œ[Š	ØİT™Y™\™[˜ÙQ˜Y˜ÛÛ[[“Ü™\‹œÛXÙJÊIÊWKÉÜÚ\\‰Ë	Ü]IË	Û[X™\‰×JNÃBˆ]ØZ]\˜Ú[™ÙJØÛÜÙ\İŠ
+OOŠÙ]\Ù]ØİT™YÛÛ[[‰Û[X™\‰ßKÚXÚÙY™˜[Ù_J_JNØÛÛœİÜ™\VË‹‹˜\œ[Š	ØİT™Y™\™[˜ÙQ˜Y˜ÛÛ[[“Ü™\‰ÊWKš\ÚX›O[™]ÈÙ]
+Ë‹‹˜\œ[Š	ØİT™Y™\™[˜ÙQ˜Yš\ÚX›PÛÛ[[œÉÊWJKš\œİ[˜ÚXÚÙY[Ü™\‹™š[™[™^
+šY[Oˆ]š\ÚX›Kš\ÊšY[
+JNØ\ÜÙ\›ÚÊÜ™\‹š[™^ÙŠ	Û[X™\‰ÊOYš\œİ[˜ÚXÚÙY
+NØ\ÜÙ\›ÚÊÜ™\‹œÛXÙJš\œİ[˜ÚXÚÙY
+K™]™\JšY[Oš\ÚX›Kš\ÊšY[
+JJNØ\ÜÙ\›ÚÊÜ™\‹œÛXÙJš\œİ[˜ÚXÚÙY
+K™]™\JšY[Oˆ]š\ÚX›Kš\ÊšY[
+JJNÃBŸJNÃB\İ
+	ØXØÛİ[™XÛÛ˜Ú[X][ÛˆÛÛ\\™\ÈY™][YH^[Y[È[™ÕY\ÈXÜ›ÜÜÈ˜\›H˜[œÙ™\œÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆÛÛœİİ]OZ[š]X[İ]J
+NÜİ]KXÚÜÏVŞÚY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ëš]™\‰Ó[İÜš\İHIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ĞØpéØ[X˜IË^\ÎK[ÛNŒÌİ\‰ÌŒ‹LLLIË[™‰ÌŒ‹LLL‰Ë˜[œÙ™\“İ]İÕXÚÒY‰İXÚËX‰ËÑ˜\›RY‰Ù˜\›L‰ËÑ˜\›S˜[YN‰Ñ˜^™[™H‰Ë]N‰ÌŒ‹LLLÉß_KÚY‰İXÚËX‰Ë]N‰ĞPÌLŒÍ	Ëš]™\‰Ó[İÜš\İHIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›L‰Ë›ÙU\N‰ĞØpéØ[X˜IË^\ÎK[ÛNŒÌİ\‰ÌŒ‹LLLÉË[™‰ÉË˜[œÙ™\’[Ùœ›ÛUXÚÒY‰İXÚËXIËœ›ÛQ˜\›RY‰Ù˜\›LIËœ›ÛQ˜\›S˜[YN‰Ñ˜^™[™HIË]N‰ÌŒ‹LLLÉß_WNÃBˆİ]K˜ÛÜÚ[™ÜÏVŞÚY‰Ú[›ÚXÙKXIË\š[Ùœ\š[Ù
+	ÌŒ‹LL	ËJK˜\›RYÎ–ÉÙ˜\›LI×K›İÜÎ–ŞİXÚÒY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ë™]ŒLŒZYÙ]N‰ÌŒ‹LLLMIß_W_KÚY‰Ú[›ÚXÙKX‰Ë\š[Ùœ\š[Ù
+	ÌŒ‹LL	ËŠK˜\›RYÎ–ÉÙ˜\›L‰×K›İÜÎ–ŞİXÚÒY‰İXÚËX‰Ë]N‰ĞPÌLŒÍ	Ë™]ŒLÌZYÙ]N‰ÌŒ‹LLLÌIß_W_WNÃBˆÛÛœİØÜÏVŞÚY‰ØİKXIËXÚÒY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ë[X™\‰ÌL	Ë\ÜİYYÛ‰ÌŒ‹LKLÌ	Ëİ[˜[YNKÚY‰ØİKX‰ËXÚÒY‰İXÚËX‰Ë]N‰ĞPÌLŒÍ	Ë[X™\‰ÌLIË\ÜİYYÛ‰ÌŒ‹LLLIËİ[˜[YNŒLŒKÚY‰ØİK][›[šÙY	Ë]N‰ĞPÌLŒÍ	Ë[X™\‰ÌNIË\ÜİYYÛ‰ÌŒ‹LKLÌ	Ëİ[˜[YNLWNØ\œ[Šİ]OR”ÓÓ‹œ\œÙJ	Ò”ÓÓ‹œİš[™ÚYJ”ÓÓ‹œİš[™ÚYJİ]JJ_JNØİQØİ[Y[ÏR”ÓÓ‹œ\œÙJ	Ò”ÓÓ‹œİš[™ÚYJ”ÓÓ‹œİš[™ÚYJØÜÊJ_JNÛØØ][Û‹š\ÚIÈÜ™XÛÛ˜Ú[X][Û‰ÎØİSØY[™Ï]YNÜ™[™\Š
+NØİSØY[™ÏY˜[ÙX
+NÃBˆÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ñ[˜ÛÛ›ÈHÛÛ\ËÊNØ\ÜÙ\›X]Ú
+[Ô—	ÏÌWŒÊNØ\ÜÙ\›X]Ú
+[Ô—	ÏÌŒŒÊNØ\ÜÙ\›X]Ú
+[Ñ˜[HX[šY™\İ\ˆ—	ÏÍWŒÊNØ\ÜÙ\›X]Ú
+[ÌWÌLÌŒˆHÚ™H
+[H]]šYYW
+KÊNØ\ÜÙ\›X]Ú
+[ØÛ\ÜÏH›[HŒÜ[‹ÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	Ü™XÛÛ˜Ú[X][Û‹Y]Z[	Ë	İXÚËXIÊNØÛÛœİ]Z[X\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+]Z[ĞÕY\ÈX[šY™\İYÜËÊNØ\ÜÙ\›X]Ú
+]Z[ÔYØ[Y[ÜÈ0èXØKÊNØ\ÜÙ\›X]Ú
+]Z[ÕÕSPS’Q‘TÕQËÊNØ\ÜÙ\›X]Ú
+]Z[Ô—	ÏÍWŒÊNÃBŸJNÃB\İ
+	Ü™XÛÛ˜Ú[X][ÛˆÙY\ÈÛ›HHY™][YH^[Y[™\œİ\ÈÕYHÛÛ\\š\ÛÛ‰Ë\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆ\œ[Š›ØØ][Û‹š\ÚIÈÜ™XÛÛ˜Ú[X][Û‰ÎÜ™[™\Š
+HŠNØÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÃBˆ\ÜÙ\›X]Ú
+[Ñ[˜ÛÛ›ÈHÛÛ\ËÊNØ\ÜÙ\›X]Ú
+[Õİ[YÛÈ0èÈXØ\ËÊNØ\ÜÙ\›X]Ú
+[ĞÕY\ÈX[šY™\İYÜËÊNØ\ÜÙ\›X]Ú
+[ĞÛÛ™™\°ê›˜ÚXHÜˆ\°ë[ÙÈH]]šYYKÊNÃBˆ\ÜÙ\™Ù\Ó›İX]Ú
+[Ñpè\šX\È[HX™\ßPÕSUSQÈHURS–‘S_Xİ[][YÈHpè\šX\ßpè\šXW
+×
+H[HX™\ËÊNÃBˆ\ÜÙ\™Ù\Ó›İX]Ú
+œËœ™XYš[TŞ[˜Ê™]ÈT“
+	Ë‹‹Ùœ›Û[™Ú[™^š[	Ë[\Ü›Y]K\›
+K	İ]	ÊKÙ]K[˜]H™˜\›KXXØÜX[‹ÊNÃBŸJNÃB\İ
+	ØØ\œšY\ˆÜ[Ø[ˆ™XÛÛ˜Ú[H]ÈZY™\]Y\İÈÚ]ÕY\ÈXÜ›ÜÜÈ˜[œÙ™\œÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+	ÛÜ\˜]Ü‰Ë˜[ÙK[	ØØ\œšY\‰ÊNØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ØØ\œšY\^[\K\İ	Ë\ÜİÛÜ™‰İ\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆ\œ[ŠİUXÚÜÏVŞÚY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ëš]™\‰Ó[İÜš\İHIËİ\‰ÌŒ‹LLLIË[™‰ÌŒ‹LLL‰Ë˜[œÙ™\“İ]İÕXÚÒY‰İXÚËX‰ß_KÚY‰İXÚËX‰Ë]N‰ĞPÌLŒÍ	Ëš]™\‰Ó[İÜš\İHIËİ\‰ÌŒ‹LLLÉË[™‰ÉË˜[œÙ™\’[Ùœ›ÛUXÚÒY‰İXÚËXIß_WNØİQØİ[Y[ÏVŞÚY‰ØİKXIËXÚÒY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ë[X™\‰ÌL	Ë\ÜİYYÛ‰ÌŒ‹LKLÌ	Ëİ[˜[YNŒŒWNÜÜ[™\]Y\İÏVŞÚY‰Ü™\]Y\İXIËXÚÒY‰İXÚËXIËÛ˜\ÚİİXÚÒY‰İXÚËXIË]N‰ĞPÌLŒÍ	Ë™]ŒLŒKİ]\Î‰ÜZY	Ë^[Y[Ù]N‰ÌŒ‹LLLMIË™XÙZ\ÚY‰Ü™XÙZ\XIß__KÚY‰Ü™\]Y\İX‰ËXÚÒY‰İXÚËX‰ËÛ˜\ÚİİXÚÒY‰İXÚËX‰Ë]N‰ĞPÌLŒÍ	Ë™]ŒLÌKİ]\Î‰ÜZY	Ë^[Y[Ù]N‰ÌŒ‹LLLÌIË™XÙZ\ÚY‰Ü™XÙZ\X‰ß__WNÛØØ][Û‹š\ÚIÈÜ™XÛÛ˜Ú[X][Û‰ÎØİSØY[™Ï]YNÜ™[™\Š
+NØİSØY[™ÏY˜[ÙX
+NÃBˆÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ñ[˜ÛÛ›ÈHÛÛ\ËÊNØ\ÜÙ\›X]Ú
+[Ô—	ÏÌWŒÊNØ\ÜÙ\›X]Ú
+[Ô—	ÏÌŒŒÊNØ\ÜÙ\›X]Ú
+[Ñ˜[HX[šY™\İ\ˆ—	ÏÍWŒÊNØ\ÜÙ\™Ù\Ó›İX]Ú
+[ĞPÕSUSQÈHURS–‘S_pè\šXW
+×
+H[HX™\ËÊNØ\ÜÙ\›X]Ú
+[ÌWÌLÌŒˆHÚ™H
+[H]]šYYW
+KÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	Ü™XÛÛ˜Ú[X][Û‹Y]Z[	Ë	İXÚËXIÊNØÛÛœİ]Z[X\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+]Z[ĞÛÛ\›İ˜[KÊNØ\ÜÙ\›X]Ú
+]Z[ÔYØ[Y[ÜÈ0èXØKÊNÃBŸJNÃB\İ
+	Ø˜\ÚXÈÛÜšÙ›İÈY\ÈH˜\›K]ËXØ\œšY\ˆ™XÙZ\[™[[™™XÙZ\Ù][™ÜÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ÙÜ›İ\^[\K\İ	Ë\ÜİÛÜ™‰ÜÚ^Ú\œÉßJK	ÉÊNÃBˆ\œ[Š›ØØ][Û‹š\ÚIÈÜÙ][™ÜÉÎÜ™[™\Š
+HŠNØ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑYÜÈÈ™XÚX›ÈY°èÛËÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY[ÙÛİ]	ÊNØ\˜XØÛİ[
+	ØØ\œšY\‰ÊNØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ØØ\œšY\^[\K\İ	Ë\ÜİÛÜ™‰ÜÚ^Ú\œÉßJK	ÉÊNÃBˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÔYØ[Y[ÜÈH˜[œÜÜYÜ˜KÊNØ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÔ™\\ÜÙ\ÈH˜^™[™_Ù\˜\ˆ™XÚX›ÈY°èÛß[™^\ˆ™XÚX›È\ÜÚ[˜YËÊNÃBŸJNİ\İ
+	ĞÔˆ[™Ó”ˆ\™HX\ÚÙY\È[\™YÜˆ\İYÚ]Y]X›HÙ\\˜]ÜœÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NÃBˆ›ÜŠÛÛœİYÙˆÉİXÚË\^[Y[YØİ[Y[	Ë	Ü^[Y[XXØÛİ[YØİ[Y[	×J^ÃBˆÛÛœİšY[^ÚY˜[YN‰ÌMMIËÙ[Xİ[Û”İ\Ù[Xİ[Û‘[™Ù]Ù[Xİ[Û”˜[™ÙJİ\[™
+^İ\ËœÙ[Xİ[Û”İ\\İ\İ\ËœÙ[Xİ[Û‘[™Y[™ß_NÃBˆ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÌMKIÊNØ\ÜÙ\™\]X[
+šY[œÙ[Xİ[Û”İ\JNÃBˆšY[˜[YOIÌMMMŒLLNL	ÎÙšY[œÙ[Xİ[Û”İ\LLNÙšY[œÙ[Xİ[Û‘[™LLNÃBˆ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÌMKMŒKŒLKNL	ÊNØ\ÜÙ\™\]X[
+šY[œÙ[Xİ[Û”İ\M
+NÃBˆšY[œÙ[Xİ[Û”İ\MÙšY[œÙ[Xİ[Û‘[™MÃBˆ]ØZ]\šÙ^YİÛŠšY[	Ğ˜XÚÜÜXÙIÊNØ\ÜÙ\™\]X[
+šY[˜[YK	ÌMKŒLKŒNKL	ÊNØ\ÜÙ\™\]X[
+šY[œÙ[Xİ[Û”İ\ŠNÃBˆšY[˜[YOIÌLŒÍMÎNNIÎÙšY[œÙ[Xİ[Û”İ\LMÙšY[œÙ[Xİ[Û‘[™LMÃBˆ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÌL‹ŒÍKÎÌKNNIÊNØ\ÜÙ\™\]X[
+šY[œÙ[Xİ[Û”İ\N
+NÃBˆšY[˜[YOIÌLŒÍMÎNNLLŒÍ	ÎÙšY[œÙ[Xİ[Û”İ\LNÙšY[œÙ[Xİ[Û‘[™LNÃBˆ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÌL‹ŒÍKÎÌKNNIÊNÃBˆCBŸJNÃB\İ
+	İHØ\œšY\ˆÜ[™]\›œÈY\ˆHYÙH™Yœ™\Ú[™ÙÛİ][™È]XˆÙ\ÜÚ[Û‰Ë\Ş[˜Ê
+OOÃBˆÛÛœİ˜[Y\Ï[™]ÈX\
+
+KİÜ˜YÙO^ÙÙ]][NšÙ^OO˜[Y\Ë™Ù]
+Ù^J_[Ù]][NŠÙ^K˜[YJOO˜[Y\ËœÙ]
+Ù^K˜[YJK™[[İ™R][NšÙ^OO˜[Y\Ë™[]JÙ^J_NÃBˆÛÛœİš\œİX]ØZ]›Ûİ
+	ÛÜ\˜]Ü‰Ë˜[ÙKİÜ˜YÙK	ØØ\œšY\‰ÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]š\œİœİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ØØ\œšY\^[\K\İ	Ë\ÜİÛÜ™‰İ\İ\\ÜİÛÜ™	ßJK	ÉÊNÃBˆ\ÜÙ\›X]Ú
+š\œİ™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÔYØ[Y[ÜÈH˜[œÜÜYÜ˜KÊNÃBˆÛÛœİ™[ØYYX]ØZ]›Ûİ
+	ÛÜ\˜]Ü‰Ë˜[ÙKİÜ˜YÙK	ØØ\œšY\‰ÊNÃBˆ\ÜÙ\›X]Ú
+™[ØYY™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÔYØ[Y[ÜÈH˜[œÜÜYÜ˜KÊNÃBˆ\ÜÙ\›ÚÊ™[ØYY˜Ø[ËœÛÛYJØ[O˜Ø[\›™[™ÕÚ]
+	ËØ\KÜİ]IÊJJNÃBˆ]ØZ]™[ØYY˜Xİ[ÛŠ	ØÛİY[ÙÛİ]	ÊNÃBˆ\ÜÙ\™\]X[
+˜[Y\ËœÚ^™K
+NÃBˆÛÛœİÚYÛ™Yİ]X]ØZ]›Ûİ
+	ÛÜ\˜]Ü‰Ë˜[ÙKİÜ˜YÙK	ØØ\œšY\‰ÊNÃBˆ\ÜÙ\›X]Ú
+ÚYÛ™Yİ]™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑ[˜\ˆ›ÈÚ\İ[XKÊNÃBŸJNÃB\İ
+	İHÛ›[™H[\™˜XÙH™\]Z\™\ÈÙÚ[‹Ø]™\ÈXÚÈ[™^[Y[ÛÛ[X[™ÈÛˆHÙ\™\ˆ[™İ\š]™\ÈH]H™[ØY	Ë\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑ[˜\ˆ›ÈÚ\İ[XKÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJK	ÉÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÕš\ğèÛÈÙ\˜[ÊNÃBˆÛÛœİÙ^OX\œ[Š	İÙ^J
+IÊK[Û]Ù^KœÛXÙJÊNØ\œ[Šİ\œ™[[ÛIÉÛ[ÛIÎØİ\œ™[[LNØ
+NÃBˆ]ØZ]\˜Xİ[ÛŠ	Û™]Ë]XÚÉÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÓ›ÛYH\˜HY[YšXØ\ˆHÛÛKÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØÜšX\ˆHš[˜İ[\ˆ[XHÛÛH]]ÛX]XØ[Y[KÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÑ\ÜÛ°ë]™[\˜HÛÛXÚ]péğíY\ÈHÕYH[HÙ\È\È˜^™[™\ËÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	İXÚËY›Ü›IËÜ]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ‰Ë˜\›RY‰Ù˜\›LIË›ÙU\N‰ĞØpéØ[X˜IË^\Î‰ÎIË[ÛN‰ÌÌŒ	Ëİ\›[Û
+ÉËLIË[™‰ÉËİP[˜\›\Î‰İYIË^[Y[Y]Ù‰Ü^	Ë^[Y[Û\‰Ó[İÜš\İIË^[Y[Øİ[Y[‰ÌLŒÍMÎLIË^[Y[^Ù^N‰Û[İÜš\İP^[\K˜ÛÛIßJK	ÉÊNÃBˆÛÛœİYX\œİ]J
+Kœİ]KXÚÜÖÌKšYXÚÏX\œİ]J
+Kœİ]KXÚÜÖÌNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]KXÚÜË›[™İJNØ\ÜÙ\™\]X[
+XÚË˜İP[˜\›\ËYJNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]Kœ^[Y[XØÛİ[Ë›[™İJNØ\ÜÙ\™\]X[
+XÚËœ^[Y[XØÛİ[Y\œİ]J
+Kœİ]Kœ^[Y[XØÛİ[ÖÌKšY
+NØ\ÜÙ\›X]Ú
+\œİ]J
+Kœİ]Kœ^[Y[XØÛİ[ÖÌK›˜[YKĞÛÛHH[İÜš\İKÊNÃBˆ\™Ù]
+	ÈØÛÜÚ[™ËY˜\›IÊK˜[YOIÙ˜\›LIÎØ]ØZ]\˜Xİ[ÛŠ	ØÛÛ™š\›KXÛÜÙIÊNØÛÛœİÛÜÚ[™ÏX\œİ]J
+Kœİ]K˜ÛÜÚ[™ÜÖÌNØ\ÜÙ\™\]X[
+ÛÜÚ[™Ëœ›İÜÖÌK›™]ML
+NÃBˆ\ÜÙ\›X]Ú
+]ØZ]\œİX›Z]
+	Ü^[Y[Y›Ü›IËÙ]NÙ^K›İN‰Õ\İIßKÚYJKİ˜[œÜÜYÜ˜KÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ü™\]Y\İ\^[Y[ËY›Ü›IËßKßJK	ÉÊNØÛÛœİ™\]Y\İYX\œİ]J
+Kœİ]Kœ^[Y[™\]Y\İÖÌKšYØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]Kœ^[Y[™\]Y\İÖÌKœÛ˜\Úİœ^[Y[]Z[Ëœ^Ù^K	Û[İÜš\İP^[\K˜ÛÛIÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY[ÙÛİ]	ÊNØ\˜XØÛİ[
+	ØØ\œšY\‰ÊNØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ØØ\œšY\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÔYØ[Y[ÜÈH˜[œÜÜYÜ˜KÊNØ\ÜÙ\™\]X[
+\œ[Š	Üİ]KXÚÜË›[™İ	ÊK
+NÃBˆ\ÜÙ\›X]Ú
+]ØZ]\œİX›Z]
+	Ü^[Y[Y›Ü›IËÙ]NÙ^K›İN‰Õ\İIßKÜ™\]Y\İYJKØÛÛ\›İ˜[KÊNÃBˆÛÛœİš[O[™]Èš[JÉÉT‹LK•XÚšXØ[š^\™I×K	Ü™XÙZ\œ‰Ëİ\N‰Ø\XØ][Û‹Ü‰ßJNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ü^[Y[Y›Ü›IËÙ]NÙ^K›İN‰Õ\İIË™XÙZ\™š[_KÜ™\]Y\İYJK	ÉÊNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K˜ÛÜÚ[™ÜÖÌKœ›İÜÖÌKœZY™]KÙ^JNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY\™Yœ™\Ú	ÊNØ\ÜÙ\™\]X[
+\œ[Š	ÜÜ[™\]Y\İÖÌKœ^[Y[™]IÊKÙ^JNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY[ÙÛİ]	ÊNØ\˜XØÛİ[
+	ÙÜ›İ\	Ë	ØYZ[‰ÊNØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰ÙÜ›İ\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNØ\ÜÙ\™\]X[
+\œ[Š	Üİ]K˜ÛÜÚ[™ÜÖÌKœ›İÜÖÌKœZY™]IÊKÙ^JNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY[ÙÛİ]	ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑ[˜\ˆ›ÈÚ\İ[XKÊNØ\ÜÙ\™\]X[
+\œ[Š	Üİ]KXÚÜË›[™İ	ÊK
+NÃBˆ\ÜÙ\›ÚÊ\˜Ø[Ë™š[\ŠØ[O˜Ø[\›š[˜ÛY\Ê	ËØ\KØÛÛ[X[™ÉÊJK™]™\JØ[O˜Ø[›Ü[ÛœË˜ØXÚOOOIÛ›Ë\İÜ™IÊJNÃBŸJNÃB\İ
+	Ù˜\›H™YÚ\İ˜][ÛˆÜ[œÈHÙ\\˜]H›Ü›H[™Ø]™\ÈÛ™H˜\›H]H[YIË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNØ\œ[Š›ØØ][Û‹š\ÚIÈÙ˜\›\ÉÎÜ™[™\Š
+HŠNÃBˆ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÚYH™˜\›\ËY›Ü›H‹ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SĞØY\İ˜\ˆ˜^™[™KÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØYY˜\›IÊNØÛÛœİ[Ù[X\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ù[ÚYH™˜\›KY›Ü›H‹ÊNØ\ÜÙ\›X]Ú
+[Ù[ÔØ[˜\ˆ˜^™[™KÊNØ\ÜÙ\›X]Ú
+[Ù[ĞÔˆİHÓ”ˆÈ][\‹ÊNØ\ÜÙ\›X]Ú
+[Ù[Ó›ÛYHİH˜^°èÛÈÛØÚX[È][\‹ÊNÃBˆ\ÜÙ\™Ù\Ó›İX]Ú
+[Ù[ÑK[XZ[HÛÛ]ßÛÛXİ[XZ[ÊNÃBˆÛÛœİY[[Ù[›X]Ú
+Ï›Ü›HYH™˜\›KY›Ü›Hˆ]KZYHŠ×ˆ—JÊH‹ÊVÌWNØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ù˜\›KY›Ü›IËÛ˜[YN‰Ñ˜^™[™H›İ˜IËYØ[˜[YN‰Ò›ğèÛÈHÚ[˜IËØİ[Y[‰ÌÌÌËLMIËİ]T™YÚ\İ˜][Û‰ÌLŒÍM‰ËY™\ÜÎ‰Ô›ÙİšXHUL	ËÛÛXİ˜[YN‰Ğ[˜IËÛÛXİÛ™N‰ÍNNNNNL	ßKÚYJK	ÉÊNÃBˆÛÛœİØ]™YX\œİ]J
+Kœİ]K™˜\›\Ë™š[™
+˜\›OO™˜\›KšYOOZY
+NØ\ÜÙ\™\]X[
+Ø]™Y›˜[YK	Ñ˜^™[™H›İ˜IÊNØ\ÜÙ\™\]X[
+Ø]™Y˜Ü‹	ÌÌÌËLMIÊNØ\ÜÙ\™\]X[
+	ØÛÛXİ[XZ[	È[ˆØ]™Y˜[ÙJNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑ˜^™[™H›İ˜KÊNÃBŸJNÃB\İ
+	Ù˜\›H™YÚ\İ˜][ÛˆXØÙ\ÈHÓ”ˆ[™\Ü^\È]Y\ˆØ]š[™ÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNØ\œ[Š›ØØ][Û‹š\ÚIÈÙ˜\›\ÉÎÜ™[™\Š
+HŠNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØYY˜\›IÊNØÛÛœİYX\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’S›X]Ú
+Ï›Ü›HYH™˜\›KY›Ü›Hˆ]KZYHŠ×ˆ—JÊH‹ÊVÌWNÃBˆÛÛœİØİ[Y[^ÚY‰Ù˜\›KYØİ[Y[	Ë˜[YN‰ÌLŒÍMÎNMIËÙ[Xİ[Û”İ\ŒMÙ[Xİ[Û‘[™ŒMÙ]Ù[Xİ[Û”˜[™ÙJİ\[™
+^İ\ËœÙ[Xİ[Û”İ\\İ\İ\ËœÙ[Xİ[Û‘[™Y[™ß_NÃBˆ]ØZ]\š[œ]
+Øİ[Y[
+NØ\ÜÙ\™\]X[
+Øİ[Y[˜[YK	ÌL‹ŒÍKÎÌKNMIÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ù˜\›KY›Ü›IËÛ˜[YN‰Ñ˜^™[™H[\™\ØIËYØ[˜[YN‰ĞYÜ›ÜXİpè\šXH^[\ÈIËØİ[Y[™Øİ[Y[˜[YKİ]T™YÚ\İ˜][Û‰ÌLŒÍM‰ËY™\ÜÎ‰Ô›ÙİšXHUL	ßKÚYJK	ÉÊNÃBˆÛÛœİØ]™YX\œİ]J
+Kœİ]K™˜\›\Ë™š[™
+˜\›OO™˜\›KšYOOZY
+NØ\ÜÙ\™\]X[
+Ø]™Y˜Ûœ‹	ÌL‹ŒÍKÎÌKNMIÊNØ\ÜÙ\™\]X[
+Ø]™Y˜Ü‹	ÉÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SĞÓ”ˆL—ŒÍWÎÌKNMKÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ÙY]Y˜\›IËY
+NØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’Sİ˜[YOHŒL—ŒÍWÎÌKNMH‹ÊNÃBŸJNÃB\İ
+	Ù˜\›H™YÚ\İ˜][Ûˆ›ØÚÜÈHİ]H™YÚ\İ˜][Ûˆ[™XYH\ÙYH[›İ\ˆ˜\›IË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNÃBˆ\›]]]Tİ]Jİ]OOÜİ]K™˜\›\ÖÌWKœİ]T™YÚ\İ˜][ÛIÌLËŒÌK‹L	ÎßJNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛİY\™Yœ™\Ú	ÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ÙY]Y˜\›IË	Ù˜\›LIÊNÃBˆÛÛœİ™\İ[X]ØZ]\œİX›Z]
+	Ù˜\›KY›Ü›IËÛ˜[YN‰Ñ˜^™[™HIËYØ[˜[YN‰ÉËØİ[Y[‰ÉËİ]T™YÚ\İ˜][Û‰ÌLÌÌMŒ	ËY™\ÜÎ‰ÉËÛÛXİ˜[YN‰ÉËÛÛXİÛ™N‰ÉßKÚY‰Ù˜\›LIßJNÃBˆ\ÜÙ\›X]Ú
+™\İ[Ú°èH\İ0èHØY\İ˜YH\˜H˜^™[™H‹ÊNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™˜\›\ÖÌKœİ]T™YÚ\İ˜][ÛŸ	ÉË	ÉÊNÃBŸJNÃB\İ
+	Ù˜\›HY]™Yœ™\Ú\Èİ[HÙ\™\ˆ™]š\Ú[ÛˆÚ[HÙY\[™ÈH›Ü›HÚ[™Ù\ÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNÃBˆ]ØZ]\˜Xİ[ÛŠ	ÙY]Y˜\›IË	Ù˜\›LIÊNÃBˆ\›]]]Tİ]Jİ]OOÜİ]K™˜\›\ÖÌWK˜ÛÛXİ˜[YOIĞÛÛ]È]X[^˜YÈ[H\˜[[ÉÎßJNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ù˜\›KY›Ü›IËÛ˜[YN‰Ñ˜^™[™HHÛÜœšYÚYIËYØ[˜[YN‰Õ][\ˆÛÜœšYÚYÉËØİ[Y[‰ÉËİ]T™YÚ\İ˜][Û‰ÌLŒÍM‰ËY™\ÜÎ‰Ñ[™\™péÛÈÛÜœšYÚYÉËÛÛXİ˜[YN‰ÉËÛÛXİÛ™N‰ÉßKÚY‰Ù˜\›LIßJK	ÉÊNÃBˆ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™˜\›\ÖÌK›˜[YK	Ñ˜^™[™HHÛÜœšYÚYIÊNÃBˆ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™˜\›\ÖÌK›YØ[˜[YK	Õ][\ˆÛÜœšYÚYÉÊNÃBˆ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™˜\›\ÖÌWK˜ÛÛXİ˜[YK	ĞÛÛ]È]X[^˜YÈ[H\˜[[ÉÊNÃBŸJNÃB\İ
+	Ù˜\›HÛÛXİÛ™H›Ü›X]È[™[™[™HÜˆ[Øš[H[X™\œÈÚ[H\[™ÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NÃBˆÛÛœİšY[^ÚY‰Ù˜\›KXÛÛXİÛ™IË˜[YN‰ÍNNNNMNMÍ‰ËÙ[Xİ[Û”İ\ŒLKÙ[Xİ[Û‘[™ŒLKÙ]Ù[Xİ[Û”˜[™ÙJİ\[™
+^İ\ËœÙ[Xİ[Û”İ\\İ\İ\ËœÙ[Xİ[Û‘[™Y[™ß_NÃBˆ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÊŠHNNNNKMNMÍ‰ÊNØ\ÜÙ\™\]X[
+šY[œÙ[Xİ[Û”İ\MJNÃBˆšY[˜[YOIÍLÌÌÌÌLŒÍ	ÎÙšY[œÙ[Xİ[Û”İ\LLÙšY[œÙ[Xİ[Û‘[™LLØ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÊJHÌÌÌËLLŒÍ	ÊNÃBˆšY[˜[YOIÍNNNNNMNMÍLŒÉÎÙšY[œÙ[Xİ[Û”İ\LMNÙšY[œÙ[Xİ[Û‘[™LMNØ]ØZ]\š[œ]
+šY[
+NØ\ÜÙ\™\]X[
+šY[˜[YK	ÊJHNNNNKMNMÍ‰ÊNÃBŸJNÃB\İ
+	ÜÙ[Xİ[™ÈH[Û™]\H\ØÛİ[™\]Z\™\È[ˆ^[˜][Ûˆ[™HİX›Z]Y[[İ[™XXÚ\ÈHÛÜÚ[™ÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJNØÛÛœİ]OX\œ[Š	İÙ^J
+IÊK[ÛY]KœÛXÙJÊNØ\œ[Šİ\œ™[[ÛIÉÛ[ÛIÎØİ\œ™[[LNØ
+NÃBˆ]ØZ]\œİX›Z]
+	İXÚËY›Ü›IËÜ]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ‰Ë˜\›RY‰Ù˜\›LIË›ÙU\N‰ĞØpéØ[X˜IË^\Î‰ÎIË[ÛN‰ÌÌŒ	Ëİ\›[Û
+ÉËLIË[™‰ÉßJNØÛÛœİXÚÒYX\œİ]J
+Kœİ]KXÚÜÖÌKšYÃBˆÛÛœİ›Ü›OX\™Ù]
+	ÈÙ\ØÛİ[Y›Ü›IÊNÙ›Ü›KšYIÙ\ØÛİ[Y›Ü›IÎÙ›Ü›K™[[Y[ÏSØš™Xİ™œ›ÛQ[šY\ÊÉÚÚ[™	Ë	Ü™X\ÛÛ‰Ë	Üİ\	Ë	Ù[™	Ë	Ù]IË	Ø[[İ[	Ë	Û›İI×K›X\
+˜[YOO–Û˜[YKÛS›ÙJ
+WJJNÙ›Ü›K™[[Y[ËšÚ[™˜[YOIØ[[İ[	ÎÙ›Ü›K™[[Y[Ëœ™X\ÛÛ‹˜[YOIÑ˜[IÎÃBˆ\œ[Š\]Q\ØÛİ[Ú[™
+Øİ[Y[œ]Y\TÙ[XİÜŠ	ÈÙ\ØÛİ[Y›Ü›IÊJHŠNØ\ÜÙ\™\]X[
+›Ü›K™[[Y[Ë››İKœ™\]Z\™YYJNØ\ÜÙ\™\]X[
+›Ü›K™[[Y[Ë™]Kœ™\]Z\™YYJNØ\ÜÙ\™\]X[
+›Ü›K™[[Y[Ëœİ\™\ØX›YYJNØ\ÜÙ\™\]X[
+›Ü›Kœ]Y\TÙ[XİÜŠ	ÈÙ\ØÛİ[Y^KYšY[ÉÊKšY[‹YJNÃBˆÛÛœİ˜[Y\Ï^ÚÚ[™‰Ø[[İ[	ËXÚÒY]N›[Û
+ÉËLÉË[[İ[‰ÍLIË›İN‰ÉßNØ\ÜÙ\›X]Ú
+]ØZ]\œİX›Z]
+	Ù\ØÛİ[Y›Ü›IË˜[Y\ÊKÛØœšYØ]ÜšX[Y[KÊNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™\ØÛİ[Ë›[™İ
+NÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ù\ØÛİ[Y›Ü›IËË‹‹˜[Y\Ë›İN‰ĞYX[[Y[ÈÛÛXš[˜YÉßJK	ÉÊNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]K™\ØÛİ[ÖÌK˜[[İ[LŒJNÃBˆ\™Ù]
+	ÈØÛÜÚ[™ËY˜\›IÊK˜[YOIÙ˜\›LIÎØ]ØZ]\˜Xİ[ÛŠ	ØÛÛ™š\›KXÛÜÙIÊNØÛÛœİ›İÏX\œİ]J
+Kœİ]K˜ÛÜÚ[™ÜÖÌKœ›İÜÖÌNØ\ÜÙ\™\]X[
+›İË›™]MNKÍJNØ\ÜÙ\™\]X[
+›İËœ^XX›Q^\ËMJNØ\ÜÙ\™\]X[
+›İË™\ØÛİ[^\Ë
+NÃBˆ›Ü›K™[[Y[ËšÚ[™˜[YOIÙ^\ÉÎÙ›Ü›K™[[Y[Ëœİ\˜[YO[[Û
+ÉËLÉÎÙ›Ü›K™[[Y[Ë™[™˜[YO[[Û
+ÉËL	ÎØ\œ[Š\]Q\ØÛİ[Ú[™
+Øİ[Y[œ]Y\TÙ[XİÜŠ	ÈÙ\ØÛİ[Y›Ü›IÊJHŠNØ\ÜÙ\™\]X[
+›Ü›K™[[Y[Ë˜[[İ[™\ØX›YYJNØ\ÜÙ\™\]X[
+›Ü›K™[[Y[Ë››İKœ™\]Z\™Y˜[ÙJNÃBŸJNÃB\İ
+	ØH˜Z[YÛ›[™HÜš]H™]™\ˆÚ[™Ù\ÈH]]Üš]]]™H™XÛÜ™Üˆ\Ü^\ÈHØ]™YÛÛ™š\›X][Û‰Ë\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+	İšY]Ù\‰ÊNØ]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İšY]Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØK[Û™Ë]\İ\\ÜİÛÜ™	ßJNÃBˆÛÛœİÙ^OX\œ[Š	İÙ^J
+IÊNØÛÛœİ\œ›ÜX]ØZ]\œİX›Z]
+	İXÚËY›Ü›IËÜ]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ‰Ë˜\›RY‰Ù˜\›LIË›ÙU\N‰ĞØpéØ[X˜IË^\Î‰ÎIË[ÛN‰ÌÌŒ	Ëİ\Ù^K[™‰ÉßJNÃBˆ\ÜÙ\›X]Ú
+\œ›Ü‹ØÛÛœİ[KÊNØ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]KXÚÜË›[™İ
+NØ\ÜÙ\™Ù\Ó›İX]Ú
+\™Ù]
+	ÈİØ\İ	ÊK^ÛÛ[ĞØY\İ›ÈØ[›ËÊNÃBŸJNÃB\İ
+	Ùš\œİXØÙ\ÜÈÛÛXİÈÛÛ\[HÜ™Y[X[È[™[ˆYZ[š\İ˜]ÜˆØ[ˆÙ[™\˜]HHİY™ˆ[šÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+	ØYZ[‰ËYJNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SĞÛÛ™šYİ\˜\ˆÙ]HXÙ\ÜÛËÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÓ›ÛYHH[\™\ØKÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÛZ[›[™İHˆ‹ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÜ[ÈY[›ÜÈˆØ\˜Xİ\™\ËÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËØÛÛ\[S˜[YN‰ÓZ[šH[\™\ØIË[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÃBˆÛÛœİ™YÚ\İ˜][ÛX\˜Ø[Ë™š[™
+Ø[O˜Ø[\›™[™ÕÚ]
+	ËÙ›Y]XXØÙ\ÜÉÊI‰’”ÓÓ‹œ\œÙJØ[›Ü[ÛœË˜›ÙJK˜Xİ[ÛOOIÜ™YÚ\İ\‰ÊNØ\ÜÙ\›ÚÊ™YÚ\İ˜][ÛŠNØ\ÜÙ\™\]X[
+”ÓÓ‹œ\œÙJ™YÚ\İ˜][Û‹›Ü[ÛœË˜›ÙJK˜ÛÛ\[S˜[YK	ÓZ[šH[\™\ØIÊNØ\ÜÙ\™\]X[
+\œ[Š	Ú[š]UXÚÙ]	ÊK[
+NÃBˆ\œ[Š›ØØ][Û‹š\ÚIÈÜÙ][™ÜÉÎÜ™[™\Š
+NÈŠNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÑ\]Z\HHXÙ\ÜÛËÊNÃBˆ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	Ú[š]KY›Ü›IËÙ[XZ[‰ÜİY™^[\K\İ	Ë›ÛN‰İšY]Ù\‰ßJK	ÉÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÚ[š]K\™\İ[	ÊKš[›™\’SÜİY™^[\K\İÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÚ[š]K\™\İ[	ÊKš[›™\’SÈØXİ]˜]OKÊNÃBŸJNÃB\İ
+	Ù\ØÛİ[ÈšY]ÈÜ›İ\È[™[X™]^™\È]\È[ˆHš[X›H™\Ü	Ë\Ş[˜Ê
+OOÂˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÂˆ\›]]]Tİ]Jİ]OOÂˆİ]KXÚÜÏVŞÚY‰İXÚËX]‰Ë]N‰ĞUŒÍÌ	Ëš]™\‰Ó[İÜš\İHU‰ËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›L‰Ë›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎK[ÛNİ\‰ÌŒ‹LLLIË[™‰ÉßKÚY‰İXÚËX˜Ù	Ë]N‰ĞÑPÍM‰Ëš]™\‰Ó[İÜš\İHÑ	ËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›L‰Ë›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎK[ÛNİ\‰ÌŒ‹LLLIË[™‰ÉßWNÂˆİ]K™\ØÛİ[ÏVŞÚY‰Ù\ØÛİ[X]‹LIËXÚÒY‰İXÚËX]‰Ëİ\‰ÌŒ‹LLLŒIË[™‰ÌŒ‹LLLŒIË™X\ÛÛ‰Ñ˜[IË›İN‰ÉßKÚY‰Ù\ØÛİ[X˜Ù	ËXÚÒY‰İXÚËX˜Ù	Ëİ\‰ÌŒ‹LLLŒIË[™‰ÌŒ‹LLLŒIË™X\ÛÛ‰Ñ˜[IË›İN‰ÉßKÚY‰Ù\ØÛİ[X]‹L‰ËXÚÒY‰İXÚËX]‰Ëİ\‰ÌŒ‹LLLŒ	Ë[™‰ÌŒ‹LLLŒ	Ë™X\ÛÛ‰ÓÙšXÚ[˜IË›İN‰Ô™]H˜\ÙZ\›ÉßWNÂˆJNÂˆ]ØZ]\œÛ
+
+NØ\œ[Š˜İ\œ™[[ÛIÌŒ‹LL	ÎØİ\œ™[[LÙ˜\›Qš[\IÙ˜\›L‰ÎÛØØ][Û‹š\ÚIÈÙ\ØÛİ[ÉÎÜ™[™\Š
+NÈŠNÂˆÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[Ò[\š[Z\ˆ™[]0ìÜš[ËÊNØ\ÜÙ\›X]Ú
+[Ñ˜^™[™H‹ÊNØ\ÜÙ\™\]X[
+
+[›X]Ú
+ØÛ\ÜÏH™\ØÛİ[\]KYÜ›İ\‹ÙÊ_×JK›[™İŠNØ\ÜÙ\›ÚÊ[š[™^ÙŠ	ĞUŒÍÌ	ÊO[š[™^ÙŠ	ĞÑPÍM‰ÊJNØ\ÜÙ\›ÚÊ[š[™^ÙŠ	Ô™]H˜\ÙZ\›ÉÊO[š[™^ÙŠ	ĞÑPÍM‰ÊJNÂˆ]ØZ]\˜Xİ[ÛŠ	Ù\ØÛİ[Ë\š[	ÊNØ\ÜÙ\™\]X[
+\œš[Ûİ[
+
+KJNØ\ÜÙ\™\]X[
+\™Ù]
+	Ø›ÙIÊK˜Û\ÜÓ\İ˜ÛÛZ[œÊ	Ù\ØÛİ[\š[[Ü[‰ÊK˜[ÙJNÂŸJNÃB\İ
+	İXÚÈ\İÜ›İ\È˜[œÙ™\œÈ[™™]\›œÈ[ÈÛ™H]HÚ]HÛÛœÛÛY]Y]Z[ÈšY]ÉË\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÃBˆÛÛœİİ]OZ[š]X[İ]J
+NÃBˆİ]KXÚÜÏVÃBˆÚY‰Ü\š[ÙXIË]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎË[ÛNŒÍLİ\‰ÌŒ‹LLLIË[™‰ÌŒ‹LLL‰Ë˜[œÙ™\“İ]İÕXÚÒY‰Ü\š[ÙX‰ËÑ˜\›RY‰Ù˜\›L‰ËÑ˜\›S˜[YN‰Ñ˜^™[™H‰Ë]N‰ÌŒ‹LLLÉß_KBˆÚY‰Ü\š[ÙX‰Ë]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›L‰Ë›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎË[ÛNŒÍLİ\‰ÌŒ‹LLLÉË[™‰ÌŒ‹LLL	Ë˜[œÙ™\’[Ùœ›ÛUXÚÒY‰Ü\š[ÙXIËœ›ÛQ˜\›RY‰Ù˜\›LIËœ›ÛQ˜\›S˜[YN‰Ñ˜^™[™HIË]N‰ÌŒ‹LLLÉßK˜[œÙ™\“İ]İÕXÚÒY‰Ü\š[ÙXÉËÑ˜\›RY‰Ù˜\›LIËÑ˜\›S˜[YN‰Ñ˜^™[™HIË]N‰ÌŒ‹LLLIß_KBˆÚY‰Ü\š[ÙXÉË]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎË[ÛNŒÍLİ\‰ÌŒ‹LLLIË[™‰ÉË^[Y[XØÛİ[Y‰ØXØÛİ[LIË˜[œÙ™\’[Ùœ›ÛUXÚÒY‰Ü\š[ÙX‰Ëœ›ÛQ˜\›RY‰Ù˜\›L‰Ëœ›ÛQ˜\›S˜[YN‰Ñ˜^™[™H‰Ë]N‰ÌŒ‹LLLIß_KBˆÚY‰Ûİ\‰Ë]N‰ÑQŒQÌŒÉËš]™\‰Óİ]›È[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›L‰Ë›ÙU\N‰ĞØpéØ[X˜IË^\ÎK[ÛNİ\‰ÌŒ‹LLLIË[™‰ÉË^[Y[]Z[ÎÛY]Ù‰Ü^	ËÛ\‰Óİ]›È][\‰ËØİ[Y[‰ÌLŒÍMÎLIË^Ù^N‰ØÚ]™P^[\Ë\İ	ß_CBˆNÃBˆİ]Kœ^[Y[XØÛİ[ÏVŞÚY‰ØXØÛİ[LIË˜[YN‰ĞÛÛHÛÛš[IË]Z[ÎÛY]Ù‰Ø˜[šÉËÛ\‰Õ][\ˆ^[\ÉËØİ[Y[‰ÌLŒÍMÎLIË˜[šÓ˜[YN‰Ğ˜[˜ÛÈ\İIËYÙ[˜ŞN‰ÌIËXØÛİ[‰ÌLŒÍKM‰ËXØÛİ[\N‰ØÛÜœ™[Iß_WNÃBˆ\›]]]Tİ]JØ]™YO“Øš™Xİ˜\ÜÚYÛŠØ]™Yİ]JJNØ]ØZ]\œÛ
+
+NÃBˆ\œ[Š›ØØ][Û‹š\ÚIÈİXÚÜÉÎÜ™[™\Š
+HŠNÃBˆÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[ÌˆXØW
+×
+H0­È\°ë[Ù×
+×
+KÊNØ\ÜÙ\™\]X[
+
+[›X]Ú
+Ù]KXXİ[ÛHXÚËZ\İÜH‹ÙÊ_×JK›[™İŠNÃBˆ\œ[Š™˜\›Qš[\IÙ˜\›LIÎÜ™[™\Š
+HŠNØÛÛœİ[X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SØ\ÜÙ\›X]Ú
+[ÌHXØW
+×
+H0­ÈÈ\°ë[Ù×
+×
+KÊNØ\ÜÙ\›X]Ú
+[Ô\ÜÛİHÜˆˆ˜^™[™\ËÊNØ\ÜÙ\›X]Ú
+[Ñ][\ËÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	İXÚËZ\İÜIË	Ü\š[ÙXÉÊNØÛÛœİ]Z[ÏX\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+]Z[ËÔ\°ë[ÙÜÈH˜X˜[ËÊNØ\ÜÙ\›X]Ú
+]Z[ËÑ˜^™[™H‹ÊNØ\ÜÙ\›X]Ú
+]Z[ËÕ˜[œÙ™\š\ˆ˜^™[™KÊNØ\ÜÙ\›X]Ú
+]Z[ËÑY]\ˆ\°ë[ÙÈ]X[ÊNÃBˆ\ÜÙ\›X]Ú
+]Z[ËĞÛÛHÛÛš[KÊNØ\ÜÙ\›X]Ú
+]Z[ËÕ][\ˆ^[\ËÊNØ\ÜÙ\›X]Ú
+]Z[ËĞ˜[˜ÛÈ\İKÊNØ\ÜÙ\›X]Ú
+]Z[ËÌLŒÍKM‹ÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	İXÚËZ\İÜIË	Ûİ\‰ÊNØÛÛœİ^]Z[ÏX\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SØ\ÜÙ\›X]Ú
+^]Z[ËĞÚ]™H^ÊNØ\ÜÙ\›X]Ú
+^]Z[ËØÚ]™P^[\Ë\İÊNÃBŸJCB\İ
+	İXÚÈ]Z[ÈØ[ˆ[™È[ˆ[\ÙY˜[œÙ™\ˆY\ˆÛÛ™š\›X][Û‰Ë\Ş[˜Ê
+OOÃBˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÃBˆ\›]]]Tİ]Jİ]OOÃBˆİ]KXÚÜÏVŞÚY‰ÛÜšYÚ[˜[	Ë]N‰ĞPÌQŒÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎË[ÛNŒÍLİ\‰ÌŒ‹LLLIË[™‰ÉßWNÃBˆ˜[œÙ™\•XÚÊİ]K	ÛÜšYÚ[˜[	Ë	Ù˜\›L‰Ë	ÌŒ‹LLLL	Ë	ÉË	Ù\İ[˜][Û‰ÊNÃBˆJNÃBˆ]ØZ]\œÛ
+
+NÃBˆ]ØZ]\˜Xİ[ÛŠ	İXÚËZ\İÜIË	Ù\İ[˜][Û‰ÊNÃBˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÑ\Ù˜^™\ˆ˜[œÙ™\°ê›˜ÚXKÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	İ[™Ë]˜[œÙ™\‰Ë	Ù\İ[˜][Û‰ÊNÃBˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÜÙ\°èH™[[İšYËÊNÃBˆ]ØZ]\˜Xİ[ÛŠ	ØÛÛ™š\›K][™Ë]˜[œÙ™\‰Ë	Ù\İ[˜][Û‰ÊNÃBˆ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]KXÚÜË›[™İJNÃBˆ\ÜÙ\™\]X[
+\œİ]J
+Kœİ]KXÚÜÖÌK™˜\›RY	Ù˜\›LIÊNÃBŸJNÂ\İ
+	Û[İ™[Y[\İÜHÜ[œÈ˜[œÙ™\ˆ]Z[Èœ›ÛH]ÈÜšYÚ[ˆXÚÈ\š[Ù	Ë\Ş[˜Ê
+OOÂˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÂˆ\›]]]Tİ]Jİ]OOÜİ]KXÚÜÏVŞÚY‰ÛÜšYÚ[‹\\š[Ù	Ë]N‰ĞÔMNÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎK[ÛNİ\‰ÌŒ‹LLLIË[™‰ÉßWNİ˜[œÙ™\•XÚÊİ]K	ÛÜšYÚ[‹\\š[Ù	Ë	Ù˜\›L‰Ë	ÌŒ‹LLLŒ	Ë	ÉË	Ù\İ[˜][Û‹\\š[Ù	ÊNßJNÂˆ]ØZ]\œÛ
+
+NØ\œ[Š›ØØ][Û‹š\ÚIÈÛ[İ™[Y[ÉÎÜ™[™\Š
+HŠNØÛÛœİX\šİ\X\™Ù]
+	ÈÛXZ[‰ÊKš[›™\’SÂˆ\ÜÙ\›X]Ú
+X\šİ\Ù]KXXİ[ÛHXÚËZ\İÜHˆ]KZYH›ÜšYÚ[‹\\š[Ù•™\ˆÈ\İÜ›˜\‹ÊNÂˆ]ØZ]\˜Xİ[ÛŠ	İXÚËZ\İÜIË	ÛÜšYÚ[‹\\š[Ù	ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÑ\Ù˜^™\ˆ˜[œÙ™\°ê›˜ÚXKÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SĞÔMNËÊNÂŸJNÂ\İ
+	ÛÜ[ˆ›ÜšYÚXÚÈ]Z[È]H\Ù\ˆšY]ÈH[šÙY^[Y[XØÛİ[	Ë\Ş[˜Ê
+OOÂˆÛÛœİ\X]ØZ]›Ûİ
+
+NØ\ÜÙ\™\]X[
+]ØZ]\œİX›Z]
+	ØXØÙ\ÜËY›Ü›IËÙ[XZ[‰İ\Ù\^[\K\İ	Ë\ÜİÛÜ™‰ØPŒÈ^IßJK	ÉÊNÂˆ\›]]]Tİ]Jİ]OOÜİ]KXÚÜÏVŞÚY‰İXÚË]Ú]\^[Y[	Ë]N‰ĞÔMNÉËš]™\‰Ó[İÜš\İIËØ\œšY\‰Õ˜[œÜÜYÜ˜IË˜\›RY‰Ù˜\›LIË›ÙU\N‰ÑÜ˜[™[Z\›ÉË^\ÎK[ÛNİ\‰ÌŒ‹LLLIË[™‰ÉË^[Y[]Z[ÎÛY]Ù‰Ü^	ËÛ\‰Õ][\ˆ^[\ÉËØİ[Y[‰ÌLŒÍMÎLIË^Ù^N‰ÜYØ[Y[Ğ^[\Ë\İ	ß_WNßJNÂˆ]ØZ]\œÛ
+
+NØ\œ[Š›ØØ][Û‹š\ÚIÈØÛÜÚ[™ÜÉÎÜ™[™\Š
+HŠNØ]ØZ]\˜Xİ[ÛŠ	Ù›ÜšYÚ\]KY]Z[	Ë	ÉËÜ]N‰ĞÔMNÉßJNÂˆ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÕ™\ˆYÜÈHYØ[Y[ËÊNÂˆ]ØZ]\˜Xİ[ÛŠ	Ú\İÜK\^[Y[Y]Z[ÉË	İXÚË]Ú]\^[Y[	ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SĞÚ]™H^ÊNØ\ÜÙ\›X]Ú
+\™Ù]
+	ÈÛ[Ù[XÛÛ[	ÊKš[›™\’SÜYØ[Y[Ğ^[\Ë\İÊNÂŸJNÂƒB

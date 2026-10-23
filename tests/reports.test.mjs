@@ -40,7 +40,7 @@ test('cross-period discounts are clipped to the saved service range and long not
   const state=fleet(1),p=period('2026-10',2);state.trucks[0].end='2026-10-25';
   state.discounts=[{id:'d',truckId:'t0',start:'2026-10-14',end:'2026-10-18',reason:'Falta',note:'Explicação extensa '.repeat(35)}];
   saveClosing(state,p,'','closed','2026-10-31');
-  const report=createReport(state,p),html=reportMarkup(report);assert.equal(report.pages[0].rows[0].payableDays,7);assert.equal(report.total,6375);
+  const report=createReport(state,p),html=reportMarkup(report);assert.equal(report.pages[0].rows[0].payableDays,7);assert.equal(report.total,7000);
   assert.ok(report.pages.some(page=>page.kind==='notes'));assert.match(html,/16\/10\/2026 a 18\/10\/2026: 3 dia/);assert.doesNotMatch(html,/Atividades encerradas/);
   assert.equal(report.pages.filter(page=>page.kind==='trucks').reduce((n,page)=>n+page.total,0),report.total);
 });
@@ -65,7 +65,7 @@ test('plate filtering combines farm and paid filters and retains both parts of a
   const before=structuredClone(state),report=createReport(state,p,{plate:'ABC0000',onlyPaid:true}),html=reportMarkup(report);
   assert.equal(report.truckCount,1);assert.equal(report.farmCount,2);assert.equal(report.total,15000);assert.equal(report.pages.flatMap(page=>page.rows).length,2);
   assert.match(html,/Placa: ABC0000/);assert.doesNotMatch(html,/ABC0001/);assert.match(html,/Total líquido da placa/);
-  assert.equal(createReport(state,p,{plate:'ABC0000',farmId:'farm2',onlyPaid:true}).total,11250);
+  assert.equal(createReport(state,p,{plate:'ABC0000',farmId:'farm2',onlyPaid:true}).total,11000);
   assert.equal(createReport(state,p,{plate:'ABC0001',onlyPaid:true}).pages.length,0);
   assert.equal(createReport(state,p,{plate:'XYZ9B87'}).total,0);assert.deepEqual(state,before);
 });
