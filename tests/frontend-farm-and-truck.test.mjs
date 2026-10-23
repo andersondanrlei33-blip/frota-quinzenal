@@ -40,6 +40,18 @@ test('farm tonnage billing closes by month and lets the farm select CT-es with o
   app.run("currentUser={party:'farm',role:'viewer',farmId:'farm1'}");assert.throws(()=>app.run('openCteBillingPayment()'),/Este acesso não pode registrar pagamentos de CT-e/);
   app.run("currentUser={party:'carrier',role:'operator'};main.innerHTML=cteBillingView()");assert.doesNotMatch(app.get('#main').innerHTML,/data-billing-select=/);assert.doesNotMatch(app.get('#main').innerHTML,/id="cte-billing-payment-form"/);
 });
+test('CT-e invoice details show the billed documents and print action',async()=>{
+ const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
+ app.run("currentUser={party:'group',role:'admin'};cteBillingMonth='2026-10';cteFarms=[{id:'farm1',name:'Fazenda Mafra'}];cteDocuments=[{id:'cte-5239',farmId:'farm1',farmName:'Fazenda Mafra',number:'5239',plate:'ATV2C70',driver:'Motorista A',issuedOn:'2026-10-13',billableTons:26.4,billingRate:2.5,billingAmount:66}];billingInvoices=[{id:'invoice-6',number:6,billingMonth:'2026-10',farmId:'farm1',documentIds:['cte-5239'],totalTons:26.4,totalAmount:66,dueOn:'2026-10-23',status:'open'}];main.innerHTML=cteBillingView()");
+ assert.match(app.get('#main').innerHTML,/data-action="cte-invoice-print"[^>]*>Detalhes/);
+ await app.action('cte-invoice-print','invoice-6');const detail=app.get('#modal-content').innerHTML;
+ assert.match(detail,/Detalhes da fatura 6/);assert.match(detail,/CT-es incluídos nesta fatura/);assert.match(detail,/5239/);assert.match(detail,/ATV2C70/);assert.match(detail,/66,00/);assert.match(detail,/Abrir CT-e original/);assert.match(detail,/Imprimir \/ Salvar PDF/);
+ await app.action('invoice-print');assert.equal(app.printCount(),1);
+ assert.match(app.get('#main').innerHTML,/data-action="cte-billing-print"/);
+ await app.action('cte-billing-print');const report=app.get('#modal-content').innerHTML;
+ assert.match(report,/CT-es de outubro de 2026/);assert.match(report,/5239/);assert.match(report,/ATV2C70/);assert.match(report,/Abrir CT-e original/);assert.match(report,/Imprimir \/ Salvar PDF/);
+ await app.action('invoice-print');assert.equal(app.printCount(),2);
+});
 test('group billing offers a separate invoice for each farm and limits invoice selection to that farm',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
  app.run("currentUser={party:'group',role:'admin'};cteBillingMonth='2026-10';cteFarms=[{id:'farm1',name:'Fazenda Mafra'},{id:'farm2',name:'Fazenda São Jorge'}];cteDocuments=[{id:'cte-mafra',farmId:'farm1',farmName:'Fazenda Mafra',number:'5239',plate:'ATV2C70',driver:'Motorista A',issuedOn:'2026-10-13',billableTons:26.4,billingRate:2.7,billingAmount:71.28},{id:'cte-sao-jorge',farmId:'farm2',farmName:'Fazenda São Jorge',number:'5228',plate:'BCP5583',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:2,billingRate:2.7,billingAmount:5.4}];main.innerHTML=cteBillingView()");
