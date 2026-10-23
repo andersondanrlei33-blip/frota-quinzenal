@@ -52,6 +52,13 @@ test('farms pending CT-e metric opens a manager list with plate, farm, notes and
  assert.match(app.get('#main').innerHTML,/data-action="farm-pending-ctes"/);await app.action('farm-pending-ctes');
  const details=app.get('#modal-content').innerHTML;assert.match(details,/BCD5C56/);assert.match(details,/Fazenda Mafra/);assert.match(details,/NF-e 1234/);assert.match(details,/funcionario@example\.test/);assert.match(details,/Prioridade/);assert.match(details,/Menos de 1 min/);
 });
+test('received CT-e report shows elapsed time from request to uploaded document, including saved column preferences',async()=>{
+ const app=await boot();
+ app.run(`window.innerWidth=1280;cteRequests=[{id:'request-time',documentId:'document-time',status:'issued',requestedAt:'2026-10-23T08:00:00.000Z',updatedAt:'2026-10-23T10:35:00.000Z'}];cteDocuments=[{id:'document-time',requestId:'request-time',uploadedAt:'2026-10-23T10:35:00.000Z',number:'CTE-123',issuedOn:'2026-10-23',plate:'ABC1D23',driver:'Motorista',farmName:'Fazenda Mafra',shipper:'Remetente',recipient:'Destinatário',serviceTaker:'Tomador',issuer:'Transportadora',totalValue:100,cargoWeight:1000,cargoWeightUnit:'kg'}];ctePreferences=normalizeCtePreferences({visibleColumns:['number'],columnOrder:['number']});main.innerHTML=ctesView()`);
+ const html=app.get('#main').innerHTML;
+ assert.match(html,/TEMPO ATÉ RECEBER/);
+ assert.match(html,/2h 35min/);
+});
 test('farm team settings use compact selectable tabs and prefill a farm-specific invite',async()=>{
  const fixture=[{user_id:'staff-1',email:'staff@example.test',party:'farm',farm_id:'farm2',role:'operator',active:true}];
  const app=await boot('admin',false,null,'group',fixture);assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
@@ -183,7 +190,7 @@ test('CPF and CNPJ share one CT-e report field per participant without losing sa
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   const parties=['shipper','recipient','serviceTaker','issuer'],oldColumns=parties.flatMap(party=>[party+'Cnpj',party+'Cpf']),mergedColumns=parties.map(party=>party+'Document');
   const prior=JSON.stringify({visibleColumns:oldColumns,columnOrder:[...oldColumns,'plate']}),saved=JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(prior)})))`));
-  assert.deepEqual(saved.visibleColumns,[...mergedColumns,'cargoWeight']);assert.deepEqual(saved.columnOrder.slice(0,4),mergedColumns);assert.equal(saved.columnOrder.length,app.run('ALL_CTE_COLUMNS.length'));
+  assert.deepEqual(saved.visibleColumns,[...mergedColumns,'cargoWeight','responseTime']);assert.deepEqual(saved.columnOrder.slice(0,4),mergedColumns);assert.equal(saved.columnOrder.length,app.run('ALL_CTE_COLUMNS.length'));
   assert.equal(app.run("CTE_FILTER_FIELDS.shipperDocument.get({participantDetails:{shipper:{cnpj:'06338525000118',cpf:''}}})"),'06.338.525/0001-18');
   assert.equal(app.run("CTE_FILTER_FIELDS.recipientDocument.get({participantDetails:{recipient:{cnpj:'',cpf:'12345678901'}}})"),'123.456.789-01');
   app.run(`ctePreferences=JSON.parse(${JSON.stringify(JSON.stringify(saved))});ctePreferencesForm()`);const html=app.get('#modal-content').innerHTML;assert.equal((html.match(/<span>CPF\/CNPJ d[oa] [^<]+<\/span>/g)||[]).length,4);const checkboxFields=[...html.matchAll(/data-cte-pref-column="([^"]+)"/g)].map(match=>match[1]);assert.deepEqual(checkboxFields.filter(field=>field.endsWith('Document')),mergedColumns);assert.equal(checkboxFields.filter(field=>/(?:Cnpj|Cpf)$/.test(field)).length,0);
@@ -197,7 +204,7 @@ test('CT-e report offers all manifested invoice numbers in one customizable colu
 test('CT-e report shows the cargo weight and adds it to existing saved preferences',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   const saved=JSON.stringify({visibleColumns:['number','plate'],columnOrder:['number','plate']});
-  assert.deepEqual(JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(saved)})))`)).visibleColumns,['number','plate','cargoWeight']);
+  assert.deepEqual(JSON.parse(app.run(`JSON.stringify(normalizeCtePreferences(JSON.parse(${JSON.stringify(saved)})))`)).visibleColumns,['number','plate','cargoWeight','responseTime']);
   app.run("cteDocuments=[{id:'cte-weight',farmId:'farm1',farmName:'Fazenda 1',number:'123',plate:'ABC1234',cargoWeight:44222,cargoWeightUnit:'kg',issuedOn:'2026-10-08',totalValue:100}];cteFarms=[{id:'farm1',name:'Fazenda 1'}];ctePreferences={visibleColumns:['cargoWeight'],columnOrder:['cargoWeight']};main.innerHTML=ctesView()");
   assert.match(app.get('#main').innerHTML,/PESO DA CARGA/);assert.match(app.get('#main').innerHTML,/44\.222\s?kg/);
   app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Peso da carga/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="cargoWeight" checked/);
