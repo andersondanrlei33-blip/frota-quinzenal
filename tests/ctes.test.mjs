@@ -321,7 +321,7 @@ test('placa divergente sem carta de correção continua bloqueada',async()=>{
 
 test('a tarifa por tonelada é calculada com o peso do CT-e',async()=>{
  const {api,calls}=setup({party:'carrier'}),response=await api(formRequest({confirmHighValue:true}));
- assert.equal(response.status,201);assert.equal(CTE_BILLING_RATE_PER_TON,2.70);assert.equal(calls.upload.metadata.billableTons,44.222);assert.equal(calls.upload.metadata.billingRate,2.70);assert.equal(calls.upload.metadata.billingAmount,119.40);
+ assert.equal(response.status,201);assert.equal(CTE_BILLING_RATE_PER_TON,2.50);assert.equal(calls.upload.metadata.billableTons,44.222);assert.equal(calls.upload.metadata.billingRate,2.50);assert.equal(calls.upload.metadata.billingAmount,110.56);
 });
 
 test('carta de correção pode acompanhar a solicitação sem ser tratada como NF-e',async()=>{
