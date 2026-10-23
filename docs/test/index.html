@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174C3C"><meta name="referrer" content="no-referrer">
+  <meta name="description" content="Rota Safra Teste: ambiente separado para validação."><meta name="robots" content="noindex, nofollow">
+  <title>Rota Safra — Ambiente de Teste</title>
+  <link rel="icon" href="../assets/rota-safra/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="../assets/rota-safra/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="../assets/rota-safra/apple-touch-icon.png" sizes="180x180">
+  <link rel="stylesheet" href="./styles.css?v=1">
+  <link rel="stylesheet" href="./branding.css?v=159">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="Rota Safra, visão geral"><img class="brand-logo" src="../assets/rota-safra/logo-horizontal.png" width="1086" height="235" alt="Rota Safra"></a>
+    <div class="workspace-label">MENU PRINCIPAL</div>
+    <nav aria-label="Menu principal">
+      <section class="nav-section" data-nav-section="operation"><div class="nav-section-label">FROTA</div>
+        <a href="#overview" data-nav="overview"><span>◫</span> Visão geral</a>
+        <a href="#farms" data-nav="farms"><span>▦</span> Fazendas</a>
+        <a href="#trucks" data-nav="trucks"><span>▤</span> Caminhões</a>
+        <a href="#movements" data-nav="movements"><span>↕</span> Movimentações</a>
+        <a href="#discounts" data-nav="discounts"><span>−</span> Descontos</a>
+      </section>
+      <section class="nav-section" data-nav-section="payments"><div class="nav-section-label">DIÁRIAS E PAGAMENTOS</div>
+        <a href="#closings" data-nav="closings"><span>▣</span> Diárias e fechamentos</a>
+        <a href="#requests" data-nav="requests"><span>▣</span> Solicitações</a>
+        <a href="#farm-billing" data-nav="farm-billing"><span>R$</span> Cobrança por tonelada</a>
+      </section>
+      <section class="nav-section" data-nav-section="fiscal"><div class="nav-section-label">FISCAL</div>
+        <a href="#ctes" data-nav="ctes"><span>▧</span> CT-e recebidos</a>
+        <a href="#reconciliation" data-nav="reconciliation"><span>↔</span> Encontro de contas</a>
+        <a href="#cte-requests" data-nav="cte-requests"><span>▤</span> Solicitar CT-e</a>
+      </section>
+      <section class="nav-section" data-nav-section="admin"><div class="nav-section-label">ADMINISTRAÇÃO</div>
+        <a href="#settings" data-nav="settings"><span>⚙</span> Configurações</a>
+      </section>
+    </nav>
+    <div class="sidebar-bottom"><div class="storage-label"><i></i><span id="cloud-status">Banco online</span></div><div id="account-label" class="secondary"></div><div class="cloud-sidebar-actions"><button class="btn small" data-action="cloud-refresh">Atualizar dados</button><button class="btn small" data-action="cloud-logout">Sair</button></div></div>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><div><span class="breadcrumb">Rota Safra</span><span class="breadcrumb-sep">/</span><span id="breadcrumb-current">Visão geral</span></div><span class="topbar-right"><span class="environment-test-pill">AMBIENTE DE TESTE · DADOS SEPARADOS</span><span id="company-label">Rota Safra</span><span class="version-pill">ONLINE</span></span></header>
+    <main id="main" tabindex="-1"></main>
+    <footer>Rota Safra · Gestão de frota, diárias e CT-e <span>Registros compartilhados da empresa, salvos no banco online.</span></footer>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
+  <dialog id="report-dialog" aria-labelledby="report-title"><div id="report-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script>
+    window.addEventListener('error', () => {
+      const main = document.querySelector('#main');
+      if (!main || main.children.length) return;
+      const card = document.createElement('section');
+      card.className = 'card render-failure';
+      card.setAttribute('role', 'alert');
+      const title = document.createElement('h2');
+      title.textContent = 'Não foi possível carregar esta tela';
+      const message = document.createElement('p');
+      message.textContent = 'O portal encontrou uma falha ao carregar. Atualize a página ou abra outra opção do menu.';
+      card.append(title, message);
+      main.append(card);
+    });
+  </script>
+  <script type="module" src="./app.js?v=1"></script>
+</body>
+</html>
+
+
+
+
