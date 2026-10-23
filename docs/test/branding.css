@@ -1,0 +1,53 @@
+/* Rota Safra: assets transparentes sobre bases claras. */
+.brand {
+  display: block;
+  margin: 0 0 26px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #ffffff25;
+  border-radius: 9px;
+  letter-spacing: normal;
+  line-height: 1;
+}
+.brand-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 26px;
+  line-height: 1;
+}
+.auth-logo {
+  display: block;
+  width: min(250px, 100%);
+  height: auto;
+}
+.report-brand {
+  font-size: inherit;
+  letter-spacing: normal;
+  line-height: 1;
+}
+.report-logo {
+  display: block;
+  width: 52mm;
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 850px) {
+  .brand {
+    float: none;
+    width: 200px;
+    max-width: 100%;
+    margin: 0 0 12px;
+    padding: 8px 10px;
+  }
+}
+@media print {
+  .report-logo {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
