@@ -278,6 +278,15 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    if(actor.role==='viewer'||!['group','carrier','farm'].includes(actor.party)||actor.party==='farm'&&actor.farmId!==pending.farmId)return backend.responseJson({error:'Você não pode cancelar a solicitação desta fazenda.'},403);
    return backend.responseJson({request:await backend.cteRequests.cancel(actor.companyId,pending.id)});
   }
+  const rejectRequestMatch=path.match(/\/api\/cte-requests\/([0-9a-f-]{36})\/reject$/i);
+  if(request.method==='POST'&&rejectRequestMatch){
+   if(actor.party!=='farm'||actor.role==='viewer'||!actor.farmId)return backend.responseJson({error:'Somente um funcionário autorizado da fazenda pode recusar um CT-e.'},403);
+   const text=await request.text();if(text.length>2000)return backend.responseJson({error:'A justificativa excede o tamanho permitido.'},413);
+   const body=JSON.parse(text),reason=String(body.reason||'').trim();if(reason.length<3||reason.length>500)return backend.responseJson({error:'Informe o motivo da recusa, com até 500 caracteres.'},400);
+   const item=await backend.cteRequests?.find(actor.companyId,rejectRequestMatch[1]);if(!item||item.farmId!==actor.farmId)return backend.responseJson({error:'Solicitação de CT-e não encontrada para esta fazenda.'},404);
+   if(item.status!=='issued'||!item.documentId)return backend.responseJson({error:'Somente um CT-e recebido pode ser recusado.'},409);
+   return backend.responseJson({request:await backend.cteRequests.reject(actor,item.id,reason)});
+  }
   const requestFileMatch=path.match(/\/api\/cte-requests\/([0-9a-f-]{36})\/files\/([0-9a-f-]{36})$/i);
   if(request.method==='GET'&&requestFileMatch){
    if(!['farm','carrier','group'].includes(actor.party))return backend.responseJson({error:'Acesso não permitido.'},403);

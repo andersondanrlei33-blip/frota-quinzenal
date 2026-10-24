@@ -9,8 +9,10 @@ import {createFleetApi} from '../server/api.js';
 
 const raw=name=>fs.readFileSync(new URL('../frontend/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
 const code=[raw('engine.js'),raw('reports.js'),raw('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key'};const APP_ENVIRONMENT='production';",raw('cloud-ui.js'),raw('app.js')].join('\n');
+const rawTest=name=>fs.readFileSync(new URL('../docs/test/'+name,import.meta.url),'utf8').replace(/^import .*?;\r?\n/gm,'').replace(/^export /gm,'');
+const testCode=[rawTest('engine.js'),rawTest('reports.js'),rawTest('cloud-client.js'),"const CLOUD_CONFIG={url:'https://example.supabase.co',publishableKey:'public-test-key',functionName:'fleet-api'};const APP_ENVIRONMENT='test';",rawTest('cloud-ui.js'),rawTest('app.js')].join('\n');
 function domNode(){const classes=new Set();return {innerHTML:'',textContent:'',value:'',disabled:false,required:false,hidden:false,open:false,id:'',dataset:{},attributes:{},classList:{add:(...items)=>items.forEach(item=>classes.add(item)),remove:(...items)=>items.forEach(item=>classes.delete(item)),toggle:(item,enabled)=>enabled?classes.add(item):classes.delete(item),contains:item=>classes.has(item)},setAttribute(key,value){this.attributes[key]=value;},setCustomValidity(value){this.validationMessage=value;},addEventListener(){},scrollIntoView(){},focus(){},setSelectionRange(){},showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;}};}
-async function boot(role='admin',activation=false,storage=null,party='group',teamFixture=[]){
+async function boot(role='admin',activation=false,storage=null,party='group',teamFixture=[],sourceCode=code){
   const nodes=new Map(),handlers=new Map(),intervals=[],get=selector=>{if(!nodes.has(selector)){const node=domNode();node.querySelector=get;nodes.set(selector,node);}return nodes.get(selector);};
   const document={body:domNode(),visibilityState:'visible',querySelector:get,querySelectorAll:()=>[],addEventListener(type,fn){if(!handlers.has(type))handlers.set(type,[]);handlers.get(type).push(fn);}};get('#modal').querySelector=get;
   let stored={state:initialState(),revision:0,company:{id:'company-one',name:'Empresa de teste'}};
@@ -25,7 +27,7 @@ async function boot(role='admin',activation=false,storage=null,party='group',tea
   class FormData {constructor(form){this.values=form?.data||new Map();}get(name){return this.values.get(name);}has(name){return this.values.has(name);}append(name,value){this.values.set(name,value);}}
   let printCount=0;
   const sandbox=vm.createContext({document,window:{addEventListener(){},scrollTo(){},print(){printCount++;}},location:{origin:'https://fleet.test',pathname:'/',hash:activation?'#activate='+'a'.repeat(64):'#overview'},sessionStorage:storage,localStorage:{getItem(){throw Error('Fleet records must not be stored in the browser');},setItem(){throw Error('Fleet records must not be stored in the browser');}},Intl,URL,Blob,Request,Response,FormData,crypto,structuredClone,fetch,setTimeout:()=>1,clearTimeout(){},setInterval:fn=>{intervals.push(fn);return intervals.length;},console});
-  vm.runInContext(code,sandbox,{timeout:1000});await new Promise(resolve=>setImmediate(resolve));
+  vm.runInContext(sourceCode,sandbox,{timeout:1000});await new Promise(resolve=>setImmediate(resolve));
   const emit=async(type,event)=>{for(const handler of handlers.get(type)||[])await handler(event);};
   const submit=async(id,data,dataset={})=>{const error=domNode(),button=domNode(),form={id,dataset,data:new Map(Object.entries(data)),querySelector:selector=>selector==='[type="submit"]'?button:error};await emit('submit',{target:form,preventDefault(){}});return error.textContent;};
   const action=async(name,id='',extra={})=>emit('click',{target:{closest:()=>({disabled:false,dataset:{action:name,id,...extra}})}});
@@ -51,6 +53,16 @@ test('CT-e invoice details show the billed documents and print action',async()=>
  await app.action('cte-billing-print');const report=app.get('#modal-content').innerHTML;
  assert.match(report,/CT-es de outubro de 2026/);assert.match(report,/5239/);assert.match(report,/ATV2C70/);assert.match(report,/Abrir CT-e original/);assert.match(report,/Imprimir \/ Salvar PDF/);
  await app.action('invoice-print');assert.equal(app.printCount(),2);
+});
+test('Test allows a farm operator to reject a received CT-e with a reason and exposes it to the carrier',async()=>{
+ const app=await boot('operator',false,null,'farm',[],testCode);assert.equal(await app.submit('access-form',{email:'farm@example.test',password:'test-password'}),'');
+ app.run("currentUser={party:'farm',role:'operator',farmId:'farm1'};cteFarms=[{id:'farm1',name:'Fazenda Mafra'}];cteDocuments=[{id:'doc-1',requestId:'request-1',farmId:'farm1',farmName:'Fazenda Mafra',number:'5239',plate:'ABC1D23',driver:'Motorista A',issuedOn:'2026-10-23'}];cteRequests=[{id:'request-1',farmId:'farm1',farmName:'Fazenda Mafra',plate:'ABC1D23',driver:'Motorista A',requestedAt:'2026-10-23T10:00:00.000Z',status:'issued',documentId:'doc-1',invoiceKeys:[],invoiceFiles:[],note:''}];main.innerHTML=ctesView()");
+ assert.match(app.get('#main').innerHTML,/data-action="cte-reject-request"/);assert.match(app.get('#main').innerHTML,/Recusar CT-e/);
+ await app.action('cte-reject-request','request-1');const form=app.get('#modal-content').innerHTML;assert.match(form,/Motivo da recusa/);assert.match(form,/não cancela o CT-e fiscal na SEFAZ nem altera uma fatura/);
+ app.run("cloud.rejectCteRequest=async(id,reason)=>{const item=cteRequests.find(request=>request.id===id);item.status='rejected';item.rejectionReason=reason;item.rejectedAt='2026-10-24T10:00:00.000Z';return {request:item}};cloud.ctes=async()=>({documents:cteDocuments,requests:cteRequests,trucks:[],farms:cteFarms,billingInvoices:[],preferences:null})");
+ assert.equal(await app.submit('cte-reject-form',{reason:'Placa divergente do pedido.'},{requestId:'request-1'}),'');assert.equal(app.run('cteRequests[0].status'),'rejected');assert.equal(app.run('cteRequests[0].rejectionReason'),'Placa divergente do pedido.');
+ app.run("farmCteTab='rejected';main.innerHTML=farmCteRequestsView()");assert.match(app.get('#main').innerHTML,/Placa divergente do pedido/);
+ app.run("currentUser={party:'carrier',role:'operator'};main.innerHTML=ctesView()");assert.match(app.get('#main').innerHTML,/CT-es recusados pelas fazendas/);assert.match(app.get('#main').innerHTML,/Placa divergente do pedido/);
 });
 test('group billing offers a separate invoice for each farm and limits invoice selection to that farm',async()=>{
  const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
