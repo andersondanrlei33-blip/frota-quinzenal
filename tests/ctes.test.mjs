@@ -57,6 +57,7 @@ function setup({party='carrier',role='operator',farmId='farm-a',trucks=state.tru
   cteRequests:{
    list:async(_company,farm)=>{calls.requestListFarm=farm;return request?[request]:[];},
    find:async(_company,id)=>request?.id===id?request:null,
+   reject:async(actor,id,reason)=>{calls.rejection={actor,id,reason};return {...request,status:'rejected',rejectionReason:reason,rejectedBy:actor.userId,rejectedAt:'2026-10-24T12:00:00.000Z'};},
    create:async(actor,truck,farm,invoiceKeys,note,invoiceFiles)=>{calls.request={actor,truck,farm,invoiceKeys,note,invoiceFiles};return {id:'55555555-5555-4555-8555-555555555555',farmId:farm.id,plate:truck.plate,invoiceKeys,status:'pending'};},
    signFile:async()=> 'https://storage.example/signed?download=nota.xml',
    downloadFile:async()=>pdf,
@@ -329,6 +330,16 @@ test('carta de correção pode acompanhar a solicitação sem ser tratada como N
  form.append('payload',JSON.stringify({truckId:'truck-a'}));form.append('invoicePdfs',new Blob([nfe],{type:'application/pdf'}),key+'.pdf');form.append('correctionFile',new Blob([correction],{type:'application/pdf'}),'Carta-Correcao.pdf');
  const {api,calls}=setup({party:'farm',readNfePdf:async()=> 'PLACA DO VEÍCULO ABC1D23'}),response=await api(new Request('https://example.test/api/cte-requests',{method:'POST',body:form}));
  assert.equal(response.status,201);assert.equal(calls.request.invoiceFiles.length,2);assert.equal(calls.request.invoiceFiles[0].details.accessKey,key);assert.equal(calls.request.invoiceFiles[1].details.documentType,'correction');assert.equal(calls.request.invoiceFiles[1].details.vehiclePlate,undefined);
+});
+
+test('somente funcionário autorizado da fazenda pode recusar um CT-e recebido com justificativa',async()=>{
+ const request={id:'55555555-5555-4555-8555-555555555555',status:'issued',documentId,farmId:'farm-a'},make=reason=>new Request('https://example.test/api/cte-requests/'+request.id+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})});
+ const farm=setup({party:'farm',role:'operator',request}),response=await farm.api(make('Placa incorreta no documento.'));
+ assert.equal(response.status,200);assert.equal(farm.calls.rejection.id,request.id);assert.equal(farm.calls.rejection.reason,'Placa incorreta no documento.');assert.equal(farm.calls.rejection.actor.farmId,'farm-a');assert.equal((await response.json()).request.status,'rejected');
+ const noReason=setup({party:'farm',role:'operator',request});assert.equal((await noReason.api(make('  '))).status,400);assert.equal(noReason.calls.rejection,undefined);
+ assert.equal((await setup({party:'farm',role:'viewer',request}).api(make('Placa incorreta.'))).status,403);
+ assert.equal((await setup({party:'farm',role:'operator',farmId:'farm-b',request}).api(make('Placa incorreta.'))).status,404);
+ assert.equal((await setup({party:'farm',role:'operator',request:{...request,status:'pending'}}).api(make('Placa incorreta.'))).status,409);
 });
 
 test('bloqueia NF-e que já está em solicitação ou foi manifestada em outro CT-e',async()=>{
