@@ -521,7 +521,7 @@ export function migrateState(s) {
 }
 export function validateState(input) {
   const s=migrateState(input);
-  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !s.farms.length || !Array.isArray(s.trucks) || !Array.isArray(s.paymentAccounts) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !Array.isArray(s.fundingTransfers) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
+  if (!s || s.schema!==SCHEMA || !Array.isArray(s.farms) || !Array.isArray(s.trucks) || !Array.isArray(s.paymentAccounts) || !Array.isArray(s.discounts) || !Array.isArray(s.closings) || !Array.isArray(s.paymentRequests) || !Array.isArray(s.fundingTransfers) || !MODES[s.settings?.mode] || typeof s.settings.includeStart!=='boolean' || typeof s.settings.includeEnd!=='boolean') throw Error('Este arquivo não é um backup válido do Frota.');
   if(!Array.isArray(s.invoiceReopens)||s.invoiceReopens.length>10000||new Set(s.invoiceReopens).size!==s.invoiceReopens.length||s.invoiceReopens.some(key=>typeof key!=='string'||!/^\d{4}-\d{2}-[12]\|[^|]+$/.test(key)))throw Error('Autorizações de nova fatura inválidas no backup.');
   for(const list of [s.farms,s.trucks,s.paymentAccounts,s.discounts,s.closings,s.paymentRequests,s.fundingTransfers]) if(list.length>10000 || new Set(list.map(x=>x?.id)).size!==list.length || list.some(x=>typeof x.id!=='string' || !x.id)) throw Error('O backup contém registros inválidos ou duplicados.');
   if(s.farms.some(f=>typeof f.name!=='string' || !f.name.trim()||(f.active!==undefined&&typeof f.active!=='boolean')))throw Error('Confira as fazendas do backup.');
