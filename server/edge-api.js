@@ -46,22 +46,22 @@ Deno.serve(async request=>{
       const actor=await backend.actor(request);if(!actor?.userId)return corsResponse(backend.responseJson({error:'Faça login.'},401),request);
       if(!actor.companyId||actor.role!=='admin'||actor.party!=='group')return corsResponse(backend.responseJson({error:'Ação exige um administrador do grupo.'},403),request);
       if(request.method==='GET'&&path.endsWith('/api/team')){
-        const members=await backend.service('/rest/v1/fleet_members?'+new URLSearchParams({company_id:'eq.'+actor.companyId,select:'user_id,email,role,party,farm_id,active',order:'created_at.asc'}));
+         const members=await backend.service('/rest/v1/fleet_members?'+new URLSearchParams({company_id:'eq.'+actor.companyId,select:'user_id,email,role,party,farm_id,farm_ids,active',order:'created_at.asc'}));
         return corsResponse(backend.responseJson({members}),request);
       }
       if(request.method==='POST'){
         const text=await request.text();if(text.length>4000)throw Error('Pedido muito grande.');const body=JSON.parse(text);
         if(path.endsWith('/api/team/invite')){
-          const email=emailAddress(body.email),role=body.role,party=body.party||'group',farmId=party==='farm'?String(body.farmId||''):null;if(!['admin','operator','viewer'].includes(role)||!['group','carrier','farm'].includes(party)||role==='admin'&&party!=='group'||party==='farm'&&!farmId)throw Error('Selecione um perfil e uma fazenda válidos.');
-          if(farmId){const current=await backend.repository.load(actor.companyId);if(!current.state.farms?.some(farm=>farm.id===farmId&&farm.active!==false))throw Error('Selecione uma fazenda ativa cadastrada.');}
+           const email=emailAddress(body.email),role=body.role,party=body.party||'group',farmIds=party==='farm'?(Array.isArray(body.farmIds)?[...new Set(body.farmIds.map(id=>String(id).trim()))]:[]):[],farmId=party==='farm'?(String(body.farmId||'').trim()||null):null;if(!['admin','operator','viewer'].includes(role)||!['group','carrier','farm'].includes(party)||role==='admin'&&party!=='group'||party==='farm'&&((farmId&&farmIds.length>0)||(!farmId&&farmIds.length<2))||party!=='farm'&&(farmId||farmIds.length))throw Error('Selecione um perfil e uma fazenda válidos.');
+           const chosenFarmIds=farmId?[farmId]:farmIds;if(chosenFarmIds.some(id=>!id||id.length>200))throw Error('Selecione fazendas válidas.');if(chosenFarmIds.length){const current=await backend.repository.load(actor.companyId);if(chosenFarmIds.some(id=>!current.state.farms?.some(farm=>farm.id===id&&farm.active!==false)))throw Error('Selecione somente fazendas ativas cadastradas.');}
           const ticket=randomTicket(),expires=new Date(Date.now()+72*3600*1000).toISOString();
-          await backend.service('/rest/v1/fleet_invitations',{method:'POST',body:{company_id:actor.companyId,email,role,party,farm_id:farmId,token_hash:await sha256(ticket),expires_at:expires}});
+           await backend.service('/rest/v1/fleet_invitations',{method:'POST',body:{company_id:actor.companyId,email,role,party,farm_id:farmId,farm_ids:farmId?[]:farmIds,token_hash:await sha256(ticket),expires_at:expires}});
           const delivery=await sendAccessInvite(email,ticket);
-          return corsResponse(backend.responseJson({ticket,email,role,party,farmId,expiresAt:expires,emailSent:delivery.sent,emailMessage:delivery.message||''}),request);
+           return corsResponse(backend.responseJson({ticket,email,role,party,farmId,farmIds:chosenFarmIds,expiresAt:expires,emailSent:delivery.sent,emailMessage:delivery.message||''}),request);
         }
         if(typeof body.active!=='boolean'||!['admin','operator','viewer'].includes(body.role))throw Error('Confira o perfil e a situação do usuário.');
-        const farmId=body.party==='farm'?String(body.farmId||''):null;if(body.party==='farm'&&!farmId)throw Error('Selecione a fazenda deste usuário.');if(farmId){const current=await backend.repository.load(actor.companyId);if(!current.state.farms?.some(farm=>farm.id===farmId&&farm.active!==false))throw Error('Selecione uma fazenda ativa cadastrada.');}
-        const result=await backend.rpc('fleet_change_member',{p_company:actor.companyId,p_actor:actor.userId,p_target:body.userId,p_role:body.role,p_active:body.active,p_party:body.party||null,p_farm_id:farmId});
+         const party=body.party||null,farmIds=party==='farm'?(Array.isArray(body.farmIds)?[...new Set(body.farmIds.map(id=>String(id).trim()))]:[]):[],farmId=party==='farm'?(String(body.farmId||'').trim()||null):null;if(party==='farm'&&((farmId&&farmIds.length)||(!farmId&&farmIds.length<2)))throw Error('Selecione uma fazenda ou pelo menos duas fazendas.');if(party!=='farm'&&(farmId||farmIds.length))throw Error('Fazendas só podem ser vinculadas a perfil de funcionário da fazenda.');const chosenFarmIds=farmId?[farmId]:farmIds;if(chosenFarmIds.some(id=>!id||id.length>200))throw Error('Selecione fazendas válidas.');if(chosenFarmIds.length){const current=await backend.repository.load(actor.companyId);if(chosenFarmIds.some(id=>!current.state.farms?.some(farm=>farm.id===id&&farm.active!==false)))throw Error('Selecione somente fazendas ativas cadastradas.');}
+         const result=await backend.rpc('fleet_change_member',{p_company:actor.companyId,p_actor:actor.userId,p_target:body.userId,p_role:body.role,p_active:body.active,p_party:party,p_farm_id:farmId,p_farm_ids:farmIds});
         return corsResponse(backend.responseJson(result),request);
       }
       return corsResponse(backend.responseJson({error:'Método não permitido.'},405),request);

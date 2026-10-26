@@ -82,7 +82,7 @@ export function protectPortalBackup(current,restored){
 }
 export function presentState(current,actor){
  const user={id:actor.userId,email:actor.email||'',role:actor.role,party:partyOf(actor)};
- if(partyOf(actor)==='farm')return {revision:current.revision,company:current.company,user:{...user,farmId:actor.farmId||null},state:null,requests:[]};
+ if(partyOf(actor)==='farm')return {revision:current.revision,company:current.company,user:{...user,farmId:actor.farmId||null,farmIds:actor.farmIds?.length?actor.farmIds:actor.farmId?[actor.farmId]:[]},state:null,requests:[]};
  if(partyOf(actor)==='carrier'){
   const invoiceNumbers=new Map(current.state.closings.map((closing,index)=>[closing.id,closing.invoiceNumber||index+1]));
   const requests=(current.state.paymentRequests||[]).map(request=>({...structuredClone(request),invoiceNumber:invoiceNumbers.get(request.closingId)||null}));
