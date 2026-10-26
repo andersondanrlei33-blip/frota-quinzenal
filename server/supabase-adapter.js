@@ -2,6 +2,9 @@ import {CTE_BILLING_RATE_PER_TON} from './ctes.js';
 const responseJson=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch}){
   if(!url||!publicKey||!secretKey)throw Error('Configure o banco e a autenticação do servidor.');
+  const testProject=new URL(url).hostname==='slkxujlrqebzzwdoptla.supabase.co',testAccessEmail='andersondanrlei33@gmail.com';
+  const testAccessAllowed=email=>!testProject||String(email||'').trim().toLowerCase()===testAccessEmail;
+  const testAccessError=()=>Object.assign(Error('O ambiente de teste é exclusivo do administrador principal. Funcionários da fazenda devem acessar Produção.'),{status:403});
   const serviceHeaders={apikey:secretKey,...(secretKey.startsWith('ey')?{Authorization:'Bearer '+secretKey}:{}),'Content-Type':'application/json'};
   async function service(path,{method='GET',body,prefer}={}){
     const response=await fetchImpl(url+path,{method,headers:{...serviceHeaders,...(prefer?{Prefer:prefer}:{})},body:body===undefined?undefined:JSON.stringify(body)});
@@ -17,6 +20,7 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
   }
   async function actor(request){
     const profile=await user(request);if(!profile)return null;
+    if(!testAccessAllowed(profile.email))throw testAccessError();
     const requested=request.headers.get('X-Fleet-Company');
     const params=new URLSearchParams({select:'company_id,user_id,email,role,party,farm_id,active',user_id:'eq.'+profile.id,active:'eq.true',order:'created_at.asc'});
     if(requested){if(!/^[0-9a-f-]{36}$/i.test(requested))return {userId:profile.id};params.set('company_id','eq.'+requested);}
@@ -101,7 +105,7 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
   };
   repository.verifyReceipt=async(who,id,requestId)=>{const receipt=await receipts.find(who.companyId,id);if(!receipt||receipt.requestId!==requestId||receipt.uploadedBy!==who.userId)throw Error('Anexe um comprovante válido para esta solicitação.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do comprovante não está disponível. Anexe novamente.');return receipt;};
   repository.verifyFundingReceipt=async(who,id,transferId)=>{const receipt=await fundingReceipts.find(who.companyId,id);if(!receipt||receipt.transferId!==transferId||receipt.uploadedBy!==who.userId)throw Error('Anexe o recibo assinado da transportadora para esta transferência.');const check=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(receipt.objectKey),{method:'HEAD',headers:serviceHeaders});if(!check.ok)throw Error('O arquivo do recibo não está disponível. Anexe novamente.');return receipt;};
-  return {service,rpc,user,actor,repository,receipts,fundingReceipts,ctes,cteRequests,responseJson};
+  return {service,rpc,user,actor,testAccessAllowed,testAccessError,repository,receipts,fundingReceipts,ctes,cteRequests,responseJson};
 }
 export async function sha256(value){const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return [...new Uint8Array(hash)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
 export function randomTicket(){return [...crypto.getRandomValues(new Uint8Array(32))].map(byte=>byte.toString(16).padStart(2,'0')).join('');}

@@ -1,7 +1,7 @@
 import {createCloudClient} from './cloud-client.js?v=120';
-import {APP_ENVIRONMENT,CLOUD_CONFIG} from './config.js?v=182';
+import {APP_ENVIRONMENT,CLOUD_CONFIG,TEST_ACCESS_EMAIL} from './config.js?v=183';
 export const cloud=createCloudClient(CLOUD_CONFIG);
-export {APP_ENVIRONMENT};
+export {APP_ENVIRONMENT,TEST_ACCESS_EMAIL};
 export function authErrorMessage(error){
   const message=error?.message||'';
   if(/invalid login|invalid credentials/i.test(message))return 'E-mail ou senha inválidos.';

@@ -12,13 +12,14 @@ Deno.serve(async request=>{
     if(body.action==='inspect')return corsResponse(backend.responseJson(invitation),request);
     let profile;
     if(body.action==='register'){
-      const email=emailAddress(body.email);if(invitation.email&&invitation.email.toLowerCase()!==email)throw Error('Use o e-mail do convite.');
+      const email=emailAddress(body.email);if(!backend.testAccessAllowed(email))throw backend.testAccessError();if(invitation.email&&invitation.email.toLowerCase()!==email)throw Error('Use o e-mail do convite.');
       const password=passwordValue(body.password);
       if(invitation.firstAccess&&(!String(body.companyName||'').trim()||String(body.companyName).trim().length>120))throw Error('Informe o nome da empresa.');
       try{const created=await backend.service('/auth/v1/admin/users',{method:'POST',body:{email,password,email_confirm:true}});profile=created.user||created;}
       catch(error){if(['email_exists','user_already_exists'].includes(error.code)||/already.*(?:registered|exists)/i.test(error.message||''))return corsResponse(backend.responseJson({error:'Este e-mail já tem uma conta. Entre com a senha existente para aceitar o convite.',code:'ACCOUNT_EXISTS'},409),request);throw error;}
     }else if(body.action==='accept'){
       profile=await backend.user(request);if(!profile)return corsResponse(backend.responseJson({error:'Faça login para aceitar este convite.'},401),request);
+      if(!backend.testAccessAllowed(profile.email))throw backend.testAccessError();
       if(invitation.email&&invitation.email.toLowerCase()!==profile.email.toLowerCase())throw Error('Entre com o e-mail do convite.');
     }else throw Error('Ação inválida.');
     const result=await backend.rpc('fleet_accept_invitation',{p_hash:hash,p_user:profile.id,p_email:profile.email,p_company_name:invitation.firstAccess?String(body.companyName||'').trim():null});
