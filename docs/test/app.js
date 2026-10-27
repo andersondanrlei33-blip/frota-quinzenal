@@ -1,6 +1,6 @@
 import {isAmountDiscount,amountDiscountTotal,MODES,BODY_TYPES,PAYMENT_METHODS,normalizePaymentDetails,paymentDetailsMissing,initialState,validateState,validateTruck,validateDiscount,draft,period,periodLabel,dateLabel,days,overlaps,round,money,today,uid,csv,amountLabel,parseAmount,dateRangeError,validDate,periodClosings,farmClosing,openFarmIds,periodRows,closingPreview,saveClosing,reopenClosing,discountLocked,shiftDate,previewTransfer,undoTransferBlockReason,transferTruck,latestTruck,previewEndActivities,endActivities,applyFixedMonthlyRule,farmHasLinks,removeFarm,setFarmActive} from './engine.js?v=127';
 import {createReport,reportMarkup} from './reports.js?v=158';
-import {cloud,authErrorMessage,APP_ENVIRONMENT,TEST_ACCESS_EMAIL} from './cloud-ui.js?v=130';
+import {cloud,authErrorMessage,APP_ENVIRONMENT,TEST_ACCESS_EMAIL} from './cloud-ui.js?v=129';
 
 let state=initialState(),loadError='',currentUser=null,currentCompany=null,serverRevision=0,saving=false,stale=false,inviteInfo=null,inviteSignin=false;
 let teamMembers=[],teamSelectedFarmId='',farmEditSnapshots=new Map();
@@ -889,7 +889,7 @@ document.addEventListener('click',async ev=>{
     else if(a==='cte-filter-reset'){delete cteColumnFilters[cteFilterFieldOpen];closeCteFilter();render();}
     else if(a==='cte-filter-apply'){if(cteFilterDraft.length===cteFilterOptions.length)delete cteColumnFilters[cteFilterFieldOpen];else cteColumnFilters[cteFilterFieldOpen]=[...cteFilterDraft];closeCteFilter();render();}
     else if(a==='cte-upload-request')cteUploadForm(id);
-    else if(a==='cte-reject-request'){const item=cteRequests.find(request=>request.id===id&&request.status==='issued'&&request.documentId);if(!isFarmEmployee()||currentUser?.role==='viewer'||!item)throw Error('Somente um funcionário autorizado pode recusar um CT-e recebido.');openModal('Recusar CT-e recebido',`${item.farmName} · ${item.plate} · CT-e ${cteDocuments.find(doc=>doc.id===item.documentId)?.number||'recebido'}`,`<form id="cte-reject-form" data-request-id="${e(item.id)}" class="form-content">${errBox()}<div class="field"><label for="cte-reject-reason">Motivo da recusa *</label><textarea id="cte-reject-reason" name="reason" rows="3" maxlength="500" minlength="3" required placeholder="Explique o erro encontrado para a transportadora."></textarea><small>Informe entre 3 e 500 caracteres.</small></div><div class="notice warn"><span>Esta recusa registra a divergência no Rota Safra e avisa a transportadora. Ela <strong>não cancela o CT-e fiscal na SEFAZ nem altera uma fatura</strong>; combine a correção fiscal com a transportadora.</span></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Voltar</button><button class="btn danger" type="submit">Confirmar recusa</button></div></form>`,{wide:true});}
+    else if(a==='cte-reject-request'){const item=cteRequests.find(request=>request.id===id&&request.status==='issued'&&request.documentId);if(!isFarmEmployee()||currentUser?.role==='viewer'||!item)throw Error('Somente um funcionário autorizado pode recusar um CT-e recebido.');openModal('Recusar CT-e recebido',`${item.farmName} · ${item.plate} · CT-e ${cteDocuments.find(doc=>doc.id===item.documentId)?.number||'recebido'}`,`<form id="cte-reject-form" data-request-id="${e(item.id)}" class="form-content">${errBox()}<div class="field"><label for="cte-reject-reason">Motivo da recusa *</label><textarea id="cte-reject-reason" name="reason" rows="3" maxlength="500" minlength="3" required placeholder="Explique o erro encontrado para a transportadora."></textarea><small>Informe entre 3 e 500 caracteres.</small></div><div class="notice warn"><span>Esta recusa registra a divergência no Rota Safra e avisa a transportadora. Ela <strong>não cancela o CT-e fiscal na SEFAZ nem altera uma fatura</strong>; combine a correção fiscal com a transportadora.</span></div><div class="form-actions"><button class="btn" type="button" data-action="close-modal">Voltar</button><button class="btn danger" type="submit">Confirmar recusa</button></div></form>`,{wide:true});}
     else if(a==='cte-cancel-request'){const item=cteRequests.find(request=>request.id===id&&request.status==='pending');if(!item)throw Error('Esta solicitação não está mais pendente.');confirmation('Cancelar solicitação de CT-e?',`Pedido da ${item.farmName}, placa ${item.plate}. O pedido ficará no histórico e a NF-e poderá ser solicitada novamente pela fazenda correta.`,'cte-confirm-cancel-request',id);}
     else if(a==='cte-confirm-cancel-request'){await cloud.cancelCteRequest(id);modal.close();await loadCteData();notify('Solicitação de CT-e cancelada.');}
     else if(a==='cte-billing-open')openCteBillingPayment(b.dataset.farmId||'');
@@ -993,6 +993,7 @@ document.addEventListener('submit',async ev=>{
     try{if(reason.length<3||reason.length>500)throw Error('Informe o motivo da recusa, com 3 a 500 caracteres.');await cloud.rejectCteRequest(requestId,reason);farmCteTab='rejected';cteFarmRequestSearch='';cteFarmRequestPage=1;modal.close();await loadCteData();notify('CT-e recusado e motivo enviado à transportadora.');}
     catch(error){formError(f,authErrorMessage(error));button.disabled=false;}return;
   }
+
   if(f.id==='access-form'){
     ev.preventDefault();const values=new FormData(f),button=f.querySelector('[type="submit"]');button.disabled=true;
     try{
@@ -1321,4 +1322,4 @@ function requestAccountDetail(key){
 
 
 
-
+
