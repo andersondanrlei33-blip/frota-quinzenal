@@ -1,5 +1,5 @@
-import {createCloudClient} from './cloud-client.js?v=121';
-import {APP_ENVIRONMENT,CLOUD_CONFIG,TEST_ACCESS_EMAIL} from './config.js?v=190';
+import {createCloudClient} from './cloud-client.js?v=123';
+import {APP_ENVIRONMENT,CLOUD_CONFIG,TEST_ACCESS_EMAIL} from './config.js?v=191';
 export const cloud=createCloudClient(CLOUD_CONFIG);
 export {APP_ENVIRONMENT,TEST_ACCESS_EMAIL};
 export function authErrorMessage(error){
@@ -9,5 +9,6 @@ export function authErrorMessage(error){
   if(error instanceof TypeError)return 'Não foi possível conectar ao servidor. Confira a internet e tente novamente.';
   return message||'Não foi possível concluir a solicitação.';
 }
+
 
 
