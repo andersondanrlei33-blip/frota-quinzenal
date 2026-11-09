@@ -33,6 +33,22 @@ async function boot(role='admin',activation=false,storage=null,party='group',tea
   const action=async(name,id='',extra={})=>emit('click',{target:{closest:()=>({disabled:false,dataset:{action:name,id,...extra}})}});
   return {get,submit,action,input:target=>emit('input',{target}),change:target=>emit('change',{target}),keydown:(target,key)=>emit('keydown',{target,key,preventDefault(){}}),calls,run:source=>vm.runInContext(source,sandbox),state:()=>structuredClone(stored),account:(party,role='operator')=>{account={party,role};},poll:async()=>{for(const fn of intervals)await fn();},printCount:()=>printCount,mutateState:fn=>{const state=structuredClone(stored.state);fn(state);stored={...stored,state,revision:stored.revision+1};}};
 }
+for(const [environment,source] of [['Produção',code],['Teste',testCode]])test('truck details adjust the agreed monthly value in '+environment,async()=>{
+ const app=await boot('admin',false,null,'group',[],source);
+ assert.equal(await app.submit('access-form',{email:'andersondanrlei33@gmail.com',password:'a-long-test-password'}),'');
+ app.mutateState(state=>{state.trucks=[{id:'monthly-truck',plate:'ABC1D23',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:38000,start:'2027-01-05',end:''}];});
+ await app.poll();await app.action('truck-history','monthly-truck');
+ assert.match(app.get('#modal-content').innerHTML,/data-action="adjust-truck-monthly"[^>]*>Ajustar valor combinado/);
+ await app.action('adjust-truck-monthly','monthly-truck');
+ const form=app.get('#modal-content').innerHTML;assert.match(form,/Valor mensal atual/);assert.match(form,/38\.000,00/);assert.match(form,/Faturas já fechadas ou pagas mantêm os valores registrados/);
+ assert.equal(await app.submit('truck-monthly-form',{monthly:'40.000,00'},{id:'monthly-truck'}),'');
+ assert.equal(app.state().state.trucks[0].monthly,40000);assert.equal(app.state().state.trucks[0].start,'2027-01-05');
+ assert.match(app.get('#modal-content').innerHTML,/Detalhes · ABC1D23/);assert.match(app.get('#modal-content').innerHTML,/40\.000,00/);
+ const saved=structuredClone(app.state());
+ await app.action('adjust-truck-monthly','monthly-truck');assert.match(await app.submit('truck-monthly-form',{monthly:'0'},{id:'monthly-truck'}),/valor mensal/);assert.deepEqual(app.state(),saved);
+ app.run("currentUser.role='viewer'");assert.throws(()=>app.run("adjustTruckMonthlyForm('monthly-truck')"),/Somente a equipe do grupo/);
+});
+
 test('farm tonnage billing closes by month and lets the farm select CT-es with one shared proof',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   app.run("currentUser={party:'farm',role:'operator',farmId:'farm1'};cteFarms=[{id:'farm1',name:'Fazenda 1'}];cteDocuments=[{id:'cte-paid',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-1',plate:'ABC1D23',driver:'Motorista A',issuedOn:'2026-10-08',billableTons:44.222,billingRate:2.7,billingAmount:119.4,paymentReceipt:{paidAt:'2026-10-10T12:00:00.000Z',name:'pix.pdf'}},{id:'cte-open',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-2',plate:'DEF4G56',driver:'Motorista B',issuedOn:'2026-10-09',billableTons:10,billingRate:2.7,billingAmount:27,paymentReceipt:null},{id:'cte-september',farmId:'farm1',farmName:'Fazenda 1',number:'CTE-3',plate:'GHI7J89',driver:'Motorista C',issuedOn:'2026-09-20',billableTons:100,billingRate:2.7,billingAmount:270,paymentReceipt:null}];cteBillingMonth='';main.innerHTML=cteBillingView()");
@@ -262,7 +278,7 @@ test('truck details can undo an unused transfer after confirmation',async()=>{
 test('movement history opens transfer details from its origin truck period',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'aB3!xY'}),'');
   app.mutateState(state=>{state.trucks=[{id:'origin-period',plate:'BCP5583',driver:'Motorista',carrier:'Transportadora',farmId:'farm1',bodyType:'Graneleiro',axles:9,monthly:40000,start:'2026-10-01',end:''}];transferTruck(state,'origin-period','farm2','2026-10-20','','destination-period');});
-  await app.poll();app.run("location.hash='#movements';render()");const markup=app.get('#main').innerHTML;
+  await app.poll();app.run("currentMonth='2026-10';currentHalf=2;location.hash='#movements';render()");const markup=app.get('#main').innerHTML;
   assert.match(markup,/data-action="truck-history" data-id="origin-period">Ver \/ estornar/);
   await app.action('truck-history','origin-period');assert.match(app.get('#modal-content').innerHTML,/Desfazer transferência/);assert.match(app.get('#modal-content').innerHTML,/BCP5583/);
 });

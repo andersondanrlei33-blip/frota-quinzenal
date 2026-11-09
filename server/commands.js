@@ -14,6 +14,17 @@ export function executeCommand(input,command,actor,context={}){
   authorizePortalCommand(command,actor);
   const state=validateState(input),p=command.payload;
   switch(command.type){
+    case 'truck.monthly.adjust':{
+      if((actor.party||'group')!=='group')throw Error('Somente a equipe do grupo pode ajustar o valor combinado.');
+      const truck=requireRecord(state.trucks,text(p.id,100),'Caminhão');
+      if(truck.transferOut)throw Error('Ajuste o valor combinado no período atual da placa.');
+      if(!Number.isFinite(p.monthly)||p.monthly<=0||p.monthly>10000000)throw Error('Informe um valor mensal maior que zero, até R$ 10.000.000,00.');
+      const monthly=Math.round(p.monthly*100)/100;
+      if(monthly<=0)throw Error('Informe um valor mensal de pelo menos R$ 0,01.');
+      if(monthly===truck.monthly)throw Error('Informe um valor diferente do valor mensal atual.');
+      const adjusted={...truck,monthly};validateTruck(adjusted,state);
+      Object.assign(truck,adjusted);break;
+    }
     case 'truck.save':{
       const id=p.id||uid(),prior=state.trucks.find(item=>item.id===id),farmId=text(p.farmId),paymentAccountId=text(p.paymentAccountId||'',100),account=paymentAccountId?requireRecord(state.paymentAccounts,paymentAccountId,'Conta de pagamento'):null;
       if(prior&&prior.start!==p.start){

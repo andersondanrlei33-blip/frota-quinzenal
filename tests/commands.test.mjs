@@ -1,9 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {initialState,period,saveClosing,validateState,transferTruck} from '../server/engine.js';
+import {initialState,period,saveClosing,closingPreview,validateState,transferTruck} from '../server/engine.js';
 import {executeCommand} from '../server/commands.js';
 const actor={userId:'admin-test',role:'admin'};
 const truck={id:'a',plate:'ABC1D23',driver:'Motorista',carrier:'Transportador',farmId:'farm1',bodyType:'Caçamba',axles:9,monthly:30000,start:'2026-10-01',end:'',paymentDetails:{method:'pix',holder:'Motorista',document:'12345678901',pixKey:'motorista@example.com'}};
+
+test('monthly adjustment updates open calculations and preserves saved invoices and payment details',()=>{
+ const state=initialState();state.trucks=[structuredClone(truck)];
+ const closing=saveClosing(state,period('2026-10',1),'farm1','closed','2026-10-15');closing.rows[0].paid={date:'2026-10-15',note:'Pagamento original'};
+ const before=structuredClone(state);
+ const result=executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'a',monthly:42000,start:'2020-01-01',paymentDetails:null}},actor);
+ assert.equal(result.state.trucks[0].monthly,42000);
+ assert.deepEqual({...result.state.trucks[0],monthly:30000},before.trucks[0]);
+ assert.deepEqual(result.state.closings,before.closings);
+ assert.equal(closingPreview(result.state,period('2026-11',1)).rows[0].gross,21000);
+ assert.equal(result.audit.action,'truck.monthly.adjust');assert.deepEqual(state,before);
+});
+
+test('monthly adjustment validates amounts and refuses historical transfer periods',()=>{
+ const state=initialState();state.trucks=[structuredClone(truck)];
+ for(const monthly of [0,-1,NaN,Infinity,10000001,'42000',0.001])assert.throws(()=>executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'a',monthly}},actor),/valor mensal/);
+ assert.throws(()=>executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'a',monthly:30000}},actor),/diferente/);
+ assert.throws(()=>executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'missing',monthly:42000}},actor),/não encontrado/);
+ assert.equal(executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'a',monthly:42000.555}},actor).state.trucks[0].monthly,42000.56);
+ transferTruck(state,'a','farm2','2026-10-20','','destination');
+ assert.throws(()=>executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'a',monthly:42000}},actor),/período atual/);
+ const next=executeCommand(state,{type:'truck.monthly.adjust',payload:{id:'destination',monthly:42000}},actor).state;
+ assert.equal(next.trucks.find(t=>t.id==='a').monthly,30000);assert.equal(next.trucks.find(t=>t.id==='destination').monthly,42000);
+});
+
+test('monthly adjustment only permits group administrators and operators',()=>{
+ const state=initialState();state.trucks=[structuredClone(truck)];const command={type:'truck.monthly.adjust',payload:{id:'a',monthly:42000}};
+ for(const role of ['admin','operator'])assert.equal(executeCommand(state,command,{userId:'group',role,party:'group'}).state.trucks[0].monthly,42000);
+ for(const party of ['carrier','farm'])assert.throws(()=>executeCommand(state,command,{userId:'external',role:'operator',party}));
+ assert.throws(()=>executeCommand(state,command,{userId:'viewer',role:'viewer',party:'group'}),/permissão/);
+});
 test('farm registry saves profile and contact phone without changing a legacy contact email, and migrates legacy CPF values',()=>{
  const initial=initialState();initial.farms[0].contactEmail='legacy@example.test';
  const result=executeCommand(initial,{type:'farms.save',payload:{farms:[{id:'farm1',name:'Fazenda 1',legalName:'João da Silva',cpf:'330.803.640-15',stateRegistration:'123456',address:'Rodovia MT-000, km 10',contactName:'Ana',contactPhone:'(65) 99999-0000'},...initial.farms.slice(1)]}},actor).state;
