@@ -42,6 +42,7 @@ export function createReceiptApi({backend}){
    const saved=await (funding?backend.fundingReceipts:backend.receipts).upload(actor,requestId,bytes,details);return backend.responseJson(saved);
   }
   if(request.method==='GET'){
+   if(!['group','carrier'].includes(partyOf(actor)))return backend.responseJson({error:'Este acesso não pode consultar comprovantes financeiros.'},403);
    const id=path.split('/').at(-1);if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Comprovante inválido.');
    const current=await backend.repository.load(actor.companyId),receipt=await backend.receipts.find(actor.companyId,id);
    if(receipt&&receiptBelongsToHistory(current.state,receipt.requestId,id))return backend.responseJson({name:receipt.name,signedUrl:await backend.receipts.sign(receipt),expiresIn:60});

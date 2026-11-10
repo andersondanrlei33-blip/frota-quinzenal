@@ -201,6 +201,46 @@ test('CT-e report offers all manifested invoice numbers in one customizable colu
   assert.match(app.get('#main').innerHTML,/NOTAS FISCAIS MANIFESTADAS/);assert.match(app.get('#main').innerHTML,/857, 858/);
   app.run('ctePreferencesForm()');assert.match(app.get('#modal-content').innerHTML,/Notas fiscais manifestadas/);assert.match(app.get('#modal-content').innerHTML,/data-cte-pref-column="manifestedNotes"/);
 });
+test('invoice history renders a saved farm name as literal text',async()=>{
+ const app=await boot();
+ app.run(`state=initialState();currentMonth='2026-11';currentHalf=1;state.farms[0].name='<span data-dummy="literal">Dummy Farm</span>';state.trucks=[{id:'dummy-truck',plate:'AAA1A00',driver:'Dummy Driver',carrier:'Dummy Carrier',farmId:state.farms[0].id,bodyType:'Caçamba',axles:6,monthly:3000,start:'2026-11-01',end:''}];saveClosing(state,period('2026-11',1),'','dummy-closing','2026-11-09');main.innerHTML=historyMarkup()`);
+ assert.match(app.get('#main').innerHTML,/&lt;span data-dummy=&quot;literal&quot;&gt;Dummy Farm&lt;\/span&gt;/);
+ assert.doesNotMatch(app.get('#main').innerHTML,/<span data-dummy=/);
+});
+
+test('session invalidation clears private caches, selections, drafts and dialogs',async()=>{
+ const app=await boot();
+ app.run("currentUser={id:'dummy-a',party:'group',role:'admin'};currentCompany={id:'dummy-company'};cteDocuments=[{id:'dummy-private-a'}];cteRequests=[{id:'dummy-request-a'}];cteTrucks=[{id:'dummy-truck'}];cteFarms=[{id:'dummy-farm'}];billingInvoices=[{id:'dummy-invoice'}];teamMembers=[{id:'dummy-team'}];selectedBillingCteIds.add('dummy-document');selectedPaymentRequests.add('dummy-payment');modalStack=[{html:'dummy-private-stack'}];pendingBackup={dummy:'private'};modalContent.innerHTML='dummy-private-modal';modal.showModal();document.querySelector('#report-preview').innerHTML='dummy-private-report'");
+ await app.action('forget-session');
+ assert.equal(app.run('currentUser'),null);assert.equal(app.run('currentCompany'),null);
+ assert.equal(app.run('cteDocuments.length+cteRequests.length+cteTrucks.length+cteFarms.length+billingInvoices.length+teamMembers.length+modalStack.length+selectedBillingCteIds.size+selectedPaymentRequests.size'),0);
+ assert.equal(app.run('pendingBackup'),null);assert.equal(app.get('#modal').open,false);assert.equal(app.get('#modal-content').innerHTML,'');
+ assert.doesNotMatch(app.get('#main').innerHTML,/dummy-private/);
+});
+
+test('an old fiscal completion cannot repaint the next account or clear its busy flag',async()=>{
+ const app=await boot();
+ app.run("currentUser={id:'dummy-a',party:'farm',role:'operator'};let finishDummyFiscal;cloud.ctes=()=>new Promise(resolve=>{finishDummyFiscal=resolve;});const dummyFiscal=loadCteData()");
+ await app.action('forget-session');
+ app.run("currentUser={id:'dummy-b',party:'farm',role:'operator'};main.innerHTML='dummy-b-screen';cteLoading=true;finishDummyFiscal({documents:[{id:'dummy-private-a'}],requests:[]})");
+ await app.run('dummyFiscal');
+ assert.equal(app.run('cteDocuments.length'),0);assert.equal(app.run('cteLoading'),true);assert.equal(app.get('#main').innerHTML,'dummy-b-screen');
+});
+
+test('a private link returned after leaving cannot reopen its dialog',async()=>{
+ const app=await boot();
+ app.run("currentUser={id:'dummy-a',party:'group',role:'admin'};let finishDummyLink;cloud.receiptLink=()=>new Promise(resolve=>{finishDummyLink=resolve;});const dummyLink=showReceipt('dummy-receipt')");
+ const rejected=assert.rejects(app.run('dummyLink'),error=>error.code==='UI_CONTEXT_CHANGED');
+ await app.action('forget-session');app.run("finishDummyLink({name:'dummy-private-a.pdf',signedUrl:'https://example.test/dummy'})");await rejected;
+ assert.equal(app.get('#modal').open,false);assert.equal(app.get('#modal-content').innerHTML,'');
+});
+
+test('a changed role or farm scope clears private data within the same session',async()=>{
+ const app=await boot();
+ app.run("currentUser={id:'dummy-user',party:'group',role:'admin'};currentCompany={id:'dummy-company'};cteDocuments=[{id:'dummy-private-a'}];adoptServerData({user:{id:'dummy-user',party:'farm',role:'operator',farmIds:['dummy-farm-b']},company:{id:'dummy-company'},state:null,revision:1})");
+ assert.equal(app.run('cteDocuments.length'),0);assert.equal(app.run('currentUser.party'),'farm');assert.equal(app.run('currentUser.farmIds[0]'),'dummy-farm-b');
+});
+
 test('CT-e report shows the cargo weight and adds it to existing saved preferences',async()=>{
   const app=await boot();assert.equal(await app.submit('access-form',{email:'user@example.test',password:'a-long-test-password'}),'');
   const saved=JSON.stringify({visibleColumns:['number','plate'],columnOrder:['number','plate']});
