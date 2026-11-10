@@ -6,8 +6,8 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
   const testAccessAllowed=email=>!testProject||String(email||'').trim().toLowerCase()===testAccessEmail;
   const testAccessError=()=>Object.assign(Error('O ambiente de teste é exclusivo do administrador principal. Funcionários da fazenda devem acessar Produção.'),{status:403});
   const serviceHeaders={apikey:secretKey,...(secretKey.startsWith('ey')?{Authorization:'Bearer '+secretKey}:{}),'Content-Type':'application/json'};
-  async function service(path,{method='GET',body,prefer}={}){
-    const response=await fetchImpl(url+path,{method,headers:{...serviceHeaders,...(prefer?{Prefer:prefer}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  async function service(path,{method='GET',body,prefer,signal}={}){
+    const response=await fetchImpl(url+path,{method,headers:{...serviceHeaders,...(prefer?{Prefer:prefer}:{})},body:body===undefined?undefined:JSON.stringify(body),signal});
     const raw=await response.text();let data;try{data=raw?JSON.parse(raw):null;}catch{data=null;}
     if(!response.ok){const error=Error(data?.message||data?.msg||'Não foi possível acessar o banco.');error.code=data?.code||data?.error_code;error.status=response.status;throw error;}
     return data;
@@ -40,6 +40,38 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     async commit(companyId,revision,state,audit){const result=await rpc('fleet_commit_state',{p_company:companyId,p_actor:audit.actorId,p_expected:revision,p_state:state,p_action:audit.action});return result?.conflict?null:result;}
   };
   const bucket='fleet-receipts',objectPath=key=>key.split('/').map(encodeURIComponent).join('/');
+  async function rejectDuplicateLegacyCte(companyId,bytes){
+    const unavailable=()=>Object.assign(Error('Não foi possível conferir os CT-es antigos desta empresa. Tente novamente ou peça apoio ao administrador.'),{status:503});
+    const maxCandidates=Math.min(16,Math.max(1,Math.floor(64*1024*1024/bytes.byteLength)));
+    const query=new URLSearchParams({company_id:'eq.'+companyId,content_sha256:'is.null',size_bytes:'eq.'+bytes.byteLength,select:'object_key',limit:String(maxCandidates+1)});
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+    try{
+      let candidates;
+      try{candidates=await service('/rest/v1/fleet_cte_documents?'+query,{signal:controller.signal});}catch{throw unavailable();}
+      if(!Array.isArray(candidates))throw unavailable();
+      if(candidates.length>maxCandidates)throw Object.assign(Error('Há CT-es antigos demais para conferir neste envio. Peça ao administrador para reconciliar os documentos antigos.'),{status:409});
+      for(const candidate of candidates){
+        if(typeof candidate.object_key!=='string'||!candidate.object_key.startsWith(companyId+'/ctes/'))throw unavailable();
+        let response;
+        try{response=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(candidate.object_key),{method:'GET',headers:serviceHeaders,signal:controller.signal});}catch{throw unavailable();}
+        if(!response.ok||!response.body)throw unavailable();
+        let reader;
+        try{reader=response.body.getReader();}catch{throw unavailable();}
+        let offset=0,same=true;
+        try{
+          while(true){
+            const {value,done}=await reader.read();if(done)break;
+            if(!(value instanceof Uint8Array)||value.byteLength>bytes.byteLength-offset)throw unavailable();
+            for(let index=0;index<value.byteLength;index++)if(value[index]!==bytes[offset+index]){same=false;break;}
+            offset+=value.byteLength;
+            if(!same){await reader.cancel().catch(()=>{});break;}
+          }
+        }catch{throw unavailable();}finally{reader.releaseLock();}
+        if(same&&offset!==bytes.byteLength)throw unavailable();
+        if(same)throw Object.assign(Error('Este CT-e já foi enviado para esta empresa. Confira o número e o arquivo.'),{status:409});
+      }
+    }finally{clearTimeout(timer);}
+  }
   const mapReceipt=r=>r?{id:r.id,companyId:r.company_id,requestId:r.request_id,uploadedBy:r.uploaded_by,name:r.file_name,mime:r.content_type,size:r.size_bytes,objectKey:r.object_key}:null;
   const receipts={
     async find(companyId,id){if(!/^[0-9a-f-]{36}$/i.test(id||''))return null;const rows=await service('/rest/v1/fleet_receipts?'+new URLSearchParams({id:'eq.'+id,company_id:'eq.'+companyId,select:'*'}));return mapReceipt(rows?.[0]);},
@@ -92,6 +124,7 @@ export function createSupabaseBackend({url,publicKey,secretKey,fetchImpl=fetch})
     async saveWeight(companyId,id,weight,unit){const tons=billableTons(weight,unit);await service('/rest/v1/fleet_cte_documents?'+new URLSearchParams({id:'eq.'+id,company_id:'eq.'+companyId}),{method:'PATCH',prefer:'return=minimal',body:{cargo_weight:weight,cargo_weight_unit:unit,billable_tons:tons,billing_rate:CTE_BILLING_RATE_PER_TON,billing_amount:tons==null?null:Number((tons*CTE_BILLING_RATE_PER_TON).toFixed(2)),cargo_weight_checked:true}});},
     async upload(who,metadata,bytes,details,snapshot){
       const id=crypto.randomUUID(),key=who.companyId+'/ctes/'+id+'/cte.'+details.extension,contentHash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(byte=>byte.toString(16).padStart(2,'0')).join('');
+      await rejectDuplicateLegacyCte(who.companyId,bytes);
       const response=await fetchImpl(url+'/storage/v1/object/'+bucket+'/'+objectPath(key),{method:'POST',headers:{...serviceHeaders,'Content-Type':details.mime,'x-upsert':'false','Cache-Control':'no-store'},body:bytes});
       if(!response.ok)throw Error('Não foi possível guardar o CT-e. Tente novamente.');
       try{await service('/rest/v1/fleet_cte_documents',{method:'POST',body:{id,company_id:who.companyId,farm_id:metadata.farmId,farm_name:snapshot.farmName,truck_id:metadata.truckId,plate:snapshot.plate,driver:snapshot.driver,cte_number:metadata.number||null,content_sha256:contentHash,issuer:metadata.issuer,recipient:metadata.recipient,shipper:metadata.shipper,service_taker:metadata.serviceTaker,participant_details:metadata.participantDetails||{},manifested_notes:metadata.manifestedNotes||[],total_value:metadata.totalValue,issued_on:metadata.issuedOn,cargo_weight:metadata.cargoWeight??null,cargo_weight_unit:metadata.cargoWeightUnit||null,billable_tons:metadata.billableTons??null,billing_rate:metadata.billingRate||CTE_BILLING_RATE_PER_TON,billing_amount:metadata.billingAmount??null,cargo_weight_checked:true,uploaded_by:who.userId,request_id:metadata.requestId||null,object_key:key,file_name:details.name,content_type:details.mime,size_bytes:details.size}});if(metadata.requestId)await cteRequests.markIssued(who.companyId,metadata.requestId,id);}

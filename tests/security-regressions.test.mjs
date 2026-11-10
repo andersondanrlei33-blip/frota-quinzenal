@@ -122,6 +122,7 @@ test('PDF reconstruction preserves row tolerance and horizontal ordering with bo
 test('the backend computes the document digest from bytes and preserves the first upload on a duplicate',async()=>{
  const rows=[],removed=[],hashes=new Set(),company='11111111-1111-4111-8111-111111111111';
  const backend=createSupabaseBackend({url:connection.url,publicKey:'dummy-public',secretKey:'dummy-server',fetchImpl:async(url,options)=>{
+  if(url.includes('/rest/v1/fleet_cte_documents?'))return Response.json([]);
   if(url.endsWith('/rest/v1/fleet_cte_documents')){
    const row=JSON.parse(options.body);if(hashes.has(row.content_sha256))return Response.json({code:'23505',message:'dummy duplicate'},{status:409});
    hashes.add(row.content_sha256);rows.push(row);return Response.json({});
@@ -136,6 +137,61 @@ test('the backend computes the document digest from bytes and preserves the firs
  await assert.rejects(backend.ctes.upload(actor,metadata,bytes,details,snapshot),/já foi enviado/);
  assert.equal(rows.length,1);assert.match(rows[0].content_sha256,/^[a-f0-9]{64}$/);assert.notEqual(rows[0].content_sha256,metadata.content_sha256);
  assert.equal(removed.length,1);assert.notEqual(removed[0],rows[0].object_key);
+});
+
+test('legacy CT-e bytes are checked before upload and an identical file is rejected',async()=>{
+ const company='11111111-1111-4111-8111-111111111111',bytes=new TextEncoder().encode('%PDF-legacy-document'),key=company+'/ctes/legacy/cte.pdf';
+ let storageWrites=0,documentWrites=0;
+ const backend=createSupabaseBackend({url:connection.url,publicKey:'dummy-public',secretKey:'dummy-server',fetchImpl:async(url,options)=>{
+  if(url.includes('/rest/v1/fleet_cte_documents?')){
+   const query=new URL(url).searchParams;
+   assert.equal(query.get('company_id'),'eq.'+company);
+   assert.equal(query.get('content_sha256'),'is.null');
+   assert.equal(query.get('size_bytes'),'eq.'+bytes.length);
+   return Response.json([{object_key:key}]);
+  }
+  if(url.includes('/storage/v1/object/')&&options.method==='GET')return new Response(new ReadableStream({start(controller){controller.enqueue(bytes.subarray(0,5));controller.enqueue(bytes.subarray(5));controller.close();}}));
+  if(url.includes('/storage/v1/object/')&&options.method==='POST'){storageWrites++;return Response.json({});}
+  if(url.endsWith('/rest/v1/fleet_cte_documents')&&options.method==='POST'){documentWrites++;return Response.json({});}
+  throw Error('Unexpected transport');
+ }});
+ const actor={userId:'22222222-2222-4222-8222-222222222222',companyId:company},metadata={number:'',farmId:'farm-one',truckId:'truck-one',issuedOn:'2026-11-01'},details={name:'same.pdf',extension:'pdf',mime:'application/pdf',size:bytes.length},snapshot={plate:'AAA1A00',driver:'Dummy Driver',farmName:'Farm one'};
+ await assert.rejects(backend.ctes.upload(actor,metadata,bytes,details,snapshot),error=>error.status===409&&/já foi enviado/.test(error.message));
+ assert.equal(storageWrites,0);assert.equal(documentWrites,0);
+});
+
+test('too many legacy candidates stop an upload before reading storage or writing a document',async()=>{
+ const company='11111111-1111-4111-8111-111111111111',bytes=new TextEncoder().encode('%PDF-new-document');let storageCalls=0,documentWrites=0;
+ const backend=createSupabaseBackend({url:connection.url,publicKey:'dummy-public',secretKey:'dummy-server',fetchImpl:async(url,options)=>{
+  if(url.includes('/rest/v1/fleet_cte_documents?')){
+   const limit=Number(new URL(url).searchParams.get('limit'));
+   return Response.json(Array.from({length:limit},(_,index)=>({object_key:company+'/ctes/legacy-'+index+'/cte.pdf'})));
+  }
+  if(url.includes('/storage/v1/object/')){storageCalls++;return Response.json({});}
+  if(url.endsWith('/rest/v1/fleet_cte_documents')&&options.method==='POST'){documentWrites++;return Response.json({});}
+  throw Error('Unexpected transport');
+ }});
+ await assert.rejects(backend.ctes.upload({userId:'dummy-user',companyId:company},{number:'',farmId:'farm-one',truckId:'truck-one',issuedOn:'2026-11-01'},bytes,{name:'new.pdf',extension:'pdf',mime:'application/pdf',size:bytes.length},{plate:'AAA1A00',driver:'Dummy Driver',farmName:'Farm one'}),error=>error.status===409);
+ assert.equal(storageCalls,0);assert.equal(documentWrites,0);
+});
+
+test('a different same-size legacy CT-e permits upload, but an unreadable legacy file blocks it',async()=>{
+ const company='11111111-1111-4111-8111-111111111111',bytes=new TextEncoder().encode('%PDF-new-document'),legacy=new TextEncoder().encode('%PDF-old-document'),key=company+'/ctes/legacy/cte.pdf';
+ assert.equal(bytes.length,legacy.length);
+ const actor={userId:'22222222-2222-4222-8222-222222222222',companyId:company},metadata={number:'',farmId:'farm-one',truckId:'truck-one',issuedOn:'2026-11-01'},details={name:'new.pdf',extension:'pdf',mime:'application/pdf',size:bytes.length},snapshot={plate:'AAA1A00',driver:'Dummy Driver',farmName:'Farm one'};
+ for(const readable of [true,false]){
+  let storageWrites=0,documentWrites=0;
+  const backend=createSupabaseBackend({url:connection.url,publicKey:'dummy-public',secretKey:'dummy-server',fetchImpl:async(url,options)=>{
+   if(url.includes('/rest/v1/fleet_cte_documents?'))return Response.json([{object_key:key}]);
+   if(url.includes('/storage/v1/object/')&&options.method==='GET')return readable?new Response(legacy):Response.json({error:'missing'},{status:404});
+   if(url.includes('/storage/v1/object/')&&options.method==='POST'){storageWrites++;return Response.json({});}
+   if(url.endsWith('/rest/v1/fleet_cte_documents')&&options.method==='POST'){documentWrites++;return Response.json({});}
+   throw Error('Unexpected transport');
+  }});
+  if(readable)await backend.ctes.upload(actor,metadata,bytes,details,snapshot);
+  else await assert.rejects(backend.ctes.upload(actor,metadata,bytes,details,snapshot),error=>error.status===503);
+  assert.equal(storageWrites,readable?1:0);assert.equal(documentWrites,readable?1:0);
+ }
 });
 
 test('legacy derived zero with no source weight cannot reach the billing RPC',async()=>{
