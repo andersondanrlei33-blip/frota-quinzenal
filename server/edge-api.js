@@ -2,6 +2,7 @@ import {createFleetApi} from './api.js';
 import {createReceiptApi} from './receipts.js';
 import {createCteApi} from './ctes.js';
 import {createSupabaseBackend,corsResponse,emailAddress,randomTicket,sha256} from './supabase-adapter.js';
+import {readLimitedJson} from './request-body.js';
 const envKey=(modern,legacy)=>{try{const key=JSON.parse(Deno.env.get(modern)||'{}').default;if(key)return key;}catch{}return Deno.env.get(legacy);};
 const backend=createSupabaseBackend({url:Deno.env.get('SUPABASE_URL'),publicKey:envKey('SUPABASE_PUBLISHABLE_KEYS','SUPABASE_ANON_KEY'),secretKey:envKey('SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY')});
 const dataApi=createFleetApi({repository:backend.repository,authenticate:backend.actor});
@@ -50,12 +51,13 @@ Deno.serve(async request=>{
         return corsResponse(backend.responseJson({members}),request);
       }
       if(request.method==='POST'){
-        const text=await request.text();if(text.length>4000)throw Error('Pedido muito grande.');const body=JSON.parse(text);
+        const body=await readLimitedJson(request);
         if(path.endsWith('/api/team/invite')){
            const email=emailAddress(body.email),role=body.role,party=body.party||'group',farmIds=party==='farm'?(Array.isArray(body.farmIds)?[...new Set(body.farmIds.map(id=>String(id).trim()))]:[]):[],farmId=party==='farm'?(String(body.farmId||'').trim()||null):null;if(!['admin','operator','viewer'].includes(role)||!['group','carrier','farm'].includes(party)||role==='admin'&&party!=='group'||party==='farm'&&((farmId&&farmIds.length>0)||(!farmId&&farmIds.length<2))||party!=='farm'&&(farmId||farmIds.length))throw Error('Selecione um perfil e uma fazenda válidos.');
            const chosenFarmIds=farmId?[farmId]:farmIds;if(chosenFarmIds.some(id=>!id||id.length>200))throw Error('Selecione fazendas válidas.');if(chosenFarmIds.length){const current=await backend.repository.load(actor.companyId);if(chosenFarmIds.some(id=>!current.state.farms?.some(farm=>farm.id===id&&farm.active!==false)))throw Error('Selecione somente fazendas ativas cadastradas.');}
-          const ticket=randomTicket(),expires=new Date(Date.now()+72*3600*1000).toISOString();
-           await backend.service('/rest/v1/fleet_invitations',{method:'POST',body:{company_id:actor.companyId,email,role,party,farm_id:farmId,farm_ids:farmId?[]:farmIds,token_hash:await sha256(ticket),expires_at:expires}});
+          const ticket=randomTicket();
+          const issued=await backend.rpc('fleet_issue_invitation',{p_company:actor.companyId,p_actor:actor.userId,p_email:email,p_role:role,p_party:party,p_farm_id:farmId,p_farm_ids:farmId?[]:farmIds,p_hash:await sha256(ticket)});
+          const expires=issued.expiresAt;
           const delivery=await sendAccessInvite(email,ticket);
            return corsResponse(backend.responseJson({ticket,email,role,party,farmId,farmIds:chosenFarmIds,expiresAt:expires,emailSent:delivery.sent,emailMessage:delivery.message||''}),request);
         }
@@ -67,5 +69,5 @@ Deno.serve(async request=>{
       return corsResponse(backend.responseJson({error:'Método não permitido.'},405),request);
     }
     return corsResponse(await dataApi(request),request);
-  }catch(error){const status=error.code==='42501'?403:[400,401,403,404,409,429,502,503].includes(error.status)?error.status:400;return corsResponse(backend.responseJson({error:error.code==='42501'?'Esta alteração não é permitida.':error.message||'Não foi possível concluir a solicitação.',...(error.code==='CTE_HIGH_VALUE'||error.code==='CTE_FARM_MISMATCH'||error.code==='CTE_CONFIRMATIONS_REQUIRED'||error.code?.startsWith('CTE_WEIGHT_')?{code:error.code,...(error.issues?{issues:error.issues}:{})}:{})},status),request);}
+  }catch(error){const status=error.code==='42501'?403:[400,401,403,404,409,413,429,502,503].includes(error.status)?error.status:400;return corsResponse(backend.responseJson({error:error.code==='42501'?'Esta alteração não é permitida.':error.message||'Não foi possível concluir a solicitação.',...(error.code==='CTE_HIGH_VALUE'||error.code==='CTE_FARM_MISMATCH'||error.code==='CTE_CONFIRMATIONS_REQUIRED'||error.code?.startsWith('CTE_WEIGHT_')?{code:error.code,...(error.issues?{issues:error.issues}:{})}:{})},status),request);}
 });

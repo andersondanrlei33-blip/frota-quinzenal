@@ -1,11 +1,12 @@
 import {createSupabaseBackend,corsResponse,emailAddress,passwordValue,sha256} from './supabase-adapter.js';
+import {readLimitedJson} from './request-body.js';
 const envKey=(modern,legacy)=>{try{const key=JSON.parse(Deno.env.get(modern)||'{}').default;if(key)return key;}catch{}return Deno.env.get(legacy);};
 const backend=createSupabaseBackend({url:Deno.env.get('SUPABASE_URL'),publicKey:envKey('SUPABASE_PUBLISHABLE_KEYS','SUPABASE_ANON_KEY'),secretKey:envKey('SUPABASE_SECRET_KEYS','SUPABASE_SERVICE_ROLE_KEY')});
 Deno.serve(async request=>{
   if(request.method==='OPTIONS')return corsResponse(new Response(null,{status:204}),request);
   try{
     if(request.method!=='POST')return corsResponse(backend.responseJson({error:'Método não permitido.'},405),request);
-    const text=await request.text();if(text.length>4000)throw Error('Pedido muito grande.');const body=JSON.parse(text);
+    const body=await readLimitedJson(request);
     if(!/^[a-f0-9]{64}$/.test(body.ticket||''))throw Error('Link de acesso inválido.');
     const hash=await sha256(body.ticket),invitation=await backend.rpc('fleet_inspect_invitation',{p_hash:hash});
     if(!invitation)throw Error('Link inválido, utilizado ou expirado.');
@@ -24,5 +25,5 @@ Deno.serve(async request=>{
     }else throw Error('Ação inválida.');
     const result=await backend.rpc('fleet_accept_invitation',{p_hash:hash,p_user:profile.id,p_email:profile.email,p_company_name:invitation.firstAccess?String(body.companyName||'').trim():null});
     return corsResponse(backend.responseJson(result),request);
-  }catch(error){return corsResponse(backend.responseJson({error:error.message||'Não foi possível configurar o acesso.'},400),request);}
+  }catch(error){return corsResponse(backend.responseJson({error:error.message||'Não foi possível configurar o acesso.'},error.status===413?413:400),request);}
 });

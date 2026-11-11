@@ -38,8 +38,25 @@ export function inspectNfePdf(bytes,name){
 }
 const extractAccessKeys=text=>String(text||'').split(/\r?\n/).map(line=>digits(line)).filter(key=>key.length===44);
 const uniqueRequestInvoiceFiles=files=>{const seen=new Set();return files.filter(file=>{const key=file.accessKey||String(file.name||'').match(/\d{44}/)?.[0];if(!key)return true;if(seen.has(key))return false;seen.add(key);return true;});};
-const billableTons=(weight,unit)=>{const value=Number(weight);if(!Number.isFinite(value)||value<0)return null;const tons=unit==='t'?value:value/1000;return Number(tons.toFixed(3));};
+export const billableTons=(weight,unit)=>{if(weight==null||weight==='')return null;const value=Number(weight);if(!Number.isFinite(value)||value<0)return null;const tons=unit==='t'?value:value/1000;return Number(tons.toFixed(3));};
 const billingAmount=(tons,rate=CTE_BILLING_RATE_PER_TON)=>tons==null?null:Number((tons*rate).toFixed(2));
+// Bound total comparison work, including intermediate sums, before a large product can form.
+export function matchingInvoiceWeight(candidateSets,target){
+ let totals=new Set([0]),work=0;
+ for(const candidates of candidateSets){
+  const next=new Set();
+  for(const total of totals)for(const value of candidates){
+   if(++work>20000)return {limited:true};
+   const sum=Number((total+value).toFixed(3));if(!Number.isFinite(sum))return {limited:true};next.add(sum);
+  }
+  totals=next;
+ }
+ let matchingTotal;
+ for(const total of totals){
+  if(Math.abs(target-total)<=Math.max(1,total*0.00001)&&(matchingTotal===undefined||Math.abs(target-total)<Math.abs(target-matchingTotal)))matchingTotal=total;
+ }
+ return {limited:false,matchingTotal};
+}
 export function extractNfeVehiclePlate(text){
  const normalized=String(text||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleUpperCase('pt-BR');
  const platePattern=/(?:^|[\s:;|/])([A-Z]{3}\s*[-/]?\s*(?:\d[A-Z0-9]\d{2}|\d{4}))(?![A-Z0-9])/g;
@@ -364,14 +381,15 @@ export function createCteApi({backend,readPdf,readNfePdf=readPdf}){
    }
    let weightConference=null;
    if(cteRequest){
-    const invoiceWeightFiles=uniqueRequestInvoiceFiles((cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file))),invoiceWeightCandidates=invoiceWeightFiles.map(file=>{const primary=file.cargoWeight==null?null:Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg',primaryKg=Number.isFinite(primary)&&primary>=0?primary*(unit==='t'?1000:1):null,alternatives=(Array.isArray(file.cargoWeightAlternatives)?file.cargoWeightAlternatives:[]).map(item=>{const value=item?.cargoWeight==null?null:Number(item.cargoWeight),itemUnit=item?.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(itemUnit==='t'?1000:1):null;}).filter(value=>value!==null),values=[primaryKg,...alternatives].filter(value=>value!==null);return [...new Set(values)];}),invoiceWeights=invoiceWeightCandidates.map(values=>values[0]??null),cteWeight=Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
+    const invoiceWeightFiles=uniqueRequestInvoiceFiles((cteRequest.invoiceFiles||[]).filter(file=>!correctionFiles.includes(file))),invoiceWeightCandidates=invoiceWeightFiles.map(file=>{const primary=file.cargoWeight==null?null:Number(file.cargoWeight),unit=file.cargoWeightUnit||'kg',primaryKg=Number.isFinite(primary)&&primary>=0?primary*(unit==='t'?1000:1):null,alternatives=(Array.isArray(file.cargoWeightAlternatives)?file.cargoWeightAlternatives:[]).map(item=>{const value=item?.cargoWeight==null?null:Number(item.cargoWeight),itemUnit=item?.cargoWeightUnit||'kg';return Number.isFinite(value)&&value>=0?value*(itemUnit==='t'?1000:1):null;}).filter(value=>value!==null),values=[primaryKg,...alternatives].filter(value=>value!==null);return [...new Set(values)];}),invoiceWeights=invoiceWeightCandidates.map(values=>values[0]??null),cteWeight=cte.cargoWeight==null?null:Number(cte.cargoWeight),cteWeightKg=Number.isFinite(cteWeight)&&cteWeight>=0?cteWeight*(cte.cargoWeightUnit==='t'?1000:1):null;
     const partial=invoiceWeightFiles.filter(file=>file.cargoWeightSource==='product-quantity'||file.cargoWeightComplete===false).map(file=>file.name).filter(Boolean);
-    if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)||partial.length){
-     const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:partial.length?`A NF-e ${partial.join(', ')} tem quantidade em KG nos produtos, mas não informa o peso bruto total.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
+    const comparison=cteWeightKg!==null&&invoiceWeights.length&&!invoiceWeights.some(value=>value===null)&&!partial.length?matchingInvoiceWeight(invoiceWeightCandidates,cteWeightKg):null;
+    if(cteWeightKg===null||!invoiceWeights.length||invoiceWeights.some(value=>value===null)||partial.length||comparison?.limited){
+     const missing=invoiceWeightFiles.filter((_,index)=>invoiceWeights[index]===null).map(file=>file.name).filter(Boolean),reason=comparison?.limited?'A conferência automática excede os limites de processamento. Envie os XMLs originais ou confira o peso manualmente.':cteWeightKg===null?'Não consegui ler o peso no CT-e.':missing.length?`Não consegui ler o peso da NF-e ${missing.join(', ')}.`:partial.length?`A NF-e ${partial.join(', ')} tem quantidade em KG nos produtos, mas não informa o peso bruto total.`:'Não consegui ler o peso de todas as NF-e desta solicitação.';
      if(!confirmWeightCheck&&!confirmAlerts)confirmationIssues.push({code:'CTE_WEIGHT_UNAVAILABLE',message:reason+' A comparação automática não foi possível.'});
      else weightConference={status:'unavailable',cteWeightKg,nfeWeightKg:null,confirmedBy:actor.userId,confirmedAt:new Date().toISOString()};
     }else{
-     const primaryNfeWeightKg=Number(invoiceWeights.reduce((sum,value)=>sum+value,0).toFixed(3)),candidateTotals=invoiceWeightCandidates.reduce((totals,candidates)=>totals.flatMap(total=>candidates.map(value=>Number((total+value).toFixed(3)))),[0]),matchingTotal=candidateTotals.find(total=>Math.abs(cteWeightKg-total)<=Math.max(1,total*0.00001)),nfeWeightKg=matchingTotal===undefined?primaryNfeWeightKg:matchingTotal,differenceKg=Number(Math.abs(cteWeightKg-nfeWeightKg).toFixed(3)),matches=matchingTotal!==undefined;
+     const primaryNfeWeightKg=Number(invoiceWeights.reduce((sum,value)=>sum+value,0).toFixed(3)),matchingTotal=comparison.matchingTotal,nfeWeightKg=matchingTotal===undefined?primaryNfeWeightKg:matchingTotal,differenceKg=Number(Math.abs(cteWeightKg-nfeWeightKg).toFixed(3)),matches=matchingTotal!==undefined;
      if(!matches&&!confirmWeightCheck&&!confirmAlerts)confirmationIssues.push({code:'CTE_WEIGHT_MISMATCH',message:`Peso diferente: CT-e ${cteWeightKg.toLocaleString('pt-BR')} kg; NF-e ${nfeWeightKg.toLocaleString('pt-BR')} kg (diferença de ${differenceKg.toLocaleString('pt-BR')} kg).`});
      else weightConference={status:matches?'match':'different',cteWeightKg,nfeWeightKg,differenceKg,...(matches&&nfeWeightKg!==primaryNfeWeightKg?{matchedAlternative:true,primaryNfeWeightKg}:{ }),...(!matches?{confirmedBy:actor.userId,confirmedAt:new Date().toISOString()}:{})};
     }
